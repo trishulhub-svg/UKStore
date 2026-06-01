@@ -1,0 +1,2052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UK Grocery Store - 6 Pre-Coding Documents</title>
+<style>
+body { font-family: "Liberation Serif", "Times New Roman", Georgia, serif; max-width: 900px; margin: 0 auto; padding: 20px; color: #212325; line-height: 1.6; }
+h1 { color: #5232b1; border-bottom: 2px solid #5232b1; padding-bottom: 8px; margin-top: 40px; font-size: 24px; }
+h2 { color: #212325; margin-top: 30px; font-size: 18px; }
+h3 { color: #212325; margin-top: 20px; font-size: 15px; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+th { background: #5232b1; color: white; padding: 8px 12px; text-align: left; }
+td { padding: 8px 12px; border: 1px solid #dee1e5; }
+tr:nth-child(even) { background: #f1f2f3; }
+ul { padding-left: 20px; }
+li { margin-bottom: 4px; }
+.cover { text-align: center; padding: 60px 20px; margin-bottom: 40px; }
+.cover h1 { font-size: 36px; border: none; color: #5232b1; }
+.cover h2 { font-size: 20px; color: #212325; }
+.cover p { color: #82878e; margin: 4px 0; }
+.verify { color: #dc2626; font-weight: bold; margin: 8px 0; padding: 4px 12px; border-left: 3px solid #dc2626; background: #fef2f2; }
+</style>
+</head>
+<body>
+<div class="cover">
+<h1>UK Grocery Store</h1>
+<h2>6 Pre-Coding Documents</h2>
+<hr style="width:40%;border:1px solid #5232b1;margin:20px auto;">
+<p>1. Product Requirements Document (PRD)</p>
+<p>2. Technical Requirements Document (TRD)</p>
+<p>3. App Flow Document</p>
+<p>4. UI/UX Design Brief</p>
+<p>5. Backend Schema Document</p>
+<p>6. Implementation Plan</p>
+<br>
+<p>Project: UK STORE [ DEMO ]</p>
+<p>Client: Trishulhub [ Office ]</p>
+<p>Version: 2.0 - Updated with 8 Technical Resolutions</p>
+<p>Generated: 2026-06-03</p>
+<p>Framework: Supabase + Next.js + React Native Expo</p>
+</div>
+<h1>1. Product Requirements Document (PRD)</h1>
+<p>1.1 App Overview</p>
+<p>The UK Grocery Store is a hyperlocal grocery delivery platform designed to serve local communities</p>
+<p>across the United Kingdom. The application enables customers to browse a comprehensive catalog of</p>
+<p>grocery products, add items to their cart, and have their orders delivered to their doorstep within a</p>
+<p>defined delivery radius. The platform is specifically architected for a single-store deployment to</p>
+<p>accelerate the initial time-to-market, while the underlying database schema is designed with a mandatory</p>
+<p>store_id relational key across all orders, products, and user profiles to ensure seamless multi-store</p>
+<p>scalability in the future without requiring database migrations or architectural overhauls.</p>
+<p>The platform addresses a critical gap in the UK grocery market where independent grocery stores and</p>
+<p>small chains lack the digital infrastructure to compete with large supermarket delivery services like</p>
+<p>Tesco, Sainsbury's, and Ocado. By providing a turnkey digital storefront with integrated payment</p>
+<p>processing, real-time order tracking, and automated delivery management, the UK Grocery Store levels</p>
+<p>the playing field and enables local retailers to reach customers who increasingly prefer the convenience</p>
+<p>of online grocery shopping. Research from Statista indicates that Asda.com alone generated an</p>
+<p>estimated 5.42 billion USD in e-commerce net sales in 2025, underscoring the enormous market</p>
+<p>potential for grocery delivery platforms.</p>
+<p>1.2 Problem Statement</p>
+<p>Local and independent grocery stores in the UK face three fundamental challenges that prevent them</p>
+<p>from offering competitive online delivery services. First, the cost of building a custom e-commerce</p>
+<p>platform with integrated payment processing, real-time inventory management, and delivery logistics is</p>
+<p>prohibitively expensive for small businesses, often requiring enterprise-level budgets that are simply</p>
+<p>unavailable to independent retailers. Second, regulatory compliance in the UK grocery sector is complex</p>
+<p>and multi-faceted, encompassing HFSS (High Fat, Sugar, and Salt) advertising restrictions that take</p>
+<p>effect from January 2026, UK GDPR data protection requirements, and right-to-work verification for</p>
+<p>delivery couriers. Non-compliance with these regulations carries significant legal and reputational risks.</p>
+<p>Third, the technical complexity of implementing geospatial delivery zone management, real-time order</p>
+<p>tracking, and multi-role user management (customers, store owners, managers, pickers, and riders)</p>
+<p>demands a sophisticated technology stack that is typically beyond the reach of small grocery operations.</p>
+<p>1.3 Target Users</p>
+<p>User Role</p>
+<p>Description</p>
+<p>Primary Need</p>
+<p>Customer</p>
+<p>Local residents ordering groceries online</p>
+<p>Easy browsing, fast checkout, real-time tracking</p>
+<p>Store Owner</p>
+<p>Business owner managing the store</p>
+<p>Full control over catalog, pricing, orders, and</p>
+<p>analytics</p>
+<p>Store</p>
+<p>Manager</p>
+<p>Day-to-day operations manager</p>
+<p>Order management, staff coordination, inventory</p>
+<p>updates</p>
+<p>Picker</p>
+<p>In-store staff assembling orders</p>
+<p>Clear pick lists, item substitution handling, status</p>
+<p>updates</p>
+<p>Rider</p>
+<p>Delivery courier transporting orders</p>
+<p>Route navigation, delivery confirmation,</p>
+<p>earnings tracking</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 1.1: User Roles and Primary Needs</p>
+<p>1.4 Core Features with Priorities</p>
+<p>Features are prioritized using the MoSCoW framework (Must, Should, Could, Won't) based on</p>
+<p>competitor analysis of Tesco, Sainsbury's, Ocado, and emerging quick-commerce apps, combined with</p>
+<p>the 8-week delivery timeline constraint.</p>
+<p>Must Have (MVP - Weeks 1-8)</p>
+<li></li>
+<p>User registration and authentication via Supabase Auth (email, password, OTP)</p>
+<li></li>
+<p>Product catalog browsing with category filtering and search</p>
+<li></li>
+<p>Shopping cart with quantity management and item substitution preferences</p>
+<li></li>
+<p>Stripe Checkout integration for secure payment processing</p>
+<li></li>
+<p>Order placement with delivery slot selection</p>
+<li></li>
+<p>Real-time order status tracking (Placed, Picking, Ready, Out for Delivery, Delivered)</p>
+<li></li>
+<p>Admin dashboard for product, order, and delivery management</p>
+<li></li>
+<p>HFSS compliance flagging (is_hfss boolean) with automatic promotional exclusion</p>
+<li></li>
+<p>Delivery pricing engine with configurable base fee, per-km charge, and free delivery threshold</p>
+<li></li>
+<p>VAT calculation engine (0%, 5%, 20%) computed server-side</p>
+<p>Should Have (Post-MVP - Weeks 9-12)</p>
+<li></li>
+<p>Rider GPS tracking with real-time location updates on customer app</p>
+<li></li>
+<p>Push notifications for order status changes and promotional offers</p>
+<li></li>
+<p>Order history with reorder functionality</p>
+<li></li>
+<p>Product reviews and ratings system</p>
+<li></li>
+<p>Multi-language support (English primary, with i18n infrastructure)</p>
+<li></li>
+<p>Favourite items and shopping lists for quick reordering</p>
+<p>Could Have (Future Releases)</p>
+<li></li>
+<p>AI-powered personalized product recommendations</p>
+<li></li>
+<p>Subscription-based recurring orders (via Stripe Billing)</p>
+<li></li>
+<p>Loyalty points and rewards program</p>
+<li></li>
+<p>Recipe-based shopping (add all ingredients from a recipe)</p>
+<li></li>
+<p>Social sharing of shopping lists</p>
+<li></li>
+<p>Voice search for products</p>
+<p>Won't Have (V1)</p>
+<li></li>
+<p>Multi-store frontend switching (schema-ready but UI is single-store)</p>
+<li></li>
+<p>Third-party marketplace integration (Deliveroo, Just Eat)</p>
+<li></li>
+<p>POS system integration with physical store inventory</p>
+<li></li>
+<p>Augmented reality product preview</p>
+<li></li>
+<p>Cryptocurrency payment options</p>
+<p>1.5 User Stories</p>
+<p>As a...</p>
+<p>I want to...</p>
+<p>So that...</p>
+<p>Customer</p>
+<p>browse products by category</p>
+<p>I can quickly find the groceries I need</p>
+<p>Customer</p>
+<p>search for specific products</p>
+<p>I can find items without scrolling through</p>
+<p>categories</p>
+<p>Customer</p>
+<p>see HFSS-compliant promotions</p>
+<p>I am not shown unhealthy items in promotional</p>
+<p>spots</p>
+<p>Customer</p>
+<p>add items to cart with substitutes</p>
+<p>I get alternatives if my first choice is unavailable</p>
+<p>Customer</p>
+<p>choose a delivery slot</p>
+<p>I know when my groceries will arrive</p>
+<p>Customer</p>
+<p>pay with Stripe Checkout</p>
+<p>my payment is processed securely</p>
+<p>Customer</p>
+<p>track my order in real-time</p>
+<p>I know when to expect my delivery</p>
+<p>Store Owner</p>
+<p>set delivery pricing thresholds</p>
+<p>I can offer free delivery on larger orders</p>
+<p>Store Owner</p>
+<p>manage the product catalog</p>
+<p>I can keep inventory and prices up to date</p>
+<p>Picker</p>
+<p>see my assigned pick list</p>
+<p>I can assemble orders efficiently</p>
+<p>Rider</p>
+<p>navigate to delivery addresses</p>
+<p>I can deliver orders on time</p>
+<p>Rider</p>
+<p>upload ID documents for verification</p>
+<p>I can comply with right-to-work regulations</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 1.2: User Stories</p>
+<p>1.6 Success Metrics (KPIs)</p>
+<p>Metric</p>
+<p>Target</p>
+<p>Industry Benchmark</p>
+<p>Order Completion Rate</p>
+<p>> 95%</p>
+<p>92-96% (Ocado, Tesco)</p>
+<p>Average Delivery Time</p>
+<p>< 60 minutes</p>
+<p>45-90 min (quick commerce)</p>
+<p>Customer Retention (30-day)</p>
+<p>> 40%</p>
+<p>35-45% (grocery delivery)</p>
+<p>Cart Abandonment Rate</p>
+<p>< 60%</p>
+<p>60-70% (grocery e-commerce)</p>
+<p>App Launch to First Order</p>
+<p>< 5 minutes</p>
+<p>5-8 min (best-in-class)</p>
+<p>Order Accuracy Rate</p>
+<p>> 98%</p>
+<p>95-98% (supermarket delivery)</p>
+<p>Server Response Time</p>
+<p>< 200ms (p95)</p>
+<p>< 300ms (industry standard)</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 1.3: Key Performance Indicators</p>
+<p>1.7 Competitive Advantage</p>
+<p>Unlike large supermarket delivery platforms (Tesco, Sainsbury's, Ocado) that serve mass markets from</p>
+<p>centralized warehouses, the UK Grocery Store platform is purpose-built for independent and local</p>
+<p>grocery stores. The key differentiators include: first, a hyperlocal delivery model using PostGIS</p>
+<p>geospatial queries to define precise delivery zones around a single store, enabling faster delivery times</p>
+<p>and lower operational costs compared to warehouse-to-door models. Second, an admin-configurable</p>
+<p>delivery pricing engine that allows store owners to set base fees, per-km charges, and free delivery</p>
+<p>thresholds without code deployment, giving them real-time control over their delivery economics. Third,</p>
+<p>built-in HFSS compliance that automatically filters unhealthy products from promotional placements,</p>
+<p>providing legal compliance out-of-the-box from January 2026 when the UK's new advertising</p>
+<p>restrictions take effect. Fourth, a right-to-work verification system integrated directly into the rider</p>
+<p>onboarding flow, ensuring regulatory compliance for courier labor without additional software.</p>
+<p>Research from quick-commerce industry analysis indicates that one-tap ordering interfaces, AI-powered</p>
+<p>personalized home screens, and hyper-fast search with smart filters are the top UI/UX trends for 2026.</p>
+<p>The platform is designed to incorporate these trends in its post-MVP roadmap while maintaining a clean,</p>
+<p>accessible interface for the MVP that prioritizes usability over novelty.</p>
+<div class="verify">[VERIFY: Store-specific POS integration requirements - confirm whether any existing POS</div>
+<p>system needs to be connected in V1]</p>
+<div class="verify">[VERIFY: Expected initial SKU count and catalog size - confirm 2,000+ SKUs is accurate for</div>
+<p>launch]</p>
+<h1>2. Technical Requirements Document (TRD)</h1>
+<p>2.1 Frontend Stack</p>
+<p>The frontend is built on Next.js 14+ using the App Router paradigm with TypeScript in strict mode.</p>
+<p>This framework provides server-side rendering for SEO-critical pages (product listings, category pages),</p>
+<p>client-side interactivity for the shopping cart and checkout flow, and API routes for backend</p>
+<p>communication. Tailwind CSS serves as the utility-first styling framework, enabling rapid UI</p>
+<p>development with a consistent design system. Zustand is the chosen state management library for</p>
+<p>client-side state (cart, user session, UI preferences) due to its minimal boilerplate and excellent</p>
+<p>TypeScript support.</p>
+<p>For the mobile application, React Native Expo is selected over hybrid wrapper frameworks like</p>
+<p>CapacitorJS. This decision is driven by the grocery app's requirement for highly responsive catalog</p>
+<p>browsing, smooth gesture-based interactions, and resilient background data streaming for rider location</p>
+<p>updates. React Native Expo provides native UI rendering components, smoother gesture handling, and</p>
+<p>dedicated background processing threads, all on an open-source framework with zero licensing costs.</p>
+<p>The Expo managed workflow simplifies deployment to both iOS and Android app stores without native</p>
+<p>code complexity.</p>
+<p>Technology</p>
+<p>Version</p>
+<p>Purpose</p>
+<p>Next.js</p>
+<p>14+</p>
+<p>Web application framework (App Router)</p>
+<p>TypeScript</p>
+<h2>5.x (strict)</h2>
+<p>Type-safe development</p>
+<p>Tailwind CSS</p>
+<h2>4.x</h2>
+<p>Utility-first styling</p>
+<p>Zustand</p>
+<h2>4.x</h2>
+<p>Client-side state management</p>
+<p>React Native Expo</p>
+<p>50+</p>
+<p>Cross-platform mobile app</p>
+<p>Expo Router</p>
+<h2>3.x</h2>
+<p>File-based mobile navigation</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 2.1: Frontend Technology Stack</p>
+<p>2.2 Backend Stack</p>
+<p>The backend leverages Supabase as the unified backend-as-a-service platform, replacing the previously</p>
+<p>considered Prisma + Turso + NextAuth.js stack. Supabase provides a PostgreSQL relational database</p>
+<p>(up to 500 MB on the free tier), built-in authentication with email/password and OTP, real-time</p>
+<p>subscriptions for live order tracking, storage buckets for document uploads, and edge functions for</p>
+<p>serverless API endpoints. This consolidation dramatically reduces deployment complexity and</p>
+<p>eliminates the need to manage separate authentication, database, and storage services.</p>
+<p>The built-in PostGIS extension is enabled via a single click in the Supabase dashboard, providing</p>
+<p>geospatial query capabilities for radius-based delivery zone calculations (e.g., finding all customers</p>
+<p>within a 5 km delivery radius). This eliminates the need for a secondary geospatial service and keeps all</p>
+<p>data within a single relational instance, simplifying data consistency and reducing infrastructure costs to</p>
+<p>zero during development and early production.</p>
+<p>Technology</p>
+<p>Purpose</p>
+<p>Key Capability</p>
+<p>Supabase PostgreSQL</p>
+<p>Core relational database</p>
+<p>500 MB free tier, PostGIS extension, Row Level</p>
+<p>Security</p>
+<p>Supabase Auth</p>
+<p>User authentication</p>
+<p>Email/password, OTP, social providers, JWT</p>
+<p>tokens</p>
+<p>Supabase Realtime</p>
+<p>Live order tracking</p>
+<p>WebSocket-based subscriptions for order status</p>
+<p>updates</p>
+<p>Supabase Storage</p>
+<p>Document uploads</p>
+<p>Rider ID/visa document storage with access</p>
+<p>control</p>
+<p>Supabase Edge</p>
+<p>Functions</p>
+<p>Serverless API</p>
+<p>TypeScript Deno functions for payment</p>
+<p>webhooks, VAT calc</p>
+<p>Next.js API Routes</p>
+<p>Application API layer</p>
+<p>RESTful endpoints for business logic</p>
+<p>orchestration</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 2.2: Backend Technology Stack</p>
+<p>2.3 Database</p>
+<p>Supabase PostgreSQL serves as the sole database for the platform. The free tier accommodates up to 500</p>
+<p>MB of pure text data, which is sufficient for a catalog of over 2,000 grocery SKUs and active order logs.</p>
+<p>PostgreSQL is the most popular database among developers with 55.6% adoption according to Stack</p>
+<p>Overflow surveys, and its native support for JSON, full-text search, and the PostGIS geospatial</p>
+<p>extension makes it ideal for the grocery delivery use case where location-based queries are core to the</p>
+<p>delivery zone management system.</p>
+<p>Row Level Security (RLS) policies are enforced at the database level to ensure data isolation between</p>
+<p>user roles. Customers can only access their own orders and profiles. Store staff (managers, pickers) can</p>
+<p>access order data for their assigned store. Riders can only see orders assigned to them. The store owner</p>
+<p>has full access to all data within their store. This security model is enforced by PostgreSQL policies that</p>
+<p>are evaluated on every query, providing defense-in-depth beyond application-level checks.</p>
+<p>2.4 Authentication</p>
+<p>Supabase Auth replaces NextAuth.js v5 as the authentication provider, saving approximately 2 weeks</p>
+<p>of development time. Supabase Auth provides out-of-the-box support for email/password signup, OTP</p>
+<p>(one-time password) verification, social OAuth providers (Google, Apple, Facebook), and JWT-based</p>
+<p>session management. The authentication flow is integrated directly with Row Level Security policies in</p>
+<p>PostgreSQL, meaning that every database query is automatically scoped to the authenticated user's role</p>
+<p>and permissions without additional application-level authorization code.</p>
+<p>Session management uses Supabase's built-in JWT tokens with automatic refresh. The mobile app</p>
+<p>(React Native Expo) uses the Supabase React Native client with secure token storage on the device</p>
+<p>keychain. The web app uses the Supabase JavaScript client with HTTP-only cookies for CSRF</p>
+<p>protection. Password reset flows, email verification, and magic link authentication are all provided by</p>
+<p>Supabase Auth without custom implementation.</p>
+<p>2.5 APIs and Integrations</p>
+<p>API / Service</p>
+<p>Purpose</p>
+<p>Pricing Model</p>
+<p>Stripe Checkout</p>
+<p>Payment processing for grocery orders</p>
+<p>Pay-as-you-go (1.5% + 20p per</p>
+<p>UK transaction)</p>
+<p>Stripe Webhooks</p>
+<p>Payment event notifications (success, failure,</p>
+<p>refund)</p>
+<p>Included with Stripe</p>
+<p>Stripe Billing</p>
+<p>Future subscription/recurring order payments</p>
+<p>Pay-as-you-go (activatable in</p>
+<p>dashboard)</p>
+<p>PostGIS</p>
+<p>Geospatial queries for delivery zone calculation</p>
+<p>Free (Supabase built-in extension)</p>
+<p>Supabase Realtime</p>
+<p>WebSocket subscriptions for live order tracking</p>
+<p>Free (included in Supabase tier)</p>
+<p>Expo Push</p>
+<p>Notifications</p>
+<p>Mobile push notifications for order updates</p>
+<p>Free (Expo service)</p>
+<p>Google Maps API</p>
+<p>Rider navigation and delivery address geocoding</p>
+<p>Free tier: 28,000 loads/month</p>
+<p>SendGrid</p>
+<p>Transactional email (order confirmations,</p>
+<p>receipts)</p>
+<p>Free tier: 100 emails/day</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 2.3: API and Service Integrations</p>
+<p>2.6 Security Requirements</p>
+<li></li>
+<p>UK GDPR Compliance: All personal data (names, addresses, payment info) processed in</p>
+<p>accordance with UK GDPR. User consent required for data collection. Right to data deletion</p>
+<p>supported via Supabase Auth user deletion API.</p>
+<li></li>
+<p>PCI DSS: Stripe Checkout handles all payment card data. The application never directly touches,</p>
+<p>stores, or transmits card numbers, ensuring PCI DSS compliance is inherited from Stripe's Level 1</p>
+<p>certification.</p>
+<li></li>
+<p>Row Level Security: Every database table enforces RLS policies scoped to user roles, preventing</p>
+<p>unauthorized data access even if the API layer is compromised.</p>
+<li></li>
+<p>HFSS Compliance: The is_hfss boolean flag on the products table is checked by frontend</p>
+<p>application logic to automatically exclude flagged items from promotional banners and top-tier</p>
+<p>discount spots, ensuring compliance with the UK HFSS advertising restrictions effective January</p>
+<p>2026.</p>
+<li></li>
+<p>Right-to-Work Verification: Rider document uploads (visas, IDs, licenses) are stored in private</p>
+<p>Supabase Storage buckets with access restricted to admin roles. Riders are blocked from the active</p>
+<p>order matching pool until their verification_status transitions from "pending" to "approved" by a</p>
+<p>store administrator.</p>
+<li></li>
+<p>VAT Calculation: All VAT calculations (0%, 5%, 20%) are performed server-side in Supabase</p>
+<p>Edge Functions to prevent client-side manipulation. The VAT rate is determined by the product's</p>
+<p>vat_category field and cannot be altered by the client.</p>
+<p>2.7 Performance Requirements</p>
+<p>Metric</p>
+<p>Target</p>
+<p>Measurement</p>
+<p>Page Load Time (web)</p>
+<p>< 2 seconds</p>
+<p>Lighthouse Performance Score > 90</p>
+<p>API Response Time (p95)</p>
+<p>< 200ms</p>
+<p>Supabase dashboard monitoring</p>
+<p>Mobile App Launch</p>
+<p>< 3 seconds</p>
+<p>Expo development builds profiling</p>
+<p>Real-time Update Latency</p>
+<p>< 500ms</p>
+<p>WebSocket message delivery time</p>
+<p>Image Load Time</p>
+<p>< 1 second</p>
+<p>CDN-backed product images via Supabase</p>
+<p>Storage</p>
+<p>Database Query Time (p95)</p>
+<p>< 50ms</p>
+<p>PostGIS queries with proper indexing</p>
+<p>Concurrent Users</p>
+<p>500+ simultaneous</p>
+<p>Load testing with k6 or Artillery</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 2.4: Performance Targets</p>
+<p>2.8 Cloud and Deployment</p>
+<p>The web application is deployed on Vercel, which provides zero-configuration Next.js deployment,</p>
+<p>automatic preview deployments for pull requests, serverless API routes, and a global CDN for static</p>
+<p>assets. Vercel's free tier includes 100 GB bandwidth per month, which is sufficient for the initial launch</p>
+<p>phase. The React Native Expo mobile app is built using EAS (Expo Application Services) Build for</p>
+<p>generating production binaries, and EAS Submit for app store deployment to both Apple App Store and</p>
+<p>Google Play Store.</p>
+<p>Supabase is the sole infrastructure provider for database, authentication, storage, and real-time</p>
+<p>capabilities. The free tier includes 500 MB database storage, 1 GB file storage, 50,000 monthly active</p>
+<p>users for authentication, and 200 concurrent realtime connections. This is sufficient for the MVP launch</p>
+<p>with room for growth before requiring a paid plan. Environment variables for API keys and secrets are</p>
+<p>managed through Vercel's encrypted environment variable system and Supabase's project settings, with</p>
+<p>separate projects for development, staging, and production environments.</p>
+<div class="verify">[VERIFY: Confirm Vercel free tier bandwidth (100 GB/month) is sufficient for projected</div>
+<p>launch traffic]</p>
+<h1>3. App Flow Document</h1>
+<p>3.1 All Screens / Pages</p>
+<p>Customer App (Web + Mobile)</p>
+<li></li>
+<p>Splash / Loading Screen</p>
+<li></li>
+<p>Onboarding (3 slides: Browse, Order, Track)</p>
+<li></li>
+<p>Login / Sign Up (Email, OTP, Social Auth)</p>
+<li></li>
+<p>Forgot Password / Reset Password</p>
+<li></li>
+<p>Email Verification Pending</p>
+<li></li>
+<p>Home / Product Catalog (categories, featured, HFSS-filtered promos)</p>
+<li></li>
+<p>Category Detail Page (product grid with filters)</p>
+<li></li>
+<p>Product Detail Page (images, description, price, VAT, add to cart)</p>
+<li></li>
+<p>Search Results Page (text search with autocomplete)</p>
+<li></li>
+<p>Shopping Cart (items, quantities, substitutes, delivery slot picker)</p>
+<li></li>
+<p>Checkout (address, delivery slot, payment via Stripe)</p>
+<li></li>
+<p>Payment Success / Failure</p>
+<li></li>
+<p>Order Confirmation (order ID, estimated delivery, receipt)</p>
+<li></li>
+<p>Order Tracking (real-time status, rider location map)</p>
+<li></li>
+<p>Order History (past orders with reorder button)</p>
+<li></li>
+<p>Order Detail (items, status timeline, receipt)</p>
+<li></li>
+<p>Profile / Account Settings</p>
+<li></li>
+<p>Addresses Management (add/edit/delete delivery addresses)</p>
+<li></li>
+<p>Favourites / Saved Items</p>
+<li></li>
+<p>Notifications Center</p>
+<p>Admin Dashboard (Web Only)</p>
+<li></li>
+<p>Admin Login (Supabase Auth with role check)</p>
+<li></li>
+<p>Dashboard Home (revenue, orders, delivery stats)</p>
+<li></li>
+<p>Product Management (CRUD, categories, HFSS flag toggle, VAT category)</p>
+<li></li>
+<p>Order Management (view all orders, assign pickers/riders, status updates)</p>
+<li></li>
+<p>Delivery Management (delivery zones, pricing config, active riders)</p>
+<li></li>
+<p>Rider Management (onboarding, document verification, status control)</p>
+<li></li>
+<p>Customer Management (view customers, order history, support)</p>
+<li></li>
+<p>Promotions Management (create/edit promos, HFSS auto-exclusion)</p>
+<li></li>
+<p>Settings (store info, delivery pricing thresholds, VAT rates)</p>
+<li></li>
+<p>Analytics (sales charts, popular products, delivery performance)</p>
+<p>Picker App (Mobile)</p>
+<li></li>
+<p>Picker Login</p>
+<li></li>
+<p>Assigned Orders List</p>
+<li></li>
+<p>Pick List Detail (items to pick, location hints, substitute options)</p>
+<li></li>
+<p>Item Picked Confirmation (scan barcode or manual confirm)</p>
+<li></li>
+<p>Order Assembled Confirmation</p>
+<p>Rider App (Mobile)</p>
+<li></li>
+<p>Rider Registration (with document upload for right-to-work)</p>
+<li></li>
+<p>Rider Login (blocked until verification_status = "approved")</p>
+<li></li>
+<p>Available Deliveries (order list with delivery address and fee)</p>
+<li></li>
+<p>Accept Delivery</p>
+<li></li>
+<p>Navigation to Store (Google Maps integration)</p>
+<li></li>
+<p>Pick Up Confirmation (scan order QR code)</p>
+<li></li>
+<p>Navigation to Customer (Google Maps integration)</p>
+<li></li>
+<p>Delivery Confirmation (photo proof, customer signature)</p>
+<li></li>
+<p>Earnings Dashboard (completed deliveries, fees earned)</p>
+<p>3.2 Primary User Journey: Customer Order Flow</p>
+<p>The customer order flow represents the most critical user journey in the application. It begins when a</p>
+<p>customer lands on the home screen and ends when the order is successfully delivered. Every step is</p>
+<p>designed to minimize friction and maximize conversion, drawing from industry best practices observed</p>
+<p>in leading UK grocery apps like Ocado and Tesco.</p>
+<p>1. Home Screen</p>
+<p>Customer browses product categories and featured promotions. HFSS-flagged items are automatically</p>
+<p>excluded from promotional banners. Search bar provides instant autocomplete results. Quick-add</p>
+<p>buttons allow adding frequently purchased items directly from the home screen.</p>
+<h2>2. Category / Product Browsing</h2>
+<p>Customer navigates to a category or uses search to find products. Products display name, price</p>
+<p>(including VAT), and availability status. Out-of-stock items are greyed out but visible to indicate catalog</p>
+<p>breadth.</p>
+<h2>3. Add to Cart</h2>
+<p>Customer taps "Add to Cart" on a product. A quantity selector allows adjusting amounts. Optional</p>
+<p>substitute preference can be set ("If unavailable, substitute with closest match" or "Do not substitute").</p>
+<p>Cart badge updates in real-time.</p>
+<h2>4. Cart Review</h2>
+<p>Customer reviews all items, quantities, and substitute preferences. Estimated total is shown including</p>
+<p>VAT and estimated delivery fee based on the delivery address. "Proceed to Checkout" button is</p>
+<p>prominently displayed.</p>
+<h2>5. Checkout</h2>
+<p>Customer selects or adds a delivery address, chooses a delivery slot (if available), and reviews the order</p>
+<p>summary. Stripe Checkout is invoked for payment. The payment form is hosted by Stripe, ensuring PCI</p>
+<p>DSS compliance.</p>
+<h2>6. Payment Processing</h2>
+<p>Stripe processes the payment. On success, the order is created in the database with status "Placed" and</p>
+<p>the customer is redirected to the order confirmation screen. On failure, the customer is shown an error</p>
+<p>with the option to retry or use a different payment method.</p>
+<p>7. Order Tracking</p>
+<p>Customer sees real-time order status updates: Placed, Being Picked, Ready for Delivery, Out for</p>
+<p>Delivery (with rider location on map), Delivered. Push notifications are sent at each status transition.</p>
+<p>8. Delivery Complete</p>
+<p>Rider confirms delivery with photo proof. Customer receives a delivery confirmation notification with a</p>
+<p>summary and receipt. The customer is prompted to rate the delivery experience.</p>
+<p>3.3 Empty States</p>
+<p>Empty states are designed to guide new users toward their first meaningful action rather than displaying</p>
+<p>blank screens. Each empty state includes a friendly illustration, a short descriptive message, and a</p>
+<p>prominent call-to-action button. This approach is critical for user retention, as research shows that users</p>
+<p>who complete a first action within the first session are 3x more likely to return.</p>
+<p>Screen</p>
+<p>Empty State Message</p>
+<p>Call-to-Action</p>
+<p>Cart</p>
+<p>Your cart is empty. Start adding groceries!</p>
+<p>Browse Categories</p>
+<p>Order History</p>
+<p>No orders yet. Place your first order!</p>
+<p>Start Shopping</p>
+<p>Search Results</p>
+<p>No products found for your search.</p>
+<p>Try Different Keywords</p>
+<p>Favourites</p>
+<p>No saved items yet.</p>
+<p>Add Favourites While Browsing</p>
+<p>Rider Deliveries</p>
+<p>No available deliveries right now.</p>
+<p>Refresh List</p>
+<p>Picker Orders</p>
+<p>No orders to pick right now.</p>
+<p>Wait for Assignment</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 3.1: Empty State Designs</p>
+<p>3.4 Error States</p>
+<p>Error states are categorized into three types: network errors (loss of connectivity), permission errors</p>
+<p>(unauthorized access), and validation errors (invalid form input). Each error state provides a clear</p>
+<p>explanation of what went wrong, why it happened, and what the user can do to resolve it. Critical actions</p>
+<p>(payment, order placement) implement retry logic with exponential backoff to handle transient network</p>
+<p>failures gracefully.</p>
+<p>Error Type</p>
+<p>Trigger</p>
+<p>User-Facing Message</p>
+<p>Recovery Action</p>
+<p>Network</p>
+<p>Error</p>
+<p>No internet</p>
+<p>connection</p>
+<p>Unable to connect. Check your</p>
+<p>internet and try again.</p>
+<p>Retry Button</p>
+<p>Payment</p>
+<p>Failed</p>
+<p>Stripe returns card</p>
+<p>declined</p>
+<p>Payment was declined. Try a</p>
+<p>different card.</p>
+<p>Retry with New Card</p>
+<p>Session</p>
+<p>Expired</p>
+<p>JWT token refresh</p>
+<p>fails</p>
+<p>Your session has expired. Please log</p>
+<p>in again.</p>
+<p>Redirect to Login</p>
+<p>Out of Stock</p>
+<p>Item becomes</p>
+<p>unavailable after</p>
+<p>cart add</p>
+<p>An item in your cart is no longer</p>
+<p>available.</p>
+<p>Remove / Substitute</p>
+<p>Delivery</p>
+<p>Unavailable</p>
+<p>No delivery slots</p>
+<p>for selected time</p>
+<p>No delivery slots available for this</p>
+<p>time.</p>
+<p>Choose Different Slot</p>
+<p>Rider</p>
+<p>Unverified</p>
+<p>Rider attempts</p>
+<p>login before</p>
+<p>approval</p>
+<p>Your account is pending verification.</p>
+<p>Contact Support</p>
+<p>Rate Limited</p>
+<p>Too many API</p>
+<p>requests</p>
+<p>Too many requests. Please wait a</p>
+<p>moment.</p>
+<p>Auto-retry after cooldown</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 3.2: Error State Handling</p>
+<p>3.5 Login / Signup Flow</p>
+<p>Authentication is handled by Supabase Auth with three signup methods: email and password, OTP</p>
+<p>(one-time password sent via email), and social OAuth (Google, Apple). New users are automatically</p>
+<p>assigned the "Customer" role. Store staff (managers, pickers, riders) are assigned their roles by the store</p>
+<p>owner through the admin dashboard after verification. The login flow includes a "Remember Me" option</p>
+<p>that extends the session duration from the default 1 hour to 7 days, reducing friction for returning users.</p>
+<p>Password reset is handled by Supabase Auth's built-in flow: the user enters their email address, receives</p>
+<p>a password reset link, and sets a new password. Email verification is required for new accounts before</p>
+<p>they can place orders. The verification email is sent automatically by Supabase and includes a magic</p>
+<p>link that confirms the email address and redirects the user back to the app.</p>
+<p>3.6 Payment Flow</p>
+<p>The payment flow uses Stripe Checkout in server-redirected mode. When the customer clicks "Pay</p>
+<p>Now" on the checkout screen, the backend creates a Stripe Checkout Session with the order details (line</p>
+<p>items, VAT, delivery fee, total) and returns the session URL. The customer is redirected to Stripe's</p>
+<p>hosted payment page, which handles card collection, 3D Secure authentication (required for UK cards</p>
+<p>under SCA regulations), and payment processing. Upon completion, Stripe sends a webhook to the</p>
+<p>backend confirming the payment status, which triggers the order creation in the database and the</p>
+<p>confirmation notification to the customer.</p>
+<p>Payment failure recovery is handled through three mechanisms. First, if the payment is declined by the</p>
+<p>bank, the customer is shown the decline reason (insufficient funds, expired card, etc.) and given the</p>
+<p>option to try a different payment method. Second, if the Stripe webhook fails to arrive (network issue), a</p>
+<p>scheduled cron job checks the status of pending payments every 5 minutes and updates the order</p>
+<p>accordingly. Third, if the customer abandons the checkout mid-payment, the cart is preserved with a</p>
+<p>"Resume Checkout" option visible on the cart screen for 24 hours, after which the pending Stripe session</p>
+<p>expires and the cart returns to normal state.</p>
+<h1>4. UI/UX Design Brief</h1>
+<p>4.1 Design Style and Mood</p>
+<p>The design language follows a "Fresh Local" aesthetic that communicates trust, freshness, and</p>
+<p>community connection. The visual style draws inspiration from modern UK grocery apps like Ocado</p>
+<p>and Sainsbury's while establishing its own identity through warmer tones and a stronger emphasis on</p>
+<p>local community. The design prioritizes clarity and speed-of-use over decorative flourishes, reflecting</p>
+<p>the 2026 quick-commerce trend toward one-tap ordering interfaces and hyper-fast search with smart</p>
+<p>filters. The overall mood is approachable, efficient, and trustworthy, targeting a broad demographic</p>
+<p>from tech-savvy young professionals to older customers who may be ordering groceries online for the</p>
+<p>first time.</p>
+<p>4.2 Color Palette</p>
+<p>The color system uses a green primary to evoke freshness and trust (consistent with UK grocery industry</p>
+<p>norms), complemented by warm neutrals for readability and an orange accent for call-to-action</p>
+<p>elements. All color combinations meet WCAG 2.1 AA contrast requirements (minimum 4.5:1 for body</p>
+<p>text, 3:1 for large text and UI components).</p>
+<p>Role</p>
+<p>Color</p>
+<p>Hex</p>
+<p>Usage</p>
+<p>Primary</p>
+<p>Fresh Green</p>
+<p>#16a34a</p>
+<p>Primary buttons, links, active states, headers</p>
+<p>Primary</p>
+<p>Dark</p>
+<p>Forest Green</p>
+<p>#15803d</p>
+<p>Button hover, pressed states, emphasis</p>
+<p>Accent</p>
+<p>Warm Orange</p>
+<p>#f97316</p>
+<p>CTA buttons, badges, notifications, delivery markers</p>
+<p>Background</p>
+<p>Off White</p>
+<p>#fafaf9</p>
+<p>Page backgrounds, card backgrounds</p>
+<p>Surface</p>
+<p>Light Gray</p>
+<p>#f5f5f4</p>
+<p>Section backgrounds, alternating rows</p>
+<p>Text Primary</p>
+<p>Charcoal</p>
+<p>#1c1917</p>
+<p>Headings, body text, form labels</p>
+<p>Text</p>
+<p>Secondary</p>
+<p>Warm Gray</p>
+<p>#78716c</p>
+<p>Descriptions, captions, muted text</p>
+<p>Success</p>
+<p>Emerald</p>
+<p>#10b981</p>
+<p>Order confirmed, delivery complete</p>
+<p>Warning</p>
+<p>Amber</p>
+<p>#f59e0b</p>
+<p>Low stock, delivery delay warnings</p>
+<p>Error</p>
+<p>Red</p>
+<p>#ef4444</p>
+<p>Payment failed, form errors, out of stock</p>
+<p>HFSS Badge</p>
+<p>Deep Orange</p>
+<p>#ea580c</p>
+<p>HFSS indicator badge on product cards</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 4.1: Color Palette</p>
+<p>4.3 Typography</p>
+<p>The typography system uses Inter as the primary sans-serif typeface for both web and mobile</p>
+<p>applications. Inter is selected for its excellent readability at small sizes, comprehensive weight range,</p>
+<p>and native support for tabular numbers (critical for price display alignment). For the mobile app, Inter is</p>
+<p>bundled with the Expo build. For the web, Inter is loaded from Google Fonts with font-display: swap for</p>
+<p>optimal loading performance.</p>
+<p>Element</p>
+<p>Font</p>
+<p>Size</p>
+<p>Weight</p>
+<p>Line Height</p>
+<p>H1 Page Title</p>
+<p>Inter</p>
+<p>28px / 1.75rem</p>
+<p>Bold (700)</p>
+<p>1.2</p>
+<p>H2 Section Title</p>
+<p>Inter</p>
+<p>22px / 1.375rem</p>
+<p>Semibold (600)</p>
+<p>1.3</p>
+<p>H3 Subsection</p>
+<p>Inter</p>
+<p>18px / 1.125rem</p>
+<p>Semibold (600)</p>
+<p>1.4</p>
+<p>Body Text</p>
+<p>Inter</p>
+<p>16px / 1rem</p>
+<p>Regular (400)</p>
+<p>1.6</p>
+<p>Body Small</p>
+<p>Inter</p>
+<p>14px / 0.875rem</p>
+<p>Regular (400)</p>
+<p>1.5</p>
+<p>Button Label</p>
+<p>Inter</p>
+<p>16px / 1rem</p>
+<p>Semibold (600)</p>
+<p>1.0</p>
+<p>Price</p>
+<p>Inter</p>
+<p>18px / 1.125rem</p>
+<p>Bold (700)</p>
+<p>1.2</p>
+<p>Price Small</p>
+<p>Inter</p>
+<p>14px / 0.875rem</p>
+<p>Semibold (600)</p>
+<p>1.2</p>
+<p>Caption</p>
+<p>Inter</p>
+<p>12px / 0.75rem</p>
+<p>Regular (400)</p>
+<p>1.4</p>
+<p>Badge</p>
+<p>Inter</p>
+<p>11px / 0.6875rem</p>
+<p>Semibold (600)</p>
+<p>1.0</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 4.2: Typography Scale</p>
+<p>4.4 Component Style Guide</p>
+<p>Buttons</p>
+<li></li>
+<p>Primary Button: Background: Fresh Green (#16a34a), Text: White, Border-radius: 8px, Padding:</p>
+<p>12px 24px, Font: Inter Semibold 16px. Hover: darken 10%. Active: darken 15%. Disabled: 50%</p>
+<p>opacity.</p>
+<li></li>
+<p>Secondary Button: Background: Transparent, Text: Fresh Green, Border: 1.5px Fresh Green,</p>
+<p>Border-radius: 8px, Padding: 11px 23px.</p>
+<li></li>
+<p>Accent Button (CTA): Background: Warm Orange (#f97316), Text: White, Border-radius: 8px,</p>
+<p>Padding: 12px 24px. Used exclusively for "Add to Cart", "Place Order", and "Pay Now".</p>
+<li></li>
+<p>Icon Button: 40x40px circle, transparent background, icon in Text Secondary color. Hover:</p>
+<p>Surface background.</p>
+<p>Cards</p>
+<li></li>
+<p>Product Card: Background: White, Border-radius: 12px, Box-shadow: 0 1px 3px rgba(0,0,0,0.08).</p>
+<p>Image: 200x200px, aspect-ratio: 1. Product name (2 lines max), price with VAT, "Add" button.</p>
+<p>HFSS badge in top-right corner if is_hfss = true.</p>
+<li></li>
+<p>Order Card: Background: White, Border-radius: 12px, Left border: 4px status color (green =</p>
+<p>delivered, blue = in progress, orange = pending). Order ID, date, item count, total, status badge.</p>
+<li></li>
+<p>Category Card: Background: Surface (#f5f5f4), Border-radius: 12px, Category icon (48x48px),</p>
+<p>Category name, Item count. Hover: subtle scale (1.02).</p>
+<p>Form Inputs</p>
+<li></li>
+<p>Text Input: Background: White, Border: 1px #d6d3d1, Border-radius: 8px, Padding: 12px 16px,</p>
+<p>Font: Inter Regular 16px. Focus: Border color changes to Primary, with 2px ring in Primary at 20%</p>
+<p>opacity. Error: Border color changes to Error, error message below in Error color.</p>
+<li></li>
+<p>Dropdown: Same as text input with chevron-down icon. Options panel: white background,</p>
+<p>box-shadow, max-height: 240px with scroll.</p>
+<li></li>
+<p>Quantity Selector: 3-part control: [-] [number] [+]. Buttons: 32x32px, rounded, border: 1px</p>
+<p>#d6d3d1. Number: Inter Bold 16px, min-width 32px, center-aligned.</p>
+<p>4.5 Layout Rules and Grid System</p>
+<p>The layout system uses a 12-column grid on desktop (breakpoint >= 1024px), 4-column grid on tablet</p>
+<p>(768px - 1023px), and a single-column stack on mobile (< 768px). The maximum content width is</p>
+<p>1280px, centered with auto margins. Spacing follows a 4px base unit system: 4, 8, 12, 16, 20, 24, 32, 40,</p>
+<p>48, 64px. All component spacing, padding, and margins are multiples of 4px to maintain visual</p>
+<p>consistency.</p>
+<p>Breakpoint</p>
+<p>Column</p>
+<p>s</p>
+<p>Gutter</p>
+<p>Margin</p>
+<p>Layout</p>
+<p>Mobile (< 768px)</p>
+<p>1</p>
+<p>0</p>
+<p>16px</p>
+<p>Single column stack</p>
+<p>Tablet (768-1023px)</p>
+<p>4</p>
+<p>16px</p>
+<p>24px</p>
+<p>2-column product grid</p>
+<p>Desktop (>= 1024px)</p>
+<p>12</p>
+<p>24px</p>
+<p>32px</p>
+<p>3-4 column product grid + sidebar</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 4.3: Responsive Breakpoints</p>
+<p>4.6 Mobile-Specific Behaviors</p>
+<p>The React Native Expo mobile app implements platform-specific adaptations beyond responsive layout.</p>
+<p>iOS devices use native SF Symbols for tab bar icons and the iOS-style large title navigation bar. Android</p>
+<p>devices use Material Design 3 components including the Material bottom navigation bar and ripple</p>
+<p>touch feedback. Both platforms share the same visual language defined in this brief but respect platform</p>
+<p>conventions for navigation, gestures, and system UI integration.</p>
+<li></li>
+<p>Bottom Navigation: 5 tabs: Home, Categories, Search, Cart (with badge), Profile. Cart badge</p>
+<p>shows real-time item count.</p>
+<li></li>
+<p>Swipe Gestures: Swipe left on cart item to remove. Swipe right on order to reorder. Pull-to-refresh</p>
+<p>on all list screens.</p>
+<li></li>
+<p>Haptic Feedback: Light impact on add-to-cart, medium impact on order placed, success</p>
+<p>notification on delivery confirmed.</p>
+<li></li>
+<p>Offline Support: Product catalog cached locally for 24 hours. Cart persisted in local storage. Order</p>
+<p>status polled every 30 seconds when WebSocket is disconnected.</p>
+<p>4.7 Design Inspiration</p>
+<li></li>
+<p>Ocado: Clean product grid, prominent delivery slot selector, real-time order tracking with map.</p>
+<p>The benchmark for UK grocery app UX.</p>
+<li></li>
+<p>Sainsbury's: Category navigation with visual icons, smart substitutions UI, Nectar points</p>
+<p>integration.</p>
+<li></li>
+<p>Gorillas / Getir (Quick Commerce): One-tap reorder, minimal checkout steps, bold product</p>
+<p>photography, countdown timers.</p>
+<li></li>
+<p>Deliveroo: Rider tracking map, estimated arrival countdown, clean status timeline.</p>
+<div class="verify">[VERIFY: Confirm whether the brand has an existing logo, color scheme, or style guide that</div>
+<p>must be followed]</p>
+<h1>5. Backend Schema Document</h1>
+<p>5.1 Overview</p>
+<p>The database schema is designed for Supabase PostgreSQL with the PostGIS extension enabled. All</p>
+<p>tables use UUID primary keys for global uniqueness (critical for future multi-store synchronization),</p>
+<p>include created_at and updated_at timestamps, and enforce Row Level Security policies scoped to user</p>
+<p>roles. The schema includes a mandatory store_id foreign key on all business tables to support future</p>
+<p>multi-store expansion without schema migration. Foreign keys use ON DELETE CASCADE for</p>
+<p>dependent records and ON DELETE RESTRICT for protected references.</p>
+<p>5.2 Core Tables</p>
+<p>Table: stores</p>
+<p>Column</p>
+<p>Type</p>
+<p>Constraints</p>
+<p>Description</p>
+<p>id</p>
+<p>UUID</p>
+<p>PK, DEFAULT</p>
+<p>uuid_generate_v4()</p>
+<p>Unique store identifier</p>
+<p>name</p>
+<p>VARCHAR(255)</p>
+<p>NOT NULL</p>
+<p>Store display name</p>
+<p>slug</p>
+<p>VARCHAR(100)</p>
+<p>UNIQUE, NOT NULL</p>
+<p>URL-friendly store identifier</p>
+<p>address</p>
+<p>TEXT</p>
+<p>NOT NULL</p>
+<p>Full store address</p>
+<p>latitude</p>
+<p>DECIMAL(10,8)</p>
+<p>NOT NULL</p>
+<p>Store latitude for PostGIS</p>
+<p>longitude</p>
+<p>DECIMAL(11,8)</p>
+<p>NOT NULL</p>
+<p>Store longitude for PostGIS</p>
+<p>location</p>
+<p>GEOGRAPHY(POI</p>
+<p>NT, 4326)</p>
+<p>GENERATED</p>
+<p>PostGIS geography point</p>
+<p>phone</p>
+<p>VARCHAR(20)</p>
+<p>Store contact phone</p>
+<p>email</p>
+<p>VARCHAR(255)</p>
+<p>Store contact email</p>
+<p>base_delivery_fe</p>
+<p>e</p>
+<p>DECIMAL(10,2)</p>
+<p>DEFAULT 3.50</p>
+<p>Base delivery charge in GBP</p>
+<p>per_km_charge</p>
+<p>DECIMAL(10,2)</p>
+<p>DEFAULT 0.50</p>
+<p>Per-km delivery surcharge</p>
+<p>free_delivery_th</p>
+<p>reshold</p>
+<p>DECIMAL(10,2)</p>
+<p>DEFAULT 20.00</p>
+<p>Order value for free delivery</p>
+<p>delivery_radius_</p>
+<p>km</p>
+<p>DECIMAL(5,2)</p>
+<p>DEFAULT 5.00</p>
+<p>Max delivery distance</p>
+<p>is_active</p>
+<p>BOOLEAN</p>
+<p>DEFAULT true</p>
+<p>Store operational status</p>
+<p>created_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Record creation timestamp</p>
+<p>updated_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Record update timestamp</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.1: stores</p>
+<p>Table: profiles</p>
+<p>Column</p>
+<p>Type</p>
+<p>Constraints</p>
+<p>Description</p>
+<p>id</p>
+<p>UUID</p>
+<p>PK, REFERENCES</p>
+<p>auth.users(id) ON DELETE</p>
+<p>CASCADE</p>
+<p>User ID (linked to Supabase Auth)</p>
+<p>store_id</p>
+<p>UUID</p>
+<p>FK stores(id), NOT NULL</p>
+<p>Assigned store (multi-store ready)</p>
+<p>email</p>
+<p>VARCHAR(255)</p>
+<p>NOT NULL</p>
+<p>User email address</p>
+<p>full_name</p>
+<p>VARCHAR(255)</p>
+<p>NOT NULL</p>
+<p>Display name</p>
+<p>phone</p>
+<p>VARCHAR(20)</p>
+<p>Contact phone number</p>
+<p>role</p>
+<p>VARCHAR(20)</p>
+<p>NOT NULL, CHECK IN</p>
+<p>(customer, owner, manager,</p>
+<p>picker, rider)</p>
+<p>User role</p>
+<p>avatar_url</p>
+<p>TEXT</p>
+<p>Profile image URL (Supabase</p>
+<p>Storage)</p>
+<p>is_active</p>
+<p>BOOLEAN</p>
+<p>DEFAULT true</p>
+<p>Account active status</p>
+<p>created_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Record creation timestamp</p>
+<p>updated_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Record update timestamp</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.2: profiles</p>
+<p>Table: categories</p>
+<p>Column</p>
+<p>Type</p>
+<p>Constraints</p>
+<p>Description</p>
+<p>id</p>
+<p>UUID</p>
+<p>PK, DEFAULT</p>
+<p>uuid_generate_v4()</p>
+<p>Category unique ID</p>
+<p>store_id</p>
+<p>UUID</p>
+<p>FK stores(id), NOT NULL</p>
+<p>Owning store</p>
+<p>name</p>
+<p>VARCHAR(100)</p>
+<p>NOT NULL</p>
+<p>Category display name</p>
+<p>slug</p>
+<p>VARCHAR(100)</p>
+<p>NOT NULL</p>
+<p>URL-friendly identifier</p>
+<p>description</p>
+<p>TEXT</p>
+<p>Category description</p>
+<p>image_url</p>
+<p>TEXT</p>
+<p>Category image URL</p>
+<p>parent_id</p>
+<p>UUID</p>
+<p>FK categories(id) ON</p>
+<p>DELETE SET NULL</p>
+<p>Parent category (nested)</p>
+<p>sort_order</p>
+<p>INTEGER</p>
+<p>DEFAULT 0</p>
+<p>Display order</p>
+<p>is_active</p>
+<p>BOOLEAN</p>
+<p>DEFAULT true</p>
+<p>Category visibility</p>
+<p>created_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Record creation timestamp</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.3: categories</p>
+<p>Table: products</p>
+<p>Column</p>
+<p>Type</p>
+<p>Constraints</p>
+<p>Description</p>
+<p>id</p>
+<p>UUID</p>
+<p>PK, DEFAULT</p>
+<p>uuid_generate_v4()</p>
+<p>Product unique ID</p>
+<p>store_id</p>
+<p>UUID</p>
+<p>FK stores(id), NOT NULL</p>
+<p>Owning store</p>
+<p>category_id</p>
+<p>UUID</p>
+<p>FK categories(id), NOT NULL</p>
+<p>Product category</p>
+<p>name</p>
+<p>VARCHAR(255)</p>
+<p>NOT NULL</p>
+<p>Product display name</p>
+<p>slug</p>
+<p>VARCHAR(255)</p>
+<p>NOT NULL</p>
+<p>URL-friendly identifier</p>
+<p>description</p>
+<p>TEXT</p>
+<p>Product description</p>
+<p>price</p>
+<p>DECIMAL(10,2)</p>
+<p>NOT NULL</p>
+<p>Price including VAT (GBP)</p>
+<p>vat_rate</p>
+<p>DECIMAL(5,4)</p>
+<p>NOT NULL, CHECK IN</p>
+<p>(0.0000, 0.0500, 0.2000)</p>
+<p>VAT rate (0%, 5%, 20%)</p>
+<p>is_hfss</p>
+<p>BOOLEAN</p>
+<p>DEFAULT false</p>
+<p>HFSS compliance flag</p>
+<p>image_url</p>
+<p>TEXT</p>
+<p>Product image URL</p>
+<p>barcode</p>
+<p>VARCHAR(50)</p>
+<p>Product barcode (EAN/GTIN)</p>
+<p>unit</p>
+<p>VARCHAR(20)</p>
+<p>DEFAULT "each"</p>
+<p>Unit (each, kg, litre, pack)</p>
+<p>weight_kg</p>
+<p>DECIMAL(8,3)</p>
+<p>Product weight in kg</p>
+<p>is_available</p>
+<p>BOOLEAN</p>
+<p>DEFAULT true</p>
+<p>Availability status</p>
+<p>stock_quantit</p>
+<p>y</p>
+<p>INTEGER</p>
+<p>DEFAULT 0</p>
+<p>Current stock count</p>
+<p>is_featured</p>
+<p>BOOLEAN</p>
+<p>DEFAULT false</p>
+<p>Featured on homepage</p>
+<p>sort_order</p>
+<p>INTEGER</p>
+<p>DEFAULT 0</p>
+<p>Display order within category</p>
+<p>created_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Record creation timestamp</p>
+<p>updated_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Record update timestamp</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.4: products</p>
+<p>Table: addresses</p>
+<p>Column</p>
+<p>Type</p>
+<p>Constraints</p>
+<p>Description</p>
+<p>id</p>
+<p>UUID</p>
+<p>PK, DEFAULT</p>
+<p>uuid_generate_v4()</p>
+<p>Address unique ID</p>
+<p>user_id</p>
+<p>UUID</p>
+<p>FK profiles(id) ON</p>
+<p>DELETE CASCADE, NOT</p>
+<p>NULL</p>
+<p>Owning user</p>
+<p>label</p>
+<p>VARCHAR(50)</p>
+<p>Address label (Home, Work, etc.)</p>
+<p>address_line_1</p>
+<p>VARCHAR(255)</p>
+<p>NOT NULL</p>
+<p>First line of address</p>
+<p>address_line_2</p>
+<p>VARCHAR(255)</p>
+<p>Second line of address</p>
+<p>city</p>
+<p>VARCHAR(100)</p>
+<p>NOT NULL</p>
+<p>City</p>
+<p>postcode</p>
+<p>VARCHAR(10)</p>
+<p>NOT NULL</p>
+<p>UK postcode</p>
+<p>latitude</p>
+<p>DECIMAL(10,8)</p>
+<p>Address latitude</p>
+<p>longitude</p>
+<p>DECIMAL(11,8)</p>
+<p>Address longitude</p>
+<p>location</p>
+<p>GEOGRAPHY(POI</p>
+<p>NT, 4326)</p>
+<p>GENERATED</p>
+<p>PostGIS geography point</p>
+<p>is_default</p>
+<p>BOOLEAN</p>
+<p>DEFAULT false</p>
+<p>Default delivery address</p>
+<p>created_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Record creation timestamp</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.5: addresses</p>
+<p>Table: orders</p>
+<p>Column</p>
+<p>Type</p>
+<p>Constraints</p>
+<p>Description</p>
+<p>id</p>
+<p>UUID</p>
+<p>PK, DEFAULT</p>
+<p>uuid_generate_v4()</p>
+<p>Order unique ID</p>
+<p>store_id</p>
+<p>UUID</p>
+<p>FK stores(id), NOT NULL</p>
+<p>Fulfilling store</p>
+<p>customer_id</p>
+<p>UUID</p>
+<p>FK profiles(id), NOT NULL</p>
+<p>Ordering customer</p>
+<p>picker_id</p>
+<p>UUID</p>
+<p>FK profiles(id)</p>
+<p>Assigned picker</p>
+<p>rider_id</p>
+<p>UUID</p>
+<p>FK profiles(id)</p>
+<p>Assigned rider</p>
+<p>address_id</p>
+<p>UUID</p>
+<p>FK addresses(id), NOT NULL</p>
+<p>Delivery address</p>
+<p>status</p>
+<p>VARCHAR(20)</p>
+<p>NOT NULL, CHECK IN</p>
+<p>(placed, picking, ready,</p>
+<p>out_for_delivery, delivered,</p>
+<p>cancelled)</p>
+<p>Order status</p>
+<p>subtotal</p>
+<p>DECIMAL(10,2)</p>
+<p>NOT NULL</p>
+<p>Subtotal before VAT and</p>
+<p>delivery</p>
+<p>vat_amount</p>
+<p>DECIMAL(10,2)</p>
+<p>NOT NULL</p>
+<p>Total VAT amount</p>
+<p>delivery_fee</p>
+<p>DECIMAL(10,2)</p>
+<p>NOT NULL</p>
+<p>Delivery fee charged</p>
+<p>total</p>
+<p>DECIMAL(10,2)</p>
+<p>NOT NULL</p>
+<p>Grand total (subtotal + VAT +</p>
+<p>delivery)</p>
+<p>stripe_session_i</p>
+<p>d</p>
+<p>VARCHAR(255)</p>
+<p>Stripe Checkout session ID</p>
+<p>stripe_payment_</p>
+<p>intent_id</p>
+<p>VARCHAR(255)</p>
+<p>Stripe payment intent ID</p>
+<p>payment_status</p>
+<p>VARCHAR(20)</p>
+<p>DEFAULT pending, CHECK</p>
+<p>IN (pending, paid, failed,</p>
+<p>refunded)</p>
+<p>Payment status</p>
+<p>delivery_slot</p>
+<p>TIMESTAMPTZ</p>
+<p>Requested delivery time slot</p>
+<p>notes</p>
+<p>TEXT</p>
+<p>Customer delivery instructions</p>
+<p>created_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Order creation timestamp</p>
+<p>updated_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Order update timestamp</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.6: orders</p>
+<p>Table: order_items</p>
+<p>Column</p>
+<p>Type</p>
+<p>Constraints</p>
+<p>Description</p>
+<p>id</p>
+<p>UUID</p>
+<p>PK, DEFAULT</p>
+<p>uuid_generate_v4()</p>
+<p>Line item unique ID</p>
+<p>order_id</p>
+<p>UUID</p>
+<p>FK orders(id) ON DELETE</p>
+<p>CASCADE, NOT NULL</p>
+<p>Parent order</p>
+<p>product_id</p>
+<p>UUID</p>
+<p>FK products(id), NOT NULL</p>
+<p>Product reference</p>
+<p>product_name</p>
+<p>VARCHAR(255)</p>
+<p>NOT NULL</p>
+<p>Product name at time of order</p>
+<p>quantity</p>
+<p>INTEGER</p>
+<p>NOT NULL, CHECK > 0</p>
+<p>Quantity ordered</p>
+<p>unit_price</p>
+<p>DECIMAL(10,2)</p>
+<p>NOT NULL</p>
+<p>Price per unit at time of order</p>
+<p>vat_rate</p>
+<p>DECIMAL(5,4)</p>
+<p>NOT NULL</p>
+<p>VAT rate applied</p>
+<p>vat_amount</p>
+<p>DECIMAL(10,2)</p>
+<p>NOT NULL</p>
+<p>VAT amount for this line</p>
+<p>subtotal</p>
+<p>DECIMAL(10,2)</p>
+<p>NOT NULL</p>
+<p>Line subtotal (qty x unit_price)</p>
+<p>substitute_prefer</p>
+<p>ence</p>
+<p>VARCHAR(20)</p>
+<p>CHECK IN (closest_match,</p>
+<p>do_not_substitute)</p>
+<p>Substitution preference</p>
+<p>substituted_with</p>
+<p>UUID</p>
+<p>FK products(id)</p>
+<p>Actual product substituted</p>
+<p>picked</p>
+<p>BOOLEAN</p>
+<p>DEFAULT false</p>
+<p>Whether item was picked</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.7: order_items</p>
+<p>Table: rider_verifications</p>
+<p>Column</p>
+<p>Type</p>
+<p>Constraints</p>
+<p>Description</p>
+<p>id</p>
+<p>UUID</p>
+<p>PK, DEFAULT</p>
+<p>uuid_generate_v4()</p>
+<p>Verification record ID</p>
+<p>rider_id</p>
+<p>UUID</p>
+<p>FK profiles(id) ON DELETE</p>
+<p>CASCADE, NOT NULL</p>
+<p>Rider being verified</p>
+<p>document_type</p>
+<p>VARCHAR(30)</p>
+<p>NOT NULL, CHECK IN</p>
+<p>(passport, driving_license,</p>
+<p>visa, national_id)</p>
+<p>Type of document</p>
+<p>document_url</p>
+<p>TEXT</p>
+<p>NOT NULL</p>
+<p>Supabase Storage URL for</p>
+<p>uploaded document</p>
+<p>verification_sta</p>
+<p>tus</p>
+<p>VARCHAR(20)</p>
+<p>DEFAULT pending, CHECK</p>
+<p>IN (pending, approved,</p>
+<p>rejected)</p>
+<p>Verification status</p>
+<p>verified_by</p>
+<p>UUID</p>
+<p>FK profiles(id)</p>
+<p>Admin who verified</p>
+<p>verified_at</p>
+<p>TIMESTAMPTZ</p>
+<p>Timestamp of verification</p>
+<p>decision</p>
+<p>rejection_reaso</p>
+<p>n</p>
+<p>TEXT</p>
+<p>Reason if rejected</p>
+<p>created_at</p>
+<p>TIMESTAMPTZ</p>
+<p>DEFAULT now()</p>
+<p>Upload timestamp</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.8: rider_verifications</p>
+<p>5.3 Indexes</p>
+<p>Indexes are designed based on expected query patterns. The primary performance-critical queries</p>
+<p>involve geospatial lookups for delivery zone validation, product searches within categories, and order</p>
+<p>status updates. The PostGIS GiST index on the location columns enables radius-based queries such as</p>
+<p>"find all stores within 5 km of this postcode".</p>
+<p>Table</p>
+<p>Index</p>
+<p>Type</p>
+<p>Purpose</p>
+<p>stores</p>
+<p>idx_stores_location</p>
+<p>GiST (location)</p>
+<p>Radius-based store lookup</p>
+<p>products</p>
+<p>idx_products_store_category</p>
+<p>B-tree (store_id,</p>
+<p>category_id)</p>
+<p>Category browsing per store</p>
+<p>products</p>
+<p>idx_products_name_trgm</p>
+<p>GIN (name</p>
+<p>gin_trgm_ops)</p>
+<p>Full-text product search</p>
+<p>products</p>
+<p>idx_products_hfss</p>
+<p>B-tree (is_hfss,</p>
+<p>is_featured)</p>
+<p>HFSS filtering for promotions</p>
+<p>orders</p>
+<p>idx_orders_customer</p>
+<p>B-tree (customer_id,</p>
+<p>created_at DESC)</p>
+<p>Customer order history</p>
+<p>orders</p>
+<p>idx_orders_store_status</p>
+<p>B-tree (store_id, status)</p>
+<p>Admin order management</p>
+<p>orders</p>
+<p>idx_orders_rider</p>
+<p>B-tree (rider_id, status)</p>
+<p>Rider delivery queue</p>
+<p>addresses</p>
+<p>idx_addresses_location</p>
+<p>GiST (location)</p>
+<p>Delivery zone validation</p>
+<p>order_ite</p>
+<p>ms</p>
+<p>idx_order_items_order</p>
+<p>B-tree (order_id)</p>
+<p>Order detail retrieval</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.9: Database Indexes</p>
+<p>5.4 Row Level Security Policies</p>
+<p>Row Level Security (RLS) is enabled on all tables. Policies are defined using PostgreSQL's policy</p>
+<p>system, which evaluates conditions on every query. The auth.uid() function returns the authenticated</p>
+<p>user's ID from the JWT token, and custom helper functions retrieve the user's role and store_id from the</p>
+<p>profiles table for efficient policy evaluation.</p>
+<p>Table</p>
+<p>Role</p>
+<p>Select</p>
+<p>Insert</p>
+<p>Update</p>
+<p>Delete</p>
+<p>stores</p>
+<p>owner</p>
+<p>Own store only</p>
+<p>Yes</p>
+<p>Own store only</p>
+<p>Own store</p>
+<p>only</p>
+<p>stores</p>
+<p>manager</p>
+<p>Own store only</p>
+<p>No</p>
+<p>Own store only</p>
+<p>No</p>
+<p>stores</p>
+<p>customer</p>
+<p>Active stores only</p>
+<p>No</p>
+<p>No</p>
+<p>No</p>
+<p>profiles</p>
+<p>owner</p>
+<p>Own store staff</p>
+<p>Own profile</p>
+<p>Own store staff</p>
+<p>No</p>
+<p>profiles</p>
+<p>customer</p>
+<p>Own profile only</p>
+<p>Own profile</p>
+<p>Own profile only</p>
+<p>No</p>
+<p>products</p>
+<p>owner/mana</p>
+<p>ger</p>
+<p>Own store products</p>
+<p>Yes</p>
+<p>Own store</p>
+<p>products</p>
+<p>Own store</p>
+<p>products</p>
+<p>products</p>
+<p>customer</p>
+<p>Available products</p>
+<p>only</p>
+<p>No</p>
+<p>No</p>
+<p>No</p>
+<p>orders</p>
+<p>owner/mana</p>
+<p>ger</p>
+<p>Own store orders</p>
+<p>No</p>
+<p>Own store orders</p>
+<p>No</p>
+<p>orders</p>
+<p>customer</p>
+<p>Own orders only</p>
+<p>Own orders</p>
+<p>No</p>
+<p>No</p>
+<p>orders</p>
+<p>picker/rider</p>
+<p>Assigned orders</p>
+<p>No</p>
+<p>Assigned orders</p>
+<p>No</p>
+<p>rider_verifica</p>
+<p>tions</p>
+<p>owner/mana</p>
+<p>ger</p>
+<p>Own store riders</p>
+<p>Own</p>
+<p>documents</p>
+<p>Approve/reject</p>
+<p>No</p>
+<p>rider_verifica</p>
+<p>tions</p>
+<p>rider</p>
+<p>Own documents</p>
+<p>only</p>
+<p>Own</p>
+<p>documents</p>
+<p>No</p>
+<p>No</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 5.10: RLS Policy Summary</p>
+<p>5.5 Authentication and Session Handling</p>
+<p>Supabase Auth manages authentication using JWT (JSON Web Tokens) with automatic refresh. When a</p>
+<p>user logs in, Supabase issues an access token (1-hour expiry) and a refresh token. The access token is</p>
+<p>included in every API request and database query, enabling RLS policies to evaluate based on the</p>
+<p>authenticated user's identity. The refresh token is used to obtain new access tokens without requiring</p>
+<p>re-authentication, providing a seamless user experience.</p>
+<p>On the web, tokens are stored in HTTP-only cookies for CSRF protection. On the React Native mobile</p>
+<p>app, tokens are stored in the device's secure keychain (iOS Keychain / Android Keystore) via the</p>
+<p>Supabase React Native Auth client. Session invalidation on password change or admin action is handled</p>
+<p>by Supabase's built-in session revocation, which blacklists the old JWT tokens and forces</p>
+<p>re-authentication.</p>
+<p>5.6 Migration Strategy</p>
+<p>Database migrations are managed through Supabase's built-in migration system. Each migration is a</p>
+<p>timestamped SQL file stored in the project's supabase/migrations/ directory, enabling version-controlled</p>
+<p>schema evolution. The initial migration creates all core tables, indexes, and RLS policies. Subsequent</p>
+<p>migrations add features incrementally without breaking existing functionality. Supabase's CLI provides</p>
+<p>commands for creating, applying, and reverting migrations, supporting both local development and</p>
+<p>production deployment workflows.</p>
+<p>Seed data scripts are maintained separately in supabase/seed.sql for development and testing</p>
+<p>environments, including sample products, categories, and test user accounts. Production deployments</p>
+<p>use a controlled migration process: migrations are first applied to a staging Supabase project for</p>
+<p>validation, then promoted to production after QA verification. Rollback procedures are defined for each</p>
+<p>migration to ensure rapid recovery from schema issues.</p>
+<h1>6. Implementation Plan</h1>
+<p>6.1 Overview</p>
+<p>The implementation plan is structured across 5 phases spanning 8 weeks, aligned with the project</p>
+<p>deadline of June 15, 2026. The timeline is designed for a team of 2 developers (Kiran and Akshat, both</p>
+<p>Full Stack Devs) working in parallel where possible. The use of Supabase Auth instead of custom</p>
+<p>authentication saves approximately 2 weeks, which is reallocated to quality assurance and polish. Each</p>
+<p>phase has clear deliverables, acceptance criteria, and dependency mappings to ensure smooth handoffs</p>
+<p>between phases.</p>
+<p>6.2 Phase 1: Setup and Authentication (Week 1-2)</p>
+<p>Task</p>
+<p>Owne</p>
+<p>r</p>
+<p>Da</p>
+<p>ys</p>
+<p>Deliverable</p>
+<p>Acceptance Criteria</p>
+<p>Initialize Next.js project</p>
+<p>with TypeScript strict mode</p>
+<p>Kiran</p>
+<p>1</p>
+<p>Repo with App Router</p>
+<p>ESLint, Prettier, TypeScript</p>
+<p>strict passing</p>
+<p>Set up Supabase project (dev</p>
+<p>+ staging)</p>
+<p>Akshat</p>
+<p>1</p>
+<p>Supabase project URLs</p>
+<p>PostGIS extension enabled,</p>
+<p>RLS on</p>
+<p>Configure Tailwind CSS +</p>
+<p>design tokens</p>
+<p>Kiran</p>
+<p>1</p>
+<p>tailwind.config.ts with</p>
+<p>all design tokens</p>
+<p>Colors, spacing, typography</p>
+<p>match UI brief</p>
+<p>Implement Supabase Auth</p>
+<p>(email/password + OTP)</p>
+<p>Akshat</p>
+<p>3</p>
+<p>Login, Signup, Forgot</p>
+<p>Password screens</p>
+<p>Auth flow works end-to-end</p>
+<p>with JWT</p>
+<p>Create profiles table + RLS</p>
+<p>policies</p>
+<p>Akshat</p>
+<p>1</p>
+<p>Migration file + seed</p>
+<p>data</p>
+<p>RLS tested for all roles</p>
+<p>Build layout components</p>
+<p>(Navbar, Sidebar, Footer)</p>
+<p>Kiran</p>
+<p>2</p>
+<p>Reusable layout</p>
+<p>components</p>
+<p>Responsive on mobile, tablet,</p>
+<p>desktop</p>
+<p>Set up Zustand stores (auth,</p>
+<p>cart, UI)</p>
+<p>Kiran</p>
+<p>1</p>
+<p>Store files with</p>
+<p>TypeScript types</p>
+<p>Store hydration from Supabase</p>
+<p>works</p>
+<p>CI/CD pipeline (GitHub</p>
+<p>Actions + Vercel)</p>
+<p>Akshat</p>
+<p>1</p>
+<p>Auto-deploy on push to</p>
+<p>main</p>
+<p>Preview deployments for PRs</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 6.1: Phase 1 Tasks</p>
+<p>6.3 Phase 2: Core Features (Week 3-6)</p>
+<p>Task</p>
+<p>Owne</p>
+<p>r</p>
+<p>Da</p>
+<p>ys</p>
+<p>Deliverable</p>
+<p>Acceptance Criteria</p>
+<p>Create categories table +</p>
+<p>admin CRUD</p>
+<p>Akshat</p>
+<p>2</p>
+<p>Category management in</p>
+<p>admin</p>
+<p>CRUD works, nested</p>
+<p>categories supported</p>
+<p>Create products table +</p>
+<p>admin CRUD</p>
+<p>Akshat</p>
+<p>3</p>
+<p>Product management in</p>
+<p>admin</p>
+<p>HFSS flag toggle, VAT</p>
+<p>category selector</p>
+<p>Build product catalog</p>
+<p>browsing (customer)</p>
+<p>Kiran</p>
+<p>4</p>
+<p>Home, Category,</p>
+<p>Product Detail pages</p>
+<p>Pagination, search, filters work</p>
+<p>Implement search with</p>
+<p>PostgreSQL trigram</p>
+<p>Kiran</p>
+<p>2</p>
+<p>Search API +</p>
+<p>autocomplete UI</p>
+<p>Search returns results within</p>
+<p>200ms</p>
+<p>Build shopping cart (add,</p>
+<p>remove, quantity)</p>
+<p>Kiran</p>
+<p>3</p>
+<p>Cart page with substitute</p>
+<p>preferences</p>
+<p>Cart persisted across sessions</p>
+<p>Integrate Stripe Checkout</p>
+<p>Akshat</p>
+<p>3</p>
+<p>Checkout flow with</p>
+<p>payment</p>
+<p>Test payment succeeds/fails</p>
+<p>gracefully</p>
+<p>Create orders table + order</p>
+<p>placement</p>
+<p>Akshat</p>
+<p>3</p>
+<p>Order creation after</p>
+<p>payment</p>
+<p>Order items, VAT, delivery fee</p>
+<p>calculated</p>
+<p>Build order status tracking</p>
+<p>(real-time)</p>
+<p>Kiran</p>
+<p>3</p>
+<p>Order tracking with</p>
+<p>WebSocket</p>
+<p>Status updates appear within</p>
+<p>500ms</p>
+<p>Implement delivery pricing</p>
+<p>engine</p>
+<p>Akshat</p>
+<p>2</p>
+<p>Backend delivery fee</p>
+<p>calculation</p>
+<p>Threshold model works with</p>
+<p>admin config</p>
+<p>Build admin dashboard</p>
+<p>(analytics, management)</p>
+<p>Kiran</p>
+<p>4</p>
+<p>Dashboard with charts</p>
+<p>and tables</p>
+<p>CRUD for products, orders,</p>
+<p>riders</p>
+<p>Create rider_verifications</p>
+<p>table + upload flow</p>
+<p>Akshat</p>
+<p>2</p>
+<p>Rider document upload +</p>
+<p>admin review</p>
+<p>Rider blocked until approved</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 6.2: Phase 2 Tasks</p>
+<p>6.4 Phase 3: Secondary Features (Week 7-8)</p>
+<p>Task</p>
+<p>Owne</p>
+<p>r</p>
+<p>Da</p>
+<p>ys</p>
+<p>Deliverable</p>
+<p>Acceptance Criteria</p>
+<p>React Native Expo project</p>
+<p>setup</p>
+<p>Kiran</p>
+<p>2</p>
+<p>Expo project with</p>
+<p>navigation</p>
+<p>App runs on iOS + Android</p>
+<p>simulators</p>
+<p>Mobile product catalog +</p>
+<p>cart</p>
+<p>Kiran</p>
+<p>4</p>
+<p>Browse and cart on</p>
+<p>mobile</p>
+<p>Same functionality as web</p>
+<p>Mobile checkout + payment</p>
+<p>Kiran</p>
+<p>2</p>
+<p>Stripe Checkout on</p>
+<p>mobile</p>
+<p>Payment completes</p>
+<p>successfully</p>
+<p>Picker app (pick list, item</p>
+<p>confirmation)</p>
+<p>Akshat</p>
+<p>3</p>
+<p>Picker mobile screens</p>
+<p>Picker can update item status</p>
+<p>Rider app (delivery queue,</p>
+<p>navigation)</p>
+<p>Akshat</p>
+<p>4</p>
+<p>Rider mobile screens</p>
+<p>Rider can accept and complete</p>
+<p>delivery</p>
+<p>Push notifications (Expo +</p>
+<p>SendGrid)</p>
+<p>Akshat</p>
+<p>2</p>
+<p>Order status push +</p>
+<p>email</p>
+<p>Notifications received within</p>
+<p>5s</p>
+<p>Order history + reorder</p>
+<p>Kiran</p>
+<p>2</p>
+<p>Order history page with</p>
+<p>reorder</p>
+<p>Reorder adds all items to cart</p>
+<p>Address management</p>
+<p>(add/edit/delete)</p>
+<p>Kiran</p>
+<p>2</p>
+<p>Address book with</p>
+<p>postcode lookup</p>
+<p>Postcode validation works</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 6.3: Phase 3 Tasks</p>
+<p>6.5 Phase 4: Polish and Testing (Week 9-10)</p>
+<p>Task</p>
+<p>Owne</p>
+<p>r</p>
+<p>Da</p>
+<p>ys</p>
+<p>Deliverable</p>
+<p>Acceptance Criteria</p>
+<p>Unit tests (Jest + React</p>
+<p>Testing Library)</p>
+<p>Both</p>
+<p>3</p>
+<p>Test suite with > 70%</p>
+<p>coverage</p>
+<p>All critical paths tested</p>
+<p>Integration tests (Supabase +</p>
+<p>Stripe)</p>
+<p>Both</p>
+<p>2</p>
+<p>API integration test suite</p>
+<p>Payment, order, auth flows</p>
+<p>tested</p>
+<p>E2E tests (Playwright for</p>
+<p>web)</p>
+<p>Kiran</p>
+<p>2</p>
+<p>E2E test suite</p>
+<p>Full customer journey tested</p>
+<p>Mobile testing (Expo +</p>
+<p>manual QA)</p>
+<p>Akshat</p>
+<p>2</p>
+<p>Test reports for iOS +</p>
+<p>Android</p>
+<p>No P0/P1 bugs remaining</p>
+<p>Performance optimization</p>
+<p>(Lighthouse)</p>
+<p>Kiran</p>
+<p>2</p>
+<p>Performance audit report</p>
+<p>Lighthouse score > 90</p>
+<p>Accessibility audit (WCAG</p>
+<p>2.1 AA)</p>
+<p>Akshat</p>
+<p>2</p>
+<p>Accessibility audit report</p>
+<p>All critical issues resolved</p>
+<p>HFSS compliance</p>
+<p>verification</p>
+<p>Both</p>
+<p>1</p>
+<p>HFSS test report</p>
+<p>Flagged items excluded from</p>
+<p>promos</p>
+<p>Security review (RLS, input</p>
+<p>validation)</p>
+<p>Both</p>
+<p>2</p>
+<p>Security audit report</p>
+<p>No critical vulnerabilities</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 6.4: Phase 4 Tasks</p>
+<p>6.6 Phase 5: Deployment and Launch (Week 11)</p>
+<p>Task</p>
+<p>Owne</p>
+<p>r</p>
+<p>Da</p>
+<p>ys</p>
+<p>Deliverable</p>
+<p>Acceptance Criteria</p>
+<p>Production Supabase setup</p>
+<p>Akshat</p>
+<p>1</p>
+<p>Production database +</p>
+<p>auth</p>
+<p>All migrations applied, RLS</p>
+<p>active</p>
+<p>Vercel production</p>
+<p>deployment</p>
+<p>Kiran</p>
+<p>1</p>
+<p>Live web app URL</p>
+<p>SSL, CDN, environment</p>
+<p>variables configured</p>
+<p>EAS Build + App Store</p>
+<p>submission</p>
+<p>Kiran</p>
+<p>2</p>
+<p>iOS + Android builds</p>
+<p>submitted</p>
+<p>App Store review in progress</p>
+<p>Monitoring setup (Vercel</p>
+<p>Analytics + Sentry)</p>
+<p>Akshat</p>
+<p>1</p>
+<p>Error tracking +</p>
+<p>performance monitoring</p>
+<p>Alerts configured for P0 errors</p>
+<p>Launch checklist</p>
+<p>verification</p>
+<p>Both</p>
+<p>1</p>
+<p>Signed-off launch</p>
+<p>checklist</p>
+<p>All items verified and</p>
+<p>approved</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 6.5: Phase 5 Tasks</p>
+<p>6.7 Risk Assessment</p>
+<p>Risk</p>
+<p>Likelihoo</p>
+<p>d</p>
+<p>Impact</p>
+<p>Mitigation</p>
+<p>App Store rejection</p>
+<p>(iOS)</p>
+<p>Medium</p>
+<p>High</p>
+<p>Follow Apple review guidelines strictly; submit 2</p>
+<p>weeks before deadline</p>
+<p>Stripe 3D Secure friction</p>
+<p>Low</p>
+<p>Medium</p>
+<p>Use Stripe's optimized SCA flow; test with UK test</p>
+<p>cards</p>
+<p>Supabase free tier limits</p>
+<p>Medium</p>
+<p>Medium</p>
+<p>Monitor usage; upgrade to Pro ($25/month) if limits</p>
+<p>approached</p>
+<p>PostGIS query</p>
+<p>performance</p>
+<p>Low</p>
+<p>High</p>
+<p>Add GiST indexes; test with 10,000+ product dataset</p>
+<p>React Native Expo</p>
+<p>limitations</p>
+<p>Low</p>
+<p>Medium</p>
+<p>Use Expo dev client for custom native modules if</p>
+<p>needed</p>
+<p>Team capacity (2 devs, 8</p>
+<p>weeks)</p>
+<p>Medium</p>
+<p>High</p>
+<p>Strict MoSCoW prioritization; defer "Could Have"</p>
+<p>features</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 6.6: Risk Assessment</p>
+<p>6.8 Testing Strategy</p>
+<li></li>
+<p>Unit Tests: Jest + React Testing Library for frontend components, Jest for backend utility</p>
+<p>functions. Target: > 70% code coverage for critical modules (auth, cart, checkout, VAT</p>
+<p>calculation).</p>
+<li></li>
+<p>Integration Tests: Supabase local development environment for database integration testing.</p>
+<p>Stripe test mode for payment flow testing. Target: All API endpoints have integration tests.</p>
+<li></li>
+<p>E2E Tests: Playwright for web application end-to-end testing covering the complete customer</p>
+<p>journey (signup, browse, cart, checkout, order tracking). Target: 10+ critical user flows automated.</p>
+<li></li>
+<p>Mobile Testing: Expo + Detox for React Native automated testing. Manual QA on iOS (iPhone 12,</p>
+<p>14, 15) and Android (Pixel 7, Samsung Galaxy S23) devices. Target: Zero P0/P1 bugs at launch.</p>
+<li></li>
+<p>Performance Testing: k6 load testing for API endpoints. Target: 500 concurrent users with p95</p>
+<p>response time < 200ms.</p>
+<li></li>
+<p>Security Testing: OWASP ZAP for automated vulnerability scanning. Manual review of RLS</p>
+<p>policies and input validation. Stripe radar for payment fraud detection.</p>
+<p>6.9 Timeline Summary</p>
+<p>Phase</p>
+<p>Duratio</p>
+<p>n</p>
+<p>Key Deliverables</p>
+<p>Team Allocation</p>
+<p>Phase 1: Setup +</p>
+<p>Auth</p>
+<p>Week 1-2</p>
+<p>Project scaffold, Supabase Auth, layout</p>
+<p>components</p>
+<p>Kiran (frontend) + Akshat</p>
+<p>(backend)</p>
+<p>Phase 2: Core</p>
+<p>Features</p>
+<p>Week 3-6</p>
+<p>Catalog, cart, checkout, orders, admin</p>
+<p>dashboard</p>
+<p>Kiran (customer flow) +</p>
+<p>Akshat (backend + admin)</p>
+<p>Phase 3: Secondary</p>
+<p>Features</p>
+<p>Week 7-8</p>
+<p>Mobile app, picker app, rider app,</p>
+<p>notifications</p>
+<p>Kiran (customer mobile) +</p>
+<p>Akshat (staff mobile)</p>
+<p>Phase 4: Polish +</p>
+<p>Testing</p>
+<p>Week</p>
+<p>9-10</p>
+<p>Test suites, performance, accessibility,</p>
+<p>security</p>
+<p>Both (parallel testing)</p>
+<p>Phase 5: Deploy +</p>
+<p>Launch</p>
+<p>Week 11</p>
+<p>Production deployment, app store</p>
+<p>submission, monitoring</p>
+<p>Both (coordinated launch)</p>
+<p style="color:#82878e;font-size:12px;text-align:center;">Table 6.7: Timeline Summary</p>
+<div class="verify">[VERIFY: Confirm 8-week timeline with 2 developers is feasible given team availability and</div>
+<p>other project commitments]</p>
+<div class="verify">[VERIFY: Confirm App Store review timeline (1-2 weeks) is factored into the launch plan]</div>
+<h1>Items Requiring Verification</h1>
+<p>The following items have been flagged with [VERIFY] markers throughout the document. These</p>
+<p>represent assumptions or decisions that require confirmation from the project stakeholders before they</p>
+<p>can be finalized.</p>
+<p>1. [PRD] Store-specific POS integration requirements - confirm whether any existing POS system</p>
+<p>needs to be connected in V1</p>
+<p>2. [PRD] Expected initial SKU count and catalog size - confirm 2,000+ SKUs is accurate for launch</p>
+<p>3. [TRD] Confirm Vercel free tier bandwidth (100 GB/month) is sufficient for projected launch</p>
+<p>traffic</p>
+<p>4. [UI/UX] Confirm whether the brand has an existing logo, color scheme, or style guide that must be</p>
+<p>followed</p>
+<p>5. [Impl Plan] Confirm 8-week timeline with 2 developers is feasible given team availability and</p>
+<p>other project commitments</p>
+<p>6. [Impl Plan] Confirm App Store review timeline (1-2 weeks) is factored into the launch plan</p>
+</body>
+</html>

@@ -1,0 +1,74 @@
+[
+  {
+    "url": "https://www.youtube.com/watch?v=l9ov48v0M2M",
+    "name": "Build a Full Stack mobile app in just 8 Hours (React Native, Expo",
+    "snippet": "Learn how to build a Full Stack Mobile Application in 8 hours using React Native, Expo, Expo Router, Clerk, Supabase and more!",
+    "host_name": "www.youtube.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://startupa.ge/blog/best-tech-stack-mobile-app-2026",
+    "name": "Best Tech Stack for Mobile Apps in 2026: Native, Cross-Platform",
+    "snippet": "Supabase is the recommended backend for React Native apps. It gives you PostgreSQL (the #1 database at 55.6% developer adoption — Stack Overflow ...",
+    "host_name": "startupa.ge",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/nextjs/comments/1dfty54/what_is_the_most_affordable_tech_stack_for_nextjs",
+    "name": "What is the Most Affordable Tech Stack for Next.js? Go.. Go  - Reddit",
+    "snippet": "Supabase can serve all your authentication, database and bucket needs. Clerk is something I'd never use for a production project.",
+    "host_name": "www.reddit.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=vUYopHWOURg",
+    "name": "Build a Full Stack Social App with React & Next.js - YouTube",
+    "snippet": "Next.js Tutorial 2025 - Build a Full Stack Social App with React & Next.js. 146K views · 1 year ago. #reactjs #programming #nextjs ...more ...",
+    "host_name": "www.youtube.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.webscension.co/tech-stack-for/next-js-app",
+    "name": "Best Tech Stack for Next.js App in 2026 | Webscension",
+    "snippet": "Complete ecosystem for building production React applications. Updated for 2026. Practical recommendations based on real projects. $0-100. Monthly Running Cost.\nBest Tech Stack for Next.js App in 2026. Full-stack development with Next.js. Complete ecosystem for building production React applications.",
+    "host_name": "www.webscension.co",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://javascript.plainenglish.io/supabase-next-js-the-stack-thats-taking-2025-by-storm-6bc187241b07",
+    "name": "Supabase + Next.js: The Stack That's Taking 2025 by Storm",
+    "snippet": "Next.js (React/TypeScript) and Supabase's client libraries (TypeScript) allow developers to leverage their deep JavaScript and TypeScript skills ...\nAt its heart, Supabase is an open-source Firebase alternative. It's a complete backend-as-a-service (BaaS) that provides all the tools you need ...",
+    "host_name": "javascript.plainenglish.io",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://arnab-k.medium.com/next-js-and-supabase-building-a-full-stack-app-ea51fc41cb11",
+    "name": "Next.js and Supabase: Building a Full-Stack App from Scratch - rnab",
+    "snippet": "In this article, we'll guide you through setting up a basic full-stack application using these two technologies.\nIntegrating Next.js with Supabase allows you to efficiently build and manage full-stack applications with ease. This basic setup is just a ...",
+    "host_name": "arnab-k.medium.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=LKrX390fJMw",
+    "name": "Build a Full Stack Food Delivery App in React Native with Scalable",
+    "snippet": "... JS Mastery Pro: https://jsm.dev/rn-food-jsm Become a Top 1% Next.js Developer: https://jsm.dev/rn-food-nextjs Free Video Kit (Code, Design ...",
+    "host_name": "www.youtube.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  }
+]

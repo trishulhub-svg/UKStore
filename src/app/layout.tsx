@@ -14,24 +14,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  title: "Fresh Mart London — UK Grocery Delivery",
+  description: "Order fresh groceries online from Fresh Mart London. Same-day delivery on fruits, vegetables, dairy, meat, bakery and more.",
+  keywords: ["grocery delivery", "UK grocery", "fresh food", "online supermarket", "same-day delivery", "London"],
+  authors: [{ name: "Fresh Mart London" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "Fresh Mart London — UK Grocery Delivery",
+    description: "Fresh groceries delivered to your door. Order online for same-day delivery.",
+    siteName: "Fresh Mart London",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "Fresh Mart London — UK Grocery Delivery",
+    description: "Fresh groceries delivered to your door. Order online for same-day delivery.",
   },
 };
 
@@ -41,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en-GB" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

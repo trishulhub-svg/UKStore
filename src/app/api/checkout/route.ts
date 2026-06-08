@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { calculateVatFromGross } from '@/lib/vat'
+import { getStripeConfig } from '@/lib/settings'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
@@ -28,6 +29,9 @@ export async function POST(request: NextRequest) {
     if (!address?.address_line_1 || !address?.city || !address?.postcode) {
       return NextResponse.json({ error: 'Delivery address is required' }, { status: 400 })
     }
+
+    // Check Stripe configuration from DB/env
+    const stripeConfig = await getStripeConfig()
 
     // Use service client to create the order (bypasses RLS)
     const serviceClient = createServiceClient()
@@ -118,7 +122,128 @@ export async function POST(request: NextRequest) {
       0
     )
 
-    // Create the order
+    const finalSubtotal = validatedSubtotal || subtotal
+    const finalVatAmount = validatedVatAmount || vat_amount
+    const finalTotal = finalSubtotal + delivery_fee
+
+    // If Stripe is configured, create a real Checkout Session
+    if (stripeConfig.isConfigured && stripeConfig.secretKey) {
+      try {
+        const Stripe = (await import('stripe')).default
+        const stripe = new Stripe(stripeConfig.secretKey, {
+          apiVersion: '2025-04-30.basil',
+        })
+
+        const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+        // Build line items for Stripe
+        const lineItems = items.map((item: { product_name: string; unit_price: number; quantity: number; vat_rate: number }) => ({
+          price_data: {
+            currency: 'gbp',
+            product_data: {
+              name: item.product_name,
+            },
+            unit_amount: Math.round(item.unit_price * 100), // Stripe expects pence
+            tax_behavior: 'inclusive' as const,
+          },
+          quantity: item.quantity,
+        }))
+
+        // Add delivery fee as a line item
+        if (delivery_fee > 0) {
+          lineItems.push({
+            price_data: {
+              currency: 'gbp',
+              product_data: {
+                name: 'Delivery Fee',
+              },
+              unit_amount: Math.round(delivery_fee * 100),
+              tax_behavior: 'inclusive' as const,
+            },
+            quantity: 1,
+          })
+        }
+
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: lineItems,
+          mode: 'payment',
+          success_url: `${origin}/order/CONFIRMED_ID?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${origin}/checkout?cancelled=true`,
+          metadata: {
+            store_id: STORE_ID,
+            customer_id: user.id,
+            address_id: addressId || '',
+            delivery_slot: delivery_slot || '',
+          },
+          payment_intent_data: {
+            metadata: {
+              store_id: STORE_ID,
+              customer_id: user.id,
+            },
+          },
+        })
+
+        // Create order with pending payment status
+        const { data: order, error: orderError } = await serviceClient
+          .from('orders')
+          .insert({
+            store_id: STORE_ID,
+            customer_id: user.id,
+            address_id: addressId,
+            status: 'placed',
+            subtotal: finalSubtotal,
+            vat_amount: finalVatAmount,
+            delivery_fee: delivery_fee,
+            total: finalTotal,
+            stripe_session_id: session.id,
+            payment_status: 'pending',
+            delivery_slot: delivery_slot,
+          })
+          .select('id')
+          .single()
+
+        if (orderError) {
+          console.error('Error creating order:', orderError)
+          return NextResponse.json(
+            { error: 'Failed to create order. Please try again.' },
+            { status: 500 }
+          )
+        }
+
+        // Create order items
+        const orderItems = items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
+          const itemGross = item.unit_price * item.quantity
+          const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
+          return {
+            order_id: order.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            vat_rate: item.vat_rate,
+            vat_amount: itemVat,
+            subtotal: itemGross,
+            substitute_preference: item.substitute_preference || 'closest_match',
+            picked: false,
+          }
+        })
+
+        await serviceClient.from('order_items').insert(orderItems)
+
+        // Return the Stripe Checkout URL
+        return NextResponse.json({
+          orderId: order.id,
+          sessionId: session.id,
+          checkoutUrl: session.url,
+        })
+      } catch (stripeError) {
+        console.error('Stripe error:', stripeError)
+        // Fall through to demo mode if Stripe fails
+      }
+    }
+
+    // Demo mode: Create order directly with paid status (no real payment)
     const { data: order, error: orderError } = await serviceClient
       .from('orders')
       .insert({
@@ -126,11 +251,11 @@ export async function POST(request: NextRequest) {
         customer_id: user.id,
         address_id: addressId,
         status: 'placed',
-        subtotal: validatedSubtotal || subtotal,
-        vat_amount: validatedVatAmount || vat_amount,
+        subtotal: finalSubtotal,
+        vat_amount: finalVatAmount,
         delivery_fee: delivery_fee,
-        total: (validatedSubtotal || subtotal) + delivery_fee,
-        stripe_session_id: `mock-session-${Date.now()}`,
+        total: finalTotal,
+        stripe_session_id: `demo-session-${Date.now()}`,
         payment_status: 'paid',
         delivery_slot: delivery_slot,
       })
@@ -187,7 +312,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       orderId: order.id,
-      sessionId: `mock-session-${Date.now()}`,
+      sessionId: `demo-session-${Date.now()}`,
+      demoMode: true,
     })
   } catch (err) {
     console.error('Checkout error:', err)

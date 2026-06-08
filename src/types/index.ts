@@ -129,3 +129,78 @@ export interface OrderItem {
   substituted_with: string | null;
   picked: boolean;
 }
+
+export interface StoreSetting {
+  id: string;
+  store_id: string;
+  key: string;
+  value: string;
+  is_secret: boolean;
+  category: 'integrations' | 'delivery' | 'notifications' | 'general';
+  description: string | null;
+  last_updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Known setting keys with their metadata.
+ * Used to render the admin settings UI with proper labels and grouping.
+ */
+export const SETTING_DEFINITIONS: Record<string, {
+  label: string;
+  category: StoreSetting['category'];
+  is_secret: boolean;
+  description: string;
+  placeholder: string;
+}> = {
+  stripe_publishable_key: {
+    label: 'Stripe Publishable Key',
+    category: 'integrations',
+    is_secret: false,
+    description: 'Used on the client side to initialise Stripe.js. Starts with pk_test_ or pk_live_.',
+    placeholder: 'pk_test_...',
+  },
+  stripe_secret_key: {
+    label: 'Stripe Secret Key',
+    category: 'integrations',
+    is_secret: true,
+    description: 'Server-side key for creating checkout sessions and handling webhooks. Starts with sk_test_ or sk_live_.',
+    placeholder: 'sk_test_...',
+  },
+  stripe_webhook_secret: {
+    label: 'Stripe Webhook Secret',
+    category: 'integrations',
+    is_secret: true,
+    description: 'Signing secret to verify incoming Stripe webhook events. Starts with whsec_.',
+    placeholder: 'whsec_...',
+  },
+  google_oauth_client_id: {
+    label: 'Google OAuth Client ID',
+    category: 'integrations',
+    is_secret: false,
+    description: 'Google Cloud Console OAuth 2.0 Client ID for Sign in with Google.',
+    placeholder: 'xxxx.apps.googleusercontent.com',
+  },
+  google_oauth_client_secret: {
+    label: 'Google OAuth Client Secret',
+    category: 'integrations',
+    is_secret: true,
+    description: 'Google Cloud Console OAuth 2.0 Client Secret. Keep this confidential.',
+    placeholder: 'GOCSPX-...',
+  },
+  sendgrid_api_key: {
+    label: 'SendGrid API Key',
+    category: 'notifications',
+    is_secret: true,
+    description: 'SendGrid API key for sending transactional emails (order confirmations, password resets).',
+    placeholder: 'SG.xxxx...',
+  },
+  taxjar_api_key: {
+    label: 'TaxJar API Key',
+    category: 'integrations',
+    is_secret: true,
+    description: 'TaxJar API key for automated tax calculation (optional — UK VAT is calculated locally by default).',
+    placeholder: 'xxxx...',
+  },
+};

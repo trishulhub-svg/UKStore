@@ -30,7 +30,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protect authenticated routes
+  // Protect authenticated routes (customer)
   const protectedPaths = ['/checkout', '/account', '/orders']
   const isProtected = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
@@ -41,6 +41,21 @@ export async function middleware(request: NextRequest) {
     redirectUrl.pathname = '/auth/login'
     redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
     return NextResponse.redirect(redirectUrl)
+  }
+
+  // Protect admin routes — must be authenticated
+  // Role check happens inside the admin layout (needs DB access for profile)
+  // Middleware only ensures user is logged in; layout verifies owner role
+  if (request.nextUrl.pathname.startsWith('/admin') && !user) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/auth/login'
+    redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  // Protect admin API routes — must be authenticated
+  if (request.nextUrl.pathname.startsWith('/api/admin') && !user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 
   return supabaseResponse

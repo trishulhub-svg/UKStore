@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getDefaultStore } from '@/lib/supabase/queries'
 import { AccountClient } from '@/components/customer/account-client'
-import type { Order } from '@/types'
+import type { Order, Profile } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +17,15 @@ export default async function AccountPage() {
   }
 
   const store = await getDefaultStore()
+
+  // Get user's profile (for role)
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const userRole = (profile as Profile)?.role || 'customer'
 
   // Get user's orders
   let orders: Order[] = []
@@ -43,6 +52,7 @@ export default async function AccountPage() {
         email: user.email || '',
         name: user.user_metadata?.full_name || '',
         createdAt: user.created_at,
+        role: userRole,
       }}
       orders={orders}
     />

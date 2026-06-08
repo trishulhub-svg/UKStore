@@ -21,3 +21,54 @@ Stage Summary:
 - Repo: blueprints/uk-store-demo/ and Taroon Training Space/
 - 6 verification items flagged with [VERIFY] markers
 - Key tech decisions integrated: Supabase PostgreSQL, Supabase Auth, React Native Expo, Stripe Checkout, PostGIS, HFSS compliance, Right-to-Work verification, Dynamic delivery pricing
+
+---
+Task ID: 3
+Agent: ZAI (Main)
+Task: Build Phase 2 Features for UK Grocery Store (Auth, Cart, Checkout, Orders, Account)
+
+Work Log:
+- Read worklog.md and existing codebase (home-client, catalog-client, product-detail-client, cart store, vat utils, supabase server client, types, customer layout)
+- Created Supabase browser client at src/lib/supabase/client.ts using createBrowserClient from @supabase/ssr
+- Created auth middleware at src/middleware.ts with session refresh and route protection for /checkout, /account, /orders
+- Created auth pages: Login (with email/password + Google OAuth), Register (with full_name, email, password, confirm password), Forgot Password (email reset link)
+- Created auth callback route at src/app/auth/callback/route.ts for code exchange
+- Created Cart page with full cart management: item list, quantity controls, substitute preference toggle, VAT breakdown by rate, delivery fee calculation, free delivery threshold notice, order summary sidebar, empty cart state
+- Created Checkout page with multi-step flow: Address (UK address fields + save option), Delivery Slot (4 hardcoded slots), Order Summary, Payment (simulated)
+- Created Checkout API route (POST /api/checkout) with user auth validation, price/stock validation against DB, order + order_items creation, stock decrement, address saving
+- Created Order Confirmation page showing order number, status, delivery info, items, total breakdown, Track Order (disabled/V1), Continue Shopping
+- Created Account page with user profile card, order history list with status badges, logout button
+- Updated CustomerLayout to include Account navigation link and User icon button
+
+Files Created:
+- src/lib/supabase/client.ts
+- src/middleware.ts
+- src/app/auth/login/page.tsx
+- src/app/auth/register/page.tsx
+- src/app/auth/forgot-password/page.tsx
+- src/app/auth/callback/route.ts
+- src/components/auth/login-client.tsx
+- src/components/auth/register-client.tsx
+- src/components/auth/forgot-password-client.tsx
+- src/app/cart/page.tsx
+- src/components/customer/cart-client.tsx
+- src/app/checkout/page.tsx
+- src/components/customer/checkout-client.tsx
+- src/app/api/checkout/route.ts
+- src/app/order/[id]/page.tsx
+- src/components/customer/order-confirmation-client.tsx
+- src/app/account/page.tsx
+- src/components/customer/account-client.tsx
+
+Files Modified:
+- src/components/layout/customer-layout.tsx (added Account nav link and User icon button)
+
+Stage Summary:
+- All Phase 2 features implemented and tested (all routes return HTTP 200)
+- ESLint passes with zero errors on project files
+- Consistent green (#16a34a) + orange (#f97316) theme throughout
+- Mobile-first responsive design on all pages
+- formatPrice() and VAT utilities used consistently
+- Auth flow complete: register → verify email → login → protected routes
+- Cart → Checkout → Order flow functional with simulated payment
+- Order history visible on Account page

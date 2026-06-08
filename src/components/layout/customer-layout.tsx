@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Store, Search } from 'lucide-react'
+import { ShoppingCart, Store, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore } from '@/store/cart'
 import { useEffect, useState } from 'react'
@@ -53,19 +53,32 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
               >
                 Shop All
               </Link>
+              <Link
+                href="/account"
+                className="text-sm font-medium text-gray-600 hover:text-[#16a34a] transition-colors"
+              >
+                Account
+              </Link>
             </nav>
 
-            {/* Cart Button */}
-            <Link href="/cart" className="relative">
-              <Button variant="ghost" size="icon" className="relative">
-                <ShoppingCart className="h-5 w-5" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-[#f97316] text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                    {itemCount > 99 ? '99+' : itemCount}
-                  </span>
-                )}
-              </Button>
-            </Link>
+            {/* Action Buttons */}
+            <div className="flex items-center gap-1">
+              <Link href="/account" className="hidden md:block">
+                <Button variant="ghost" size="icon">
+                  <User className="h-5 w-5" />
+                </Button>
+              </Link>
+              <Link href="/cart" className="relative">
+                <Button variant="ghost" size="icon" className="relative">
+                  <ShoppingCart className="h-5 w-5" />
+                  {itemCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-[#f97316] text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                      {itemCount > 99 ? '99+' : itemCount}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>

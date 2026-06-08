@@ -7,6 +7,10 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get('next') || '/'
 
   if (code) {
+    // Build the redirect response first
+    const response = NextResponse.redirect(new URL(next, request.url))
+
+    // Create Supabase client that writes cookies to the response
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -16,38 +20,22 @@ export async function GET(request: NextRequest) {
             return request.cookies.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value)
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
             )
           },
         },
       }
     )
 
+    // Exchange the code for a session — this triggers setAll above
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      const response = NextResponse.redirect(new URL(next, request.url))
-      // Set auth cookies on the response
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        response.cookies.set('sb-access-token', session.access_token, {
-          path: '/',
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 60 * 60 * 24 * 7,
-        })
-        response.cookies.set('sb-refresh-token', session.refresh_token, {
-          path: '/',
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 60 * 60 * 24 * 365,
-        })
-      }
       return response
     }
+
+    console.error('Auth callback error:', error.message)
   }
 
   // Return to login on error

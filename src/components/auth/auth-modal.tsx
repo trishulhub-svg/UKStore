@@ -69,8 +69,16 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
 
       handleClose()
       window.location.href = redirectTo
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      // Network-level errors produce "Load failed" (Safari) or "Failed to fetch" (Chrome)
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes('Failed to fetch') || message.includes('Load failed') || message.includes('NetworkError')) {
+        setError('Unable to connect to our authentication service. Please check your internet connection and try again. If the problem persists, the service may be temporarily unavailable.')
+      } else if (message.includes('Missing required environment variable')) {
+        setError('Server configuration error: authentication is not set up correctly. Please contact support.')
+      } else {
+        setError('An unexpected error occurred. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -183,8 +191,15 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
 
       // Show OTP sent view for email verification
       setView('otp-sent')
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes('Failed to fetch') || message.includes('Load failed') || message.includes('NetworkError')) {
+        setError('Unable to connect to our authentication service. Please check your internet connection and try again.')
+      } else if (message.includes('Missing required environment variable')) {
+        setError('Server configuration error: authentication is not set up correctly. Please contact support.')
+      } else {
+        setError('An unexpected error occurred. Please try again.')
+      }
     } finally {
       setLoading(false)
     }

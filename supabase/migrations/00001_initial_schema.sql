@@ -42,7 +42,7 @@ CREATE INDEX idx_stores_location ON stores USING GIST (location);
 -- ============================================================
 CREATE TABLE profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE RESTRICT,
+    store_id UUID REFERENCES stores(id) ON DELETE RESTRICT,
     email VARCHAR(255) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
     phone VARCHAR(20),

@@ -4,31 +4,42 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
+  let user = null
 
-  // Refresh the session
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) =>
+              request.cookies.set(name, value)
+            )
+            supabaseResponse = NextResponse.next({ request })
+            cookiesToSet.forEach(({ name, value, options }) =>
+              supabaseResponse.cookies.set(name, value, options)
+            )
+          },
+        },
+      }
+    )
+
+    // Refresh the session
+    const {
+      data: { user: sessionUser },
+    } = await supabase.auth.getUser()
+
+    user = sessionUser
+  } catch (error) {
+    // If Supabase is unreachable (paused project, network issue, etc.),
+    // don't crash the entire site. Let the page render without auth.
+    // Protected routes will still show, but the user won't be authenticated.
+    console.error('[Middleware] Supabase unreachable:', error instanceof Error ? error.message : error)
+  }
 
   // Protect authenticated routes (customer)
   const protectedPaths = ['/checkout', '/account', '/orders']

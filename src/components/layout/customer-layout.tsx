@@ -1,10 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Store, User } from 'lucide-react'
+import { ShoppingCart, Store, User, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore } from '@/store/cart'
 import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
+import { AuthModal } from '@/components/auth/auth-modal'
 
 interface CustomerLayoutProps {
   children: React.ReactNode
@@ -14,6 +17,8 @@ interface CustomerLayoutProps {
 export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: CustomerLayoutProps) {
   const getTotalItems = useCartStore((state) => state.getTotalItems)
   const [itemCount, setItemCount] = useState(0)
+  const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
 
   useEffect(() => {
     setItemCount(getTotalItems())
@@ -26,6 +31,30 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
     })
     return unsub
   }, [])
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const supabase = createClient()
+
+    // Get initial session
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user)
+    })
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleLogout = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    setUser(null)
+    window.location.href = '/'
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -53,21 +82,40 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
               >
                 Shop All
               </Link>
-              <Link
-                href="/account"
-                className="text-sm font-medium text-gray-600 hover:text-[#16a34a] transition-colors"
-              >
-                Account
-              </Link>
+              {user && (
+                <Link
+                  href="/account"
+                  className="text-sm font-medium text-gray-600 hover:text-[#16a34a] transition-colors"
+                >
+                  Account
+                </Link>
+              )}
             </nav>
 
             {/* Action Buttons */}
             <div className="flex items-center gap-1">
-              <Link href="/account" className="hidden md:block">
-                <Button variant="ghost" size="icon">
-                  <User className="h-5 w-5" />
+              {user ? (
+                <>
+                  <Link href="/account" className="hidden md:block">
+                    <Button variant="ghost" size="icon" title="My Account">
+                      <User className="h-5 w-5" />
+                    </Button>
+                  </Link>
+                  <Button variant="ghost" size="icon" onClick={handleLogout} title="Sign Out">
+                    <LogOut className="h-5 w-5" />
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAuthModalOpen(true)}
+                  className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[#16a34a] hover:text-[#15803d]"
+                >
+                  <User className="h-4 w-4" />
+                  Sign In
                 </Button>
-              </Link>
+              )}
               <Link href="/cart" className="relative">
                 <Button variant="ghost" size="icon" className="relative">
                   <ShoppingCart className="h-5 w-5" />
@@ -123,6 +171,12 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
           </div>
         </div>
       </footer>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+      />
     </div>
   )
 }

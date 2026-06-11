@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Truck, Clock, Leaf, ChevronRight, User, LogOut } from 'lucide-react'
+import { ShoppingCart, Truck, Clock, Leaf, ChevronRight, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +11,7 @@ import { formatPrice } from '@/lib/vat'
 import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
-import { AuthModal } from '@/components/auth/auth-modal'
+import { HomeAuthForm } from '@/components/auth/home-auth-form'
 import type { Store, Category, ProductWithCategory } from '@/types'
 
 interface HomeClientProps {
@@ -34,8 +34,6 @@ const categoryIcons: Record<string, string> = {
 export function HomeClient({ store, categories, featuredProducts }: HomeClientProps) {
   const addItem = useCartStore((state) => state.addItem)
   const [user, setUser] = useState<SupabaseUser | null>(null)
-  const [authModalOpen, setAuthModalOpen] = useState(false)
-  const [authInitialView, setAuthInitialView] = useState<'login' | 'register'>('login')
 
   useEffect(() => {
     const supabase = createClient()
@@ -51,88 +49,79 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
     return () => subscription.unsubscribe()
   }, [])
 
-  const openLoginModal = () => {
-    setAuthInitialView('login')
-    setAuthModalOpen(true)
-  }
-
-  const openRegisterModal = () => {
-    setAuthInitialView('register')
-    setAuthModalOpen(true)
-  }
-
-  const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    setUser(null)
-  }
-
   const userFirstName = user?.user_metadata?.full_name?.split(' ')[0] || null
 
   return (
     <CustomerLayout storeName={store.name}>
-      {/* Hero Section */}
+      {/* ═══════════════════════════════════════════════════════════
+          HERO SECTION — Split layout
+          Logged out: Marketing left + Auth form right
+          Logged in:  Full-width personalized welcome
+      ═══════════════════════════════════════════════════════════ */}
       <section className="relative bg-gradient-to-br from-[#16a34a] to-[#15803d] text-white overflow-hidden">
         <div className="absolute inset-0 bg-[url('/logo.svg')] bg-center bg-no-repeat opacity-5" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20 relative z-10">
-          <div className="max-w-2xl">
-            {user ? (
-              <>
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
-                  Welcome back, {userFirstName || 'Shopper'}!
-                </h1>
-                <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg">
-                  Ready to order from {store.name}? Same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
-                </p>
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <Link href="/catalog">
-                    <Button size="lg" className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold px-8">
-                      Shop Now
-                      <ChevronRight className="ml-1 h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <Link href="/account">
-                    <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
-                      <User className="mr-1.5 h-4 w-4" /> My Account
-                    </Button>
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
+
+        {user ? (
+          /* ── LOGGED IN HERO ── */
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20 relative z-10">
+            <div className="max-w-2xl">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
+                Welcome back, {userFirstName || 'Shopper'}!
+              </h1>
+              <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg">
+                Ready to order from {store.name}? Same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link href="/catalog">
+                  <Button size="lg" className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold px-8">
+                    Shop Now
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link href="/account">
+                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                    <User className="mr-1.5 h-4 w-4" /> My Account
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ── LOGGED OUT HERO — Split layout ── */
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 lg:py-16 relative z-10">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+              {/* Left — Marketing copy */}
+              <div>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
                   Fresh Groceries,<br />Delivered to Your Door
                 </h1>
                 <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg">
                   Order from {store.name} and get same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
                 </p>
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <Button
-                    size="lg"
-                    onClick={openRegisterModal}
-                    className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold px-8"
-                  >
-                    Get Started
-                    <ChevronRight className="ml-1 h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="lg"
-                    onClick={openLoginModal}
-                    variant="outline"
-                    className="border-white text-white hover:bg-white/10"
-                  >
-                    Sign In
-                  </Button>
+                <div className="mt-6 flex items-center gap-4 text-sm text-green-200">
+                  <span className="flex items-center gap-1.5"><Truck className="h-4 w-4" /> Same-Day Delivery</span>
+                  <span className="flex items-center gap-1.5"><Leaf className="h-4 w-4" /> Fresh & Local</span>
+                  <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> Order by 2pm</span>
+                </div>
+                <div className="mt-6 lg:hidden">
                   <Link href="/catalog">
-                    <Button size="lg" variant="ghost" className="text-green-100 hover:bg-white/10 hover:text-white">
+                    <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
                       Browse as Guest
                     </Button>
                   </Link>
                 </div>
-              </>
-            )}
+              </div>
+
+              {/* Right — Login / Register form */}
+              <div className="w-full max-w-md mx-auto lg:mx-0 lg:ml-auto">
+                <HomeAuthForm onSuccess={() => window.location.reload()} />
+                <p className="text-center text-green-200 text-xs mt-3">
+                  Or <Link href="/catalog" className="underline hover:text-white">browse as a guest</Link> without an account
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       {/* Delivery Info Banner */}
@@ -297,37 +286,20 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
               <p className="text-green-100 mt-2 max-w-md mx-auto">
                 Create an account to start ordering fresh groceries with same-day delivery. It only takes a minute.
               </p>
-              <div className="mt-6 flex flex-wrap gap-3 justify-center">
-                <Button
-                  size="lg"
-                  onClick={openRegisterModal}
-                  className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold"
-                >
-                  Create Free Account
-                </Button>
-                <Button
-                  size="lg"
-                  onClick={openLoginModal}
-                  variant="outline"
-                  className="border-white text-white hover:bg-white/10"
-                >
-                  Sign In
-                </Button>
+              <div className="mt-4">
+                <Link href="/#top">
+                  <Button size="lg" className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold">
+                    Sign Up Now <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </Link>
               </div>
-              <p className="text-green-200 text-xs mt-4">
+              <p className="text-green-200 text-xs mt-3">
                 No credit card required. Browse as a guest or sign up for exclusive offers.
               </p>
             </div>
           </div>
         )}
       </section>
-
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        initialView={authInitialView}
-      />
     </CustomerLayout>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Store, User, LogOut } from 'lucide-react'
+import { ShoppingCart, Store, User, LogOut, Menu, X, LogIn, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore } from '@/store/cart'
 import { useEffect, useState } from 'react'
@@ -19,6 +19,8 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
   const [itemCount, setItemCount] = useState(0)
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authModalView, setAuthModalView] = useState<'login' | 'register'>('login')
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     setItemCount(getTotalItems())
@@ -44,6 +46,8 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      // Close mobile menu on auth change
+      setMobileMenuOpen(false)
     })
 
     return () => subscription.unsubscribe()
@@ -53,8 +57,23 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
     const supabase = createClient()
     await supabase.auth.signOut()
     setUser(null)
+    setMobileMenuOpen(false)
     window.location.href = '/'
   }
+
+  const openLogin = () => {
+    setAuthModalView('login')
+    setAuthModalOpen(true)
+    setMobileMenuOpen(false)
+  }
+
+  const openRegister = () => {
+    setAuthModalView('register')
+    setAuthModalOpen(true)
+    setMobileMenuOpen(false)
+  }
+
+  const userFirstName = user?.user_metadata?.full_name?.split(' ')[0] || null
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -68,7 +87,7 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
               <span className="font-bold text-lg text-gray-900">{storeName}</span>
             </Link>
 
-            {/* Navigation */}
+            {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-6">
               <Link
                 href="/"
@@ -92,29 +111,44 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
               )}
             </nav>
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-1">
+            {/* Desktop Action Buttons */}
+            <div className="hidden md:flex items-center gap-2">
               {user ? (
                 <>
-                  <Link href="/account" className="hidden md:block">
-                    <Button variant="ghost" size="icon" title="My Account">
-                      <User className="h-5 w-5" />
-                    </Button>
+                  <Link href="/account" className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-[#16a34a] transition-colors px-3 py-1.5 rounded-lg hover:bg-green-50">
+                    <User className="h-4 w-4" />
+                    <span>{userFirstName || 'Account'}</span>
                   </Link>
-                  <Button variant="ghost" size="icon" onClick={handleLogout} title="Sign Out">
-                    <LogOut className="h-5 w-5" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="text-gray-500 hover:text-red-600"
+                  >
+                    <LogOut className="h-4 w-4 mr-1" />
+                    Sign Out
                   </Button>
                 </>
               ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setAuthModalOpen(true)}
-                  className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[#16a34a] hover:text-[#15803d]"
-                >
-                  <User className="h-4 w-4" />
-                  Sign In
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openLogin}
+                    className="border-[#16a34a] text-[#16a34a] hover:bg-[#16a34a] hover:text-white font-semibold transition-colors"
+                  >
+                    <LogIn className="h-4 w-4 mr-1.5" />
+                    Sign In
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={openRegister}
+                    className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+                  >
+                    <UserPlus className="h-4 w-4 mr-1.5" />
+                    Register
+                  </Button>
+                </>
               )}
               <Link href="/cart" className="relative">
                 <Button variant="ghost" size="icon" className="relative">
@@ -127,8 +161,105 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
                 </Button>
               </Link>
             </div>
+
+            {/* Mobile: Cart + Hamburger */}
+            <div className="flex md:hidden items-center gap-1">
+              <Link href="/cart" className="relative">
+                <Button variant="ghost" size="icon" className="relative">
+                  <ShoppingCart className="h-5 w-5" />
+                  {itemCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-[#f97316] text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                      {itemCount > 99 ? '99+' : itemCount}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+              >
+                {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </Button>
+            </div>
           </div>
         </div>
+
+        {/* Mobile Menu Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-100 bg-white shadow-lg">
+            <div className="px-4 py-3 space-y-1">
+              {/* Nav Links */}
+              <Link
+                href="/"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors"
+              >
+                Home
+              </Link>
+              <Link
+                href="/catalog"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors"
+              >
+                Shop All
+              </Link>
+              {user && (
+                <Link
+                  href="/account"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors"
+                >
+                  My Account
+                </Link>
+              )}
+
+              {/* Divider */}
+              <div className="border-t border-gray-100 my-2" />
+
+              {/* Auth Section */}
+              {user ? (
+                <div className="space-y-1">
+                  <div className="px-3 py-2 flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+                      <User className="h-4 w-4 text-[#16a34a]" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{userFirstName || 'User'}</p>
+                      <p className="text-xs text-gray-500">{user.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2 pt-1">
+                  <Button
+                    onClick={openLogin}
+                    className="w-full border-[#16a34a] text-[#16a34a] hover:bg-[#16a34a] hover:text-white font-semibold transition-colors"
+                    variant="outline"
+                  >
+                    <LogIn className="h-4 w-4 mr-1.5" />
+                    Sign In
+                  </Button>
+                  <Button
+                    onClick={openRegister}
+                    className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+                  >
+                    <UserPlus className="h-4 w-4 mr-1.5" />
+                    Create Account
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Content */}
@@ -176,6 +307,7 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
+        initialView={authModalView}
       />
     </div>
   )

@@ -11,7 +11,6 @@ import { formatPrice } from '@/lib/vat'
 import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
-import { HomeAuthForm } from '@/components/auth/home-auth-form'
 import type { Store, Category, ProductWithCategory } from '@/types'
 
 interface HomeClientProps {
@@ -54,9 +53,9 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
   return (
     <CustomerLayout storeName={store.name}>
       {/* ═══════════════════════════════════════════════════════════
-          HERO SECTION — Split layout
-          Logged out: Marketing left + Auth form right
-          Logged in:  Full-width personalized welcome
+          HERO SECTION
+          Logged out: Full-width marketing with CTAs pointing to navbar auth
+          Logged in:  Personalized welcome with Shop Now
       ═══════════════════════════════════════════════════════════ */}
       <section className="relative bg-gradient-to-br from-[#16a34a] to-[#15803d] text-white overflow-hidden">
         <div className="absolute inset-0 bg-[url('/logo.svg')] bg-center bg-no-repeat opacity-5" />
@@ -87,38 +86,31 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
             </div>
           </div>
         ) : (
-          /* ── LOGGED OUT HERO — Split layout ── */
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 lg:py-16 relative z-10">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-              {/* Left — Marketing copy */}
-              <div>
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
-                  Fresh Groceries,<br />Delivered to Your Door
-                </h1>
-                <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg">
-                  Order from {store.name} and get same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
-                </p>
-                <div className="mt-6 flex items-center gap-4 text-sm text-green-200">
-                  <span className="flex items-center gap-1.5"><Truck className="h-4 w-4" /> Same-Day Delivery</span>
-                  <span className="flex items-center gap-1.5"><Leaf className="h-4 w-4" /> Fresh & Local</span>
-                  <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> Order by 2pm</span>
-                </div>
-                <div className="mt-6 lg:hidden">
-                  <Link href="/catalog">
-                    <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
-                      Browse as Guest
-                    </Button>
-                  </Link>
-                </div>
+          /* ── LOGGED OUT HERO — Marketing with CTAs ── */
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 lg:py-24 relative z-10">
+            <div className="max-w-2xl mx-auto text-center">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
+                Fresh Groceries,<br />Delivered to Your Door
+              </h1>
+              <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg mx-auto">
+                Order from {store.name} and get same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
+              </p>
+              <div className="mt-6 flex items-center justify-center gap-4 text-sm text-green-200">
+                <span className="flex items-center gap-1.5"><Truck className="h-4 w-4" /> Same-Day Delivery</span>
+                <span className="flex items-center gap-1.5"><Leaf className="h-4 w-4" /> Fresh & Local</span>
+                <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> Order by 2pm</span>
               </div>
-
-              {/* Right — Login / Register form */}
-              <div className="w-full max-w-md mx-auto lg:mx-0 lg:ml-auto">
-                <HomeAuthForm onSuccess={() => window.location.reload()} />
-                <p className="text-center text-green-200 text-xs mt-3">
-                  Or <Link href="/catalog" className="underline hover:text-white">browse as a guest</Link> without an account
-                </p>
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                <Link href="/catalog">
+                  <Button size="lg" className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold px-8">
+                    Browse Products
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </Link>
               </div>
+              <p className="mt-4 text-sm text-green-200">
+                Use <strong>Sign In</strong> or <strong>Register</strong> in the navigation bar above to create an account and start ordering.
+              </p>
             </div>
           </div>
         )}
@@ -284,12 +276,12 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
             <div className="max-w-2xl mx-auto text-center">
               <h2 className="text-xl sm:text-2xl font-bold">Join Fresh Mart Today</h2>
               <p className="text-green-100 mt-2 max-w-md mx-auto">
-                Create an account to start ordering fresh groceries with same-day delivery. It only takes a minute.
+                Create an account to start ordering fresh groceries with same-day delivery. Use the Sign In or Register button in the navigation bar above.
               </p>
               <div className="mt-4">
-                <Link href="/#top">
+                <Link href="/catalog">
                   <Button size="lg" className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold">
-                    Sign Up Now <ChevronRight className="ml-1 h-4 w-4" />
+                    Browse Products <ChevronRight className="ml-1 h-4 w-4" />
                   </Button>
                 </Link>
               </div>

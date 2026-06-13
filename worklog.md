@@ -90,3 +90,28 @@ Stage Summary:
 - Build passes with zero errors
 - All routes: /, /account, /api, /api/checkout, /auth/callback, /auth/forgot-password, /auth/login, /auth/register, /cart, /catalog, /checkout, /order/[id], /product/[slug]
 - Phase 2 complete and pushed to GitHub
+---
+Task ID: 3
+Agent: Main Agent
+Task: Check and fix database schema for user registration and login
+
+Work Log:
+- Read all 5 existing migration files and understood the full schema design
+- Connected to live Supabase DB using the anon key provided by user
+- Discovered stores table exists but is EMPTY (0 rows) - seed data never applied
+- Tested registration via API → got "Database error saving new user" confirming auth trigger failure
+- Identified 6 critical issues: nullable store_id, missing trigger, RLS deadlock, no public browsing, missing seed data, service client crash
+- Fixed src/lib/supabase/server.ts - createServiceClient() returns null instead of crashing when env vars missing
+- Fixed src/lib/supabase/queries.ts - all queries handle null service client gracefully
+- Created 00006_fix_auth_schema.sql - targeted fix for specific issues
+- Created 00007_bootstrap_full_schema.sql - comprehensive idempotent bootstrap script with all tables, RLS, trigger, seed data
+- Discovered user copied the anon key for both anon AND service_role keys - alerted user
+- Committed and pushed both SQL scripts to GitHub
+
+Stage Summary:
+- Live DB confirmed reachable but EMPTY (no seed data)
+- Registration confirmed BROKEN ("Database error saving new user")
+- Root cause: profiles.store_id NOT NULL + no stores = FK violation rolls back user creation
+- Fix: 00007_bootstrap_full_schema.sql needs to be run in Supabase SQL Editor
+- User needs to get the CORRECT service_role key (they pasted the anon key twice)
+- After running the SQL script + setting correct env vars in Vercel, registration should work

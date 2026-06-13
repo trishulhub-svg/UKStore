@@ -84,3 +84,23 @@ Stage Summary:
 - Every error now includes: machine-readable code, HTTP status, details, timestamp, endpoint
 - ErrorAlert component with copy button makes errors easy to share/debug
 - API responses include both user-friendly "error" field and "technicalError" object
+
+---
+Task ID: fix-database-schema-error
+Agent: main
+Task: Fix DATABASE_SCHEMA_ERROR on login and register in production
+
+Work Log:
+- Identified the root cause: production server runs from /var/task/ (serverless), but DATABASE_URL pointed to file:/home/z/my-project/db/custom.db which doesn't exist in that environment
+- Rewrote src/lib/auth/prisma.ts with runtime DB path resolution and auto-creation of database + schema
+- Changed .env DATABASE_URL from absolute path to relative (file:./db/custom.db)
+- Updated login and register routes to use async getPrisma() instead of direct prisma import
+- Added postinstall and build hooks for prisma generate
+- Tested auto-creation: when DB file doesn't exist, it creates the file and runs CREATE TABLE statements
+- Pushed fix to production
+
+Stage Summary:
+- Auto-creation of database + schema verified working locally
+- All auth endpoints (register, login, session) tested and working
+- Error handling improved for SQLite-specific errors
+- Fix deployed to production via git push

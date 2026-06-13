@@ -130,7 +130,12 @@ export async function POST(request: NextRequest) {
     let status = 500
     let details = `Error: ${errMessage}\n${errStack}`
 
-    if (errMessage.includes('P2021') || errMessage.includes('does not exist')) {
+    if (
+      errMessage.includes('P2021') ||
+      errMessage.includes('does not exist') ||
+      errMessage.includes('no such table') ||
+      errMessage.includes('SQLITE_ERROR')
+    ) {
       code = 'DATABASE_SCHEMA_ERROR'
       message = 'The database schema is not set up correctly. Please run database migrations.'
       status = 500
@@ -139,7 +144,9 @@ export async function POST(request: NextRequest) {
       errMessage.includes('ECONNREFUSED') ||
       errMessage.includes('Connection refused') ||
       errMessage.includes('P1001') ||
-      errMessage.includes("Can't reach database server")
+      errMessage.includes("Can't reach database server") ||
+      errMessage.includes('Unable to open') ||
+      errMessage.includes('P1002')
     ) {
       code = 'DATABASE_UNAVAILABLE'
       message = 'Unable to connect to the database. Please try again later.'

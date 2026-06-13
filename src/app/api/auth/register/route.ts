@@ -29,6 +29,21 @@ function buildApiError(
 export async function POST(request: NextRequest) {
   const endpoint = '/api/auth/register'
   try {
+    // Check database connectivity first
+    try {
+      await prisma.$queryRaw`SELECT 1`
+    } catch (dbPingError) {
+      const dbErrMessage = dbPingError instanceof Error ? dbPingError.message : String(dbPingError)
+      console.error('[Auth] Database connectivity check failed:', dbPingError)
+      return buildApiError(
+        'Unable to connect to the database. Please try again later.',
+        'DATABASE_UNAVAILABLE',
+        503,
+        `Database connectivity check failed.\nError: ${dbErrMessage}\n\nDATABASE_URL is set: ${!!process.env.DATABASE_URL}\nDATABASE_URL value: ${process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/\/[^/]*$/, '/***') : 'NOT SET'}\n\nThis usually means:\n1. The DATABASE_URL environment variable is not configured\n2. The SQLite database file does not exist at the specified path\n3. The Prisma client was not generated (run: npx prisma generate)`,
+        endpoint,
+      )
+    }
+
     let body: { email?: string; password?: string; fullName?: string }
     try {
       body = await request.json()
@@ -129,21 +144,34 @@ export async function POST(request: NextRequest) {
     const errStack = error instanceof Error ? error.stack || '' : ''
     console.error('[Auth] Register error:', error)
 
-    // Detect common Prisma errors
+    // Detect specific Prisma/database errors
     let code = 'INTERNAL_ERROR'
     let message = 'An internal server error occurred during registration.'
+    let status = 500
     let details = `Error: ${errMessage}\n${errStack}`
 
-    if (errMessage.includes('Unique constraint')) {
+    if (errMessage.includes('Unique constraint') || errMessage.includes('P2002')) {
       code = 'AUTH_EMAIL_EXISTS'
       message = 'An account with this email already exists.'
+      status = 409
       details = `Prisma unique constraint violation. A user with this email already exists in the database.\n${errMessage}`
-    } else if (errMessage.includes('connect') || errMessage.includes('ECONNREFUSED') || errMessage.includes('database')) {
-      code = 'DATABASE_ERROR'
+    } else if (errMessage.includes('P2021') || errMessage.includes('does not exist')) {
+      code = 'DATABASE_SCHEMA_ERROR'
+      message = 'The database schema is not set up correctly. Please run database migrations.'
+      status = 500
+      details = `The User table may not exist in the database. Run "npx prisma db push" to create it.\nError: ${errMessage}\n${errStack}`
+    } else if (
+      errMessage.includes('ECONNREFUSED') ||
+      errMessage.includes('Connection refused') ||
+      errMessage.includes('P1001') ||
+      errMessage.includes("Can't reach database server")
+    ) {
+      code = 'DATABASE_UNAVAILABLE'
       message = 'Unable to connect to the database. Please try again later.'
-      details = `Database connection error during user creation.\n${errMessage}\n${errStack}`
+      status = 503
+      details = `Database connection error during user creation.\nDATABASE_URL is set: ${!!process.env.DATABASE_URL}\nError: ${errMessage}\n${errStack}`
     }
 
-    return buildApiError(message, code, 500, details, endpoint)
+    return buildApiError(message, code, status, details, endpoint)
   }
 }

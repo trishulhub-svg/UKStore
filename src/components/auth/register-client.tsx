@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import type { TechnicalError } from '@/components/ui/error-alert'
 import { authRegister } from '@/lib/auth-client'
 
 export function RegisterClient() {
@@ -17,7 +19,7 @@ export function RegisterClient() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | TechnicalError | null>(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
 
@@ -27,11 +29,21 @@ export function RegisterClient() {
 
     // Client-side validation
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long.')
+      setError({
+        message: 'Password must be at least 8 characters long.',
+        code: 'PASSWORD_TOO_SHORT',
+        details: `Provided password length: ${password.length}. Minimum required: 8.`,
+        timestamp: new Date().toISOString(),
+      })
       return
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match.')
+      setError({
+        message: 'Passwords do not match.',
+        code: 'PASSWORD_MISMATCH',
+        details: 'The password and confirm password fields have different values.',
+        timestamp: new Date().toISOString(),
+      })
       return
     }
 
@@ -54,8 +66,15 @@ export function RegisterClient() {
       }
 
       setSuccess(true)
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setError({
+        message: 'An unexpected client-side error occurred during registration.',
+        code: 'CLIENT_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/auth/register',
+      })
     } finally {
       setLoading(false)
     }
@@ -99,11 +118,7 @@ export function RegisterClient() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3">
-                {error}
-              </div>
-            )}
+            <ErrorAlert error={error} />
 
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name</Label>

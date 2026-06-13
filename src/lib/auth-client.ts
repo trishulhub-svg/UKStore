@@ -2,7 +2,11 @@
 // Client-side Auth Helper
 // Replaces Supabase client for authentication
 // Uses fetch() to call local API routes
+// Returns TechnicalError objects for debuggable error display
 // ============================================================
+
+import type { TechnicalError } from '@/components/ui/error-alert'
+import { parseApiError } from '@/components/ui/error-alert'
 
 export interface AuthUser {
   id: string
@@ -14,29 +18,48 @@ export interface AuthUser {
 
 export interface AuthResponse {
   user: AuthUser | null
-  error: string | null
+  error: string | TechnicalError | null
 }
 
 /**
  * Register a new account
  */
 export async function authRegister(email: string, password: string, fullName: string): Promise<AuthResponse> {
+  const endpoint = '/api/auth/register'
   try {
-    const res = await fetch('/api/auth/register', {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, fullName }),
     })
 
-    const data = await res.json()
-
     if (!res.ok) {
-      return { user: null, error: data.error || 'Registration failed.' }
+      const technicalError = await parseApiError(res, endpoint)
+      return { user: null, error: technicalError }
     }
 
+    const data = await res.json()
     return { user: data.user, error: null }
-  } catch {
-    return { user: null, error: 'Unable to connect to the server. Please check your internet connection and try again.' }
+  } catch (err) {
+    const timestamp = new Date().toISOString()
+    const errMsg = err instanceof Error ? err.message : String(err)
+    const isNetworkError = errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('Network request failed')
+
+    return {
+      user: null,
+      error: {
+        message: isNetworkError
+          ? 'Unable to connect to the server. The server may be down or there is a network issue.'
+          : `Registration request failed: ${errMsg}`,
+        code: isNetworkError ? 'NETWORK_ERROR' : 'FETCH_ERROR',
+        status: 0,
+        details: isNetworkError
+          ? `The browser could not reach ${endpoint}. This typically means:\n1. The server is not running\n2. The URL is incorrect\n3. A CORS or network policy is blocking the request\n\nRaw error: ${errMsg}`
+          : `Raw error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp,
+        endpoint,
+      },
+    }
   }
 }
 
@@ -44,41 +67,73 @@ export async function authRegister(email: string, password: string, fullName: st
  * Log in with email and password
  */
 export async function authLogin(email: string, password: string): Promise<AuthResponse> {
+  const endpoint = '/api/auth/login'
   try {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     })
 
-    const data = await res.json()
-
     if (!res.ok) {
-      return { user: null, error: data.error || 'Login failed.' }
+      const technicalError = await parseApiError(res, endpoint)
+      return { user: null, error: technicalError }
     }
 
+    const data = await res.json()
     return { user: data.user, error: null }
-  } catch {
-    return { user: null, error: 'Unable to connect to the server. Please check your internet connection and try again.' }
+  } catch (err) {
+    const timestamp = new Date().toISOString()
+    const errMsg = err instanceof Error ? err.message : String(err)
+    const isNetworkError = errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('Network request failed')
+
+    return {
+      user: null,
+      error: {
+        message: isNetworkError
+          ? 'Unable to connect to the server. The server may be down or there is a network issue.'
+          : `Login request failed: ${errMsg}`,
+        code: isNetworkError ? 'NETWORK_ERROR' : 'FETCH_ERROR',
+        status: 0,
+        details: isNetworkError
+          ? `The browser could not reach ${endpoint}. This typically means:\n1. The server is not running\n2. The URL is incorrect\n3. A CORS or network policy is blocking the request\n\nRaw error: ${errMsg}`
+          : `Raw error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp,
+        endpoint,
+      },
+    }
   }
 }
 
 /**
  * Log out
  */
-export async function authLogout(): Promise<{ error: string | null }> {
+export async function authLogout(): Promise<{ error: string | TechnicalError | null }> {
+  const endpoint = '/api/auth/logout'
   try {
-    const res = await fetch('/api/auth/logout', {
+    const res = await fetch(endpoint, {
       method: 'POST',
     })
 
     if (!res.ok) {
-      return { error: 'Logout failed.' }
+      const technicalError = await parseApiError(res, endpoint)
+      return { error: technicalError }
     }
 
     return { error: null }
-  } catch {
-    return { error: 'Unable to connect to the server.' }
+  } catch (err) {
+    const timestamp = new Date().toISOString()
+    const errMsg = err instanceof Error ? err.message : String(err)
+    return {
+      error: {
+        message: 'Unable to connect to the server for logout.',
+        code: 'NETWORK_ERROR',
+        status: 0,
+        details: `Endpoint: ${endpoint}\nRaw error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp,
+        endpoint,
+      },
+    }
   }
 }
 
@@ -86,8 +141,9 @@ export async function authLogout(): Promise<{ error: string | null }> {
  * Get the current session user
  */
 export async function authGetSession(): Promise<AuthResponse> {
+  const endpoint = '/api/auth/session'
   try {
-    const res = await fetch('/api/auth/session')
+    const res = await fetch(endpoint)
 
     if (!res.ok) {
       return { user: null, error: null }

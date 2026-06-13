@@ -6,26 +6,81 @@ import { getStripeConfig } from '@/lib/settings'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
+function buildApiError(
+  message: string,
+  code: string,
+  status: number,
+  details?: string,
+  endpoint?: string,
+) {
+  return NextResponse.json(
+    {
+      error: message,
+      code,
+      technicalError: {
+        message,
+        code,
+        status,
+        details: details || '',
+        timestamp: new Date().toISOString(),
+        endpoint: endpoint || '/api/checkout',
+      },
+    },
+    { status }
+  )
+}
+
 export async function POST(request: NextRequest) {
+  const endpoint = '/api/checkout'
   try {
     // Verify authenticated user using local auth
     const user = await getServerUser()
 
     if (!user) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      return buildApiError(
+        'Authentication required. Please log in and try again.',
+        'AUTH_REQUIRED',
+        401,
+        'No valid session cookie was found. This endpoint requires authentication via the fresh_mart_session cookie.',
+        endpoint,
+      )
     }
 
-    const body = await request.json()
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return buildApiError(
+        'Request body is not valid JSON.',
+        'INVALID_BODY',
+        400,
+        'The server could not parse the request body as JSON. Make sure the Content-Type header is set to application/json.',
+        endpoint,
+      )
+    }
+
     const { items, address, delivery_slot, subtotal, vat_amount, delivery_fee, total, save_address } = body
 
     // Validate cart items
     if (!items || items.length === 0) {
-      return NextResponse.json({ error: 'Cart is empty' }, { status: 400 })
+      return buildApiError(
+        'Your cart is empty. Add items before checking out.',
+        'EMPTY_CART',
+        400,
+        `Received items array: ${JSON.stringify(items)}`,
+        endpoint,
+      )
     }
 
     // Validate address
     if (!address?.address_line_1 || !address?.city || !address?.postcode) {
-      return NextResponse.json({ error: 'Delivery address is required' }, { status: 400 })
+      return buildApiError(
+        'Delivery address is required.',
+        'MISSING_ADDRESS',
+        400,
+        `Address validation failed: address_line_1=${address?.address_line_1 ? 'provided' : 'missing'}, city=${address?.city ? 'provided' : 'missing'}, postcode=${address?.postcode ? 'provided' : 'missing'}`,
+        endpoint,
+      )
     }
 
     // Check Stripe configuration from DB/env
@@ -59,15 +114,21 @@ export async function POST(request: NextRequest) {
         const dbProduct = dbProductMap.get(item.product_id)
         if (dbProduct) {
           if (!dbProduct.is_available) {
-            return NextResponse.json(
-              { error: `${dbProduct.name} is no longer available` },
-              { status: 400 }
+            return buildApiError(
+              `${dbProduct.name} is no longer available.`,
+              'PRODUCT_UNAVAILABLE',
+              400,
+              `Product ID: ${dbProduct.id}, Name: ${dbProduct.name}, is_available: ${dbProduct.is_available}`,
+              endpoint,
             )
           }
           if (dbProduct.stock_quantity < item.quantity) {
-            return NextResponse.json(
-              { error: `${dbProduct.name} has insufficient stock (only ${dbProduct.stock_quantity} available)` },
-              { status: 400 }
+            return buildApiError(
+              `${dbProduct.name} has insufficient stock (only ${dbProduct.stock_quantity} available).`,
+              'INSUFFICIENT_STOCK',
+              400,
+              `Product ID: ${dbProduct.id}, Name: ${dbProduct.name}, Requested: ${item.quantity}, Available: ${dbProduct.stock_quantity}`,
+              endpoint,
             )
           }
           // Use the database price (not the client-submitted price)
@@ -276,10 +337,15 @@ export async function POST(request: NextRequest) {
       demoMode: true,
     })
   } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err)
+    const errStack = err instanceof Error ? err.stack || '' : ''
     console.error('Checkout error:', err)
-    return NextResponse.json(
-      { error: 'An unexpected error occurred. Please try again.' },
-      { status: 500 }
+    return buildApiError(
+      'An internal server error occurred during checkout.',
+      'INTERNAL_ERROR',
+      500,
+      `Error: ${errMessage}\n${errStack}`,
+      endpoint,
     )
   }
 }

@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import type { TechnicalError } from '@/components/ui/error-alert'
 
 export function ForgotPasswordClient() {
   const [email, setEmail] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | TechnicalError | null>(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
 
@@ -20,7 +22,6 @@ export function ForgotPasswordClient() {
     setLoading(true)
 
     // Password reset requires email service (SendGrid, etc.)
-    // For local auth, we show a message that the feature requires configuration
     try {
       // Simulate a brief delay for UX
       await new Promise(resolve => setTimeout(resolve, 1000))
@@ -28,8 +29,14 @@ export function ForgotPasswordClient() {
       // In a production setup, this would send a reset email
       // For now, show a helpful message
       setSuccess(true)
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setError({
+        message: 'An error occurred while requesting a password reset.',
+        code: 'RESET_PASSWORD_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+      })
     } finally {
       setLoading(false)
     }
@@ -74,11 +81,7 @@ export function ForgotPasswordClient() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleResetPassword} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3">
-                {error}
-              </div>
-            )}
+            <ErrorAlert error={error} />
 
             <div className="space-y-2">
               <Label htmlFor="email">Email Address</Label>

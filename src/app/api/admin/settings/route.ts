@@ -16,20 +16,57 @@ const VALID_KEYS = new Set([
   'taxjar_api_key',
 ])
 
+function buildApiError(
+  message: string,
+  code: string,
+  status: number,
+  details?: string,
+  endpoint?: string,
+) {
+  return NextResponse.json(
+    {
+      error: message,
+      code,
+      technicalError: {
+        message,
+        code,
+        status,
+        details: details || '',
+        timestamp: new Date().toISOString(),
+        endpoint: endpoint || '/api/admin/settings',
+      },
+    },
+    { status }
+  )
+}
+
 /**
  * GET /api/admin/settings
  * Fetch all settings for the store (owner only)
  */
 export async function GET() {
+  const endpoint = '/api/admin/settings'
   try {
     const user = await getServerUser()
 
     if (!user) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      return buildApiError(
+        'Authentication required. Please log in.',
+        'AUTH_REQUIRED',
+        401,
+        'No valid session cookie was found.',
+        endpoint,
+      )
     }
 
     if (user.role !== 'owner') {
-      return NextResponse.json({ error: 'Only store owners can access settings' }, { status: 403 })
+      return buildApiError(
+        'Only store owners can access settings.',
+        'FORBIDDEN_ROLE',
+        403,
+        `Current user role: "${user.role}". Required role: "owner". User: ${user.email} (ID: ${user.id})`,
+        endpoint,
+      )
     }
 
     // Try to fetch settings from Supabase
@@ -51,8 +88,16 @@ export async function GET() {
 
     // Fallback: return empty settings
     return NextResponse.json({ settings: [] })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err)
+    const errStack = err instanceof Error ? err.stack || '' : ''
+    return buildApiError(
+      'An internal server error occurred while fetching settings.',
+      'INTERNAL_ERROR',
+      500,
+      `Error: ${errMessage}\n${errStack}`,
+      endpoint,
+    )
   }
 }
 
@@ -62,32 +107,66 @@ export async function GET() {
  * Body: { settings: [{ key: string, value: string, last_updated_by: string }] }
  */
 export async function PUT(request: NextRequest) {
+  const endpoint = '/api/admin/settings'
   try {
     const user = await getServerUser()
 
     if (!user) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      return buildApiError(
+        'Authentication required. Please log in.',
+        'AUTH_REQUIRED',
+        401,
+        'No valid session cookie was found.',
+        endpoint,
+      )
     }
 
     if (user.role !== 'owner') {
-      return NextResponse.json({ error: 'Only store owners can modify settings' }, { status: 403 })
+      return buildApiError(
+        'Only store owners can modify settings.',
+        'FORBIDDEN_ROLE',
+        403,
+        `Current user role: "${user.role}". Required role: "owner". User: ${user.email} (ID: ${user.id})`,
+        endpoint,
+      )
     }
 
-    const body = await request.json()
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return buildApiError(
+        'Request body is not valid JSON.',
+        'INVALID_BODY',
+        400,
+        'The server could not parse the request body as JSON.',
+        endpoint,
+      )
+    }
+
     const { settings } = body as {
       settings: Array<{ key: string; value: string; last_updated_by: string }>
     }
 
     if (!settings || !Array.isArray(settings) || settings.length === 0) {
-      return NextResponse.json({ error: 'No settings provided' }, { status: 400 })
+      return buildApiError(
+        'No settings provided.',
+        'MISSING_SETTINGS',
+        400,
+        `Received settings value: ${JSON.stringify(settings)}`,
+        endpoint,
+      )
     }
 
     // Validate all keys are in the whitelist
     for (const item of settings) {
       if (!VALID_KEYS.has(item.key)) {
-        return NextResponse.json(
-          { error: `Invalid setting key: ${item.key}` },
-          { status: 400 }
+        return buildApiError(
+          `Invalid setting key: ${item.key}`,
+          'INVALID_SETTING_KEY',
+          400,
+          `Key "${item.key}" is not in the allowed list. Valid keys: ${[...VALID_KEYS].join(', ')}`,
+          endpoint,
         )
       }
     }
@@ -140,7 +219,15 @@ export async function PUT(request: NextRequest) {
       results: settings.map((s) => ({ key: s.key, success: false })),
       message: 'Database not available. Settings cannot be saved without a database connection.',
     })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err)
+    const errStack = err instanceof Error ? err.stack || '' : ''
+    return buildApiError(
+      'An internal server error occurred while updating settings.',
+      'INTERNAL_ERROR',
+      500,
+      `Error: ${errMessage}\n${errStack}`,
+      endpoint,
+    )
   }
 }

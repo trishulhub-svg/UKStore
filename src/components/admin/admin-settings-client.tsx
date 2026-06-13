@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import type { TechnicalError } from '@/components/ui/error-alert'
 import { SETTING_DEFINITIONS, type StoreSetting } from '@/types'
 
 interface AdminSettingsClientProps {
@@ -30,7 +32,7 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({})
   const [changedKeys, setChangedKeys] = useState<Set<string>>(new Set())
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | TechnicalError | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const toggleVisibility = useCallback((key: string) => {
@@ -101,9 +103,25 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
         body: JSON.stringify({ settings: updates }),
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to save settings')
+        const timestamp = new Date().toISOString()
+        const techErr = data.technicalError
+        if (techErr) {
+          setErrorMessage({ ...techErr, timestamp: techErr.timestamp || timestamp })
+        } else {
+          setErrorMessage({
+            message: data.error || 'Failed to save settings.',
+            code: `HTTP_${response.status}`,
+            status: response.status,
+            details: JSON.stringify(data, null, 2),
+            timestamp,
+            endpoint: '/api/admin/settings',
+          })
+        }
+        setSaveStatus('error')
+        return
       }
 
       setChangedKeys(new Set())
@@ -113,7 +131,14 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
       setTimeout(() => setSaveStatus('idle'), 3000)
     } catch (err) {
       setSaveStatus('error')
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to save settings')
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setErrorMessage({
+        message: 'Failed to save settings due to a network or client error.',
+        code: 'CLIENT_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/admin/settings',
+      })
     }
   }, [changedKeys, formValues, userId, validate])
 
@@ -234,11 +259,7 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
       )}
 
       {/* Error Message */}
-      {errorMessage && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3 mb-6">
-          {errorMessage}
-        </div>
-      )}
+      <ErrorAlert error={errorMessage} className="mb-6" />
 
       {/* Settings by Category */}
       {Object.entries(categories).map(([category, categorySettings]) => {

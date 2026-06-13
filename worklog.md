@@ -47,3 +47,40 @@ Stage Summary:
 - Session tokens are HMAC-signed with 7-day expiry
 - All auth components and server pages updated to use local auth
 - Middleware updated to use Edge-compatible Web Crypto API for token verification
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Replace generic error messages with specific technical errors that are easy to copy
+
+Work Log:
+- Created reusable ErrorAlert component (src/components/ui/error-alert.tsx) with:
+  - TechnicalError interface (message, code, status, details, timestamp, endpoint)
+  - Copy button for error details
+  - Expandable "Show technical details" section
+  - Error code and HTTP status badges
+  - Compact mode for smaller forms
+- Updated auth-client.ts to return TechnicalError objects instead of plain strings:
+  - Network errors identified with NETWORK_ERROR code and helpful explanation
+  - API errors parsed via parseApiError helper that reads technicalError from response
+- Updated API routes to return structured technical errors:
+  - /api/auth/login: AUTH_INVALID_CREDENTIALS, MISSING_FIELDS, INVALID_BODY, INTERNAL_ERROR
+  - /api/auth/register: PASSWORD_TOO_SHORT, AUTH_EMAIL_EXISTS, INVALID_EMAIL, MISSING_FIELDS, DATABASE_ERROR
+  - /api/checkout: AUTH_REQUIRED, EMPTY_CART, MISSING_ADDRESS, PRODUCT_UNAVAILABLE, INSUFFICIENT_STOCK
+  - /api/admin/settings: AUTH_REQUIRED, FORBIDDEN_ROLE, MISSING_SETTINGS, INVALID_SETTING_KEY
+- Updated all frontend components to use ErrorAlert:
+  - login-client.tsx
+  - register-client.tsx
+  - home-auth-form.tsx (compact mode)
+  - auth-modal.tsx
+  - forgot-password-client.tsx
+  - checkout-client.tsx
+  - admin-settings-client.tsx
+- Build succeeds with no errors
+- Tested API endpoints: all return structured technicalError in responses
+
+Stage Summary:
+- All generic "An unexpected error occurred" messages replaced with specific technical errors
+- Every error now includes: machine-readable code, HTTP status, details, timestamp, endpoint
+- ErrorAlert component with copy button makes errors easy to share/debug
+- API responses include both user-friendly "error" field and "technicalError" object

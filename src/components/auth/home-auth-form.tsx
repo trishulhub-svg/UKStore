@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import type { TechnicalError } from '@/components/ui/error-alert'
 import { authLogin, authRegister } from '@/lib/auth-client'
 
 type AuthTab = 'login' | 'register' | 'forgot-password' | 'success'
@@ -21,7 +23,7 @@ export function HomeAuthForm({ onSuccess }: HomeAuthFormProps) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | TechnicalError | null>(null)
   const [loading, setLoading] = useState(false)
 
   const resetForm = useCallback(() => {
@@ -55,8 +57,15 @@ export function HomeAuthForm({ onSuccess }: HomeAuthFormProps) {
 
       onSuccess?.()
       window.location.reload()
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setError({
+        message: 'An unexpected client-side error occurred during login.',
+        code: 'CLIENT_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/auth/login',
+      })
     } finally {
       setLoading(false)
     }
@@ -68,11 +77,21 @@ export function HomeAuthForm({ onSuccess }: HomeAuthFormProps) {
     setError(null)
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long.')
+      setError({
+        message: 'Password must be at least 8 characters long.',
+        code: 'PASSWORD_TOO_SHORT',
+        details: `Provided password length: ${password.length}. Minimum required: 8.`,
+        timestamp: new Date().toISOString(),
+      })
       return
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match.')
+      setError({
+        message: 'Passwords do not match.',
+        code: 'PASSWORD_MISMATCH',
+        details: 'The password and confirm password fields have different values.',
+        timestamp: new Date().toISOString(),
+      })
       return
     }
 
@@ -88,8 +107,15 @@ export function HomeAuthForm({ onSuccess }: HomeAuthFormProps) {
 
       onSuccess?.()
       window.location.reload()
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setError({
+        message: 'An unexpected client-side error occurred during registration.',
+        code: 'CLIENT_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/auth/register',
+      })
     } finally {
       setLoading(false)
     }
@@ -137,9 +163,7 @@ export function HomeAuthForm({ onSuccess }: HomeAuthFormProps) {
             </div>
 
             <form onSubmit={handleLogin} className="space-y-3">
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-3 py-2.5">{error}</div>
-              )}
+              <ErrorAlert error={error} compact />
 
               <div className="space-y-1.5">
                 <Label htmlFor="hp-login-email" className="text-xs font-medium">Email</Label>
@@ -183,9 +207,7 @@ export function HomeAuthForm({ onSuccess }: HomeAuthFormProps) {
             </div>
 
             <form onSubmit={handleRegister} className="space-y-3">
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-3 py-2.5">{error}</div>
-              )}
+              <ErrorAlert error={error} compact />
 
               <div className="space-y-1.5">
                 <Label htmlFor="hp-reg-name" className="text-xs font-medium">Full Name</Label>

@@ -12,6 +12,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
 import { CustomerLayout } from '@/components/layout/customer-layout'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import type { TechnicalError } from '@/components/ui/error-alert'
 import { useCartStore } from '@/store/cart'
 import { formatPrice, getVatRateLabel, calculateVatFromGross } from '@/lib/vat'
 import type { Store, Address } from '@/types'
@@ -56,7 +58,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
 
   const [currentStep, setCurrentStep] = useState<Step>('address')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | TechnicalError | null>(null)
 
   // Address form state
   const defaultAddress = addresses.find((a) => a.is_default)
@@ -106,7 +108,12 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
     setError(null)
     if (currentStep === 'address') {
       if (!validateAddress()) {
-        setError('Please fill in all address fields with a valid UK postcode.')
+        setError({
+          message: 'Please fill in all address fields with a valid UK postcode.',
+          code: 'INVALID_ADDRESS',
+          details: `Address line 1: ${addressLine1 ? 'provided' : 'missing'}\nCity: ${city ? 'provided' : 'missing'}\nPostcode: ${postcode || 'missing'}\nUK postcode format: SW1A 1AA`,
+          timestamp: new Date().toISOString(),
+        })
         return
       }
       setCurrentStep('slot')
@@ -159,14 +166,37 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
       const data = await response.json()
 
       if (!response.ok) {
-        setError(data.error || 'Failed to place order. Please try again.')
+        const timestamp = new Date().toISOString()
+        const techErr = data.technicalError
+        if (techErr) {
+          setError({ ...techErr, timestamp: techErr.timestamp || timestamp })
+        } else {
+          setError({
+            message: data.error || 'Failed to place order.',
+            code: `HTTP_${response.status}`,
+            status: response.status,
+            details: JSON.stringify(data, null, 2),
+            timestamp,
+            endpoint: '/api/checkout',
+          })
+        }
         return
       }
 
       clearCart()
       router.push(`/order/${data.orderId}`)
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      const isNetworkError = errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')
+      setError({
+        message: isNetworkError
+          ? 'Unable to connect to the server. Please check your internet connection.'
+          : `An unexpected error occurred while placing your order: ${errMsg}`,
+        code: isNetworkError ? 'NETWORK_ERROR' : 'CLIENT_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/checkout',
+      })
     } finally {
       setLoading(false)
     }
@@ -241,11 +271,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
         </div>
 
         {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3 mb-4">
-            {error}
-          </div>
-        )}
+        <ErrorAlert error={error} />
 
         {/* Step Content */}
         {currentStep === 'address' && (

@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import type { TechnicalError } from '@/components/ui/error-alert'
 import { authLogin, authRegister } from '@/lib/auth-client'
 
 type AuthView = 'login' | 'register' | 'forgot-password' | 'success'
@@ -26,7 +28,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
   const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | TechnicalError | null>(null)
   const [loading, setLoading] = useState(false)
 
   const resetForm = useCallback(() => {
@@ -66,8 +68,15 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
 
       handleClose()
       window.location.href = redirectTo
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setError({
+        message: 'An unexpected client-side error occurred during login.',
+        code: 'CLIENT_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/auth/login',
+      })
     } finally {
       setLoading(false)
     }
@@ -79,11 +88,21 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
     setError(null)
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long.')
+      setError({
+        message: 'Password must be at least 8 characters long.',
+        code: 'PASSWORD_TOO_SHORT',
+        details: `Provided password length: ${password.length}. Minimum required: 8.`,
+        timestamp: new Date().toISOString(),
+      })
       return
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match.')
+      setError({
+        message: 'Passwords do not match.',
+        code: 'PASSWORD_MISMATCH',
+        details: 'The password and confirm password fields have different values.',
+        timestamp: new Date().toISOString(),
+      })
       return
     }
 
@@ -100,8 +119,15 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
       // Registration successful - user is auto-logged in
       handleClose()
       window.location.href = redirectTo
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setError({
+        message: 'An unexpected client-side error occurred during registration.',
+        code: 'CLIENT_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/auth/register',
+      })
     } finally {
       setLoading(false)
     }
@@ -150,9 +176,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-4">
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3">{error}</div>
-                  )}
+                  <ErrorAlert error={error} />
 
                   <div className="space-y-2">
                     <Label htmlFor="login-email">Email</Label>
@@ -214,9 +238,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
                 </div>
 
                 <form onSubmit={handleRegister} className="space-y-4">
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3">{error}</div>
-                  )}
+                  <ErrorAlert error={error} />
 
                   <div className="space-y-2">
                     <Label htmlFor="reg-name">Full Name</Label>

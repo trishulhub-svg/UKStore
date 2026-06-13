@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import type { TechnicalError } from '@/components/ui/error-alert'
 import { authLogin } from '@/lib/auth-client'
 
 export function LoginClient() {
@@ -17,7 +19,7 @@ export function LoginClient() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | TechnicalError | null>(null)
   const [loading, setLoading] = useState(false)
 
   const redirectTo = searchParams.get('redirect') || '/'
@@ -37,8 +39,15 @@ export function LoginClient() {
 
       router.push(redirectTo)
       router.refresh()
-    } catch {
-      setError('An unexpected error occurred. Please try again.')
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setError({
+        message: `An unexpected client-side error occurred during login.`,
+        code: 'CLIENT_ERROR',
+        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/auth/login',
+      })
     } finally {
       setLoading(false)
     }
@@ -67,11 +76,7 @@ export function LoginClient() {
 
           {/* Email/Password Form */}
           <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3">
-                {error}
-              </div>
-            )}
+            <ErrorAlert error={error} />
 
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

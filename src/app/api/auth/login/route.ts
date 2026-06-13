@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/auth/prisma'
+import { getPrisma } from '@/lib/auth/prisma'
 import { verifyPassword, createSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
 
 function buildApiError(
@@ -29,6 +29,8 @@ function buildApiError(
 export async function POST(request: NextRequest) {
   const endpoint = '/api/auth/login'
   try {
+    const prisma = await getPrisma()
+
     // Check database connectivity first
     try {
       await prisma.$queryRaw`SELECT 1`

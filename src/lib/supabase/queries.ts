@@ -16,11 +16,17 @@ async function isSupabaseReachable(): Promise<boolean> {
   try {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 2000)
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
+      supabaseReachable = false
+      lastCheckTime = now
+      return false
+    }
     const response = await fetch(`${url}/rest/v1/`, {
       signal: controller.signal,
       headers: {
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        apikey: key,
       },
     })
     clearTimeout(timeoutId)
@@ -54,6 +60,8 @@ async function withFallback<T>(fetcher: () => Promise<T>, fallback: T): Promise<
 export async function getStore(storeId: string): Promise<Store | null> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.store
+
     const { data, error } = await supabase
       .from('stores')
       .select('*')
@@ -71,6 +79,8 @@ export async function getStore(storeId: string): Promise<Store | null> {
 export async function getDefaultStore(): Promise<Store | null> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.store
+
     const { data, error } = await supabase
       .from('stores')
       .select('*')
@@ -89,6 +99,8 @@ export async function getDefaultStore(): Promise<Store | null> {
 export async function getCategories(storeId: string): Promise<Category[]> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.categories
+
     const { data, error } = await supabase
       .from('categories')
       .select('*')
@@ -107,6 +119,8 @@ export async function getCategories(storeId: string): Promise<Category[]> {
 export async function getProducts(storeId: string): Promise<ProductWithCategory[]> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.products
+
     const { data, error } = await supabase
       .from('products')
       .select('*, category:categories(*)')
@@ -125,6 +139,8 @@ export async function getProducts(storeId: string): Promise<ProductWithCategory[
 export async function getProductsByCategory(storeId: string, categoryId: string): Promise<ProductWithCategory[]> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.products.filter((p) => p.category_id === categoryId)
+
     const { data, error } = await supabase
       .from('products')
       .select('*, category:categories(*)')
@@ -144,6 +160,8 @@ export async function getProductsByCategory(storeId: string, categoryId: string)
 export async function getFeaturedProducts(storeId: string): Promise<ProductWithCategory[]> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.products.filter((p) => p.is_featured)
+
     const { data, error } = await supabase
       .from('products')
       .select('*, category:categories(*)')
@@ -163,6 +181,8 @@ export async function getFeaturedProducts(storeId: string): Promise<ProductWithC
 export async function getProductBySlug(storeId: string, slug: string): Promise<ProductWithCategory | null> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.products.find((p) => p.slug === slug) || null
+
     const { data, error } = await supabase
       .from('products')
       .select('*, category:categories(*)')
@@ -181,6 +201,8 @@ export async function getProductBySlug(storeId: string, slug: string): Promise<P
 export async function searchProducts(storeId: string, query: string): Promise<ProductWithCategory[]> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+
     const { data, error } = await supabase
       .from('products')
       .select('*, category:categories(*)')
@@ -200,6 +222,8 @@ export async function searchProducts(storeId: string, query: string): Promise<Pr
 export async function getCategoryBySlug(storeId: string, slug: string): Promise<Category | null> {
   return withFallback(async () => {
     const supabase = createServiceClient()
+    if (!supabase) return mockData.categories.find((c) => c.slug === slug) || null
+
     const { data, error } = await supabase
       .from('categories')
       .select('*')

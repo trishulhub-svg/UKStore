@@ -49,7 +49,7 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
           Logged in:  Personalized welcome with Shop Now
       ═══════════════════════════════════════════════════════════ */}
       <section className="relative bg-gradient-to-br from-[#16a34a] to-[#15803d] text-white overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/logo.svg')] bg-center bg-no-repeat opacity-5" />
+        <div className="absolute inset-0 bg-center bg-no-repeat opacity-5" style={{ backgroundImage: "url('/logo.svg')" }} />
 
         {user ? (
           /* ── LOGGED IN HERO ── */

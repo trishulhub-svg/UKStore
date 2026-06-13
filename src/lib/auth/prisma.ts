@@ -6,6 +6,7 @@
 // ============================================================
 
 import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 import path from 'path'
 import fs from 'fs'
 
@@ -122,6 +123,17 @@ async function resolveAndEnsureDatabase(): Promise<string> {
         }
 
         console.log('[Prisma] Database schema created successfully at:', dbPath)
+
+        // Seed the admin owner account
+        try {
+          const adminHash = await bcrypt.hash('Admin@2026', 12)
+          await tempClient.$executeRawUnsafe(
+            `INSERT INTO "User" ("id", "email", "name", "passwordHash", "role", "createdAt", "updatedAt") VALUES ('admin-seed-001', 'admin@freshmart.co.uk', 'Store Owner', '${adminHash}', 'owner', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+          )
+          console.log('[Prisma] Admin owner account seeded: admin@freshmart.co.uk / Admin@2026')
+        } catch (seedErr) {
+          console.error('[Prisma] Admin seed error (may already exist):', seedErr)
+        }
       } catch (schemaErr) {
         console.error('[Prisma] Schema creation error:', schemaErr)
       } finally {

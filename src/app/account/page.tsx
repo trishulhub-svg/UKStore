@@ -1,16 +1,13 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getServerUser } from '@/lib/auth/server'
 import { getDefaultStore } from '@/lib/supabase/queries'
 import { AccountClient } from '@/components/customer/account-client'
-import type { Order, Profile } from '@/types'
+import type { Order } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AccountPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getServerUser()
 
   if (!user) {
     redirect('/auth/login?redirect=/account')
@@ -18,41 +15,19 @@ export default async function AccountPage() {
 
   const store = await getDefaultStore()
 
-  // Get user's profile (for role)
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  const userRole = (profile as Profile)?.role || 'customer'
-
-  // Get user's orders
-  let orders: Order[] = []
-  try {
-    const { data: orderData } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('customer_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    if (orderData) {
-      orders = orderData as Order[]
-    }
-  } catch {
-    // Orders table might not exist yet
-  }
+  // Orders require Supabase tables - will be empty when using local auth
+  // In a full setup, these would be fetched from the database
+  const orders: Order[] = []
 
   return (
     <AccountClient
       storeName={store?.name || 'Fresh Mart London'}
       user={{
         id: user.id,
-        email: user.email || '',
-        name: user.user_metadata?.full_name || '',
-        createdAt: user.created_at,
-        role: userRole,
+        email: user.email,
+        name: user.name,
+        createdAt: new Date().toISOString(),
+        role: user.role,
       }}
       orders={orders}
     />

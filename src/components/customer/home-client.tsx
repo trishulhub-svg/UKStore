@@ -8,9 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
 import { formatPrice } from '@/lib/vat'
-import { createClient } from '@/lib/supabase/client'
+import { authGetSession, type AuthUser } from '@/lib/auth-client'
 import { useEffect, useState } from 'react'
-import type { User as SupabaseUser } from '@supabase/supabase-js'
 import type { Store, Category, ProductWithCategory } from '@/types'
 
 interface HomeClientProps {
@@ -32,23 +31,15 @@ const categoryIcons: Record<string, string> = {
 
 export function HomeClient({ store, categories, featuredProducts }: HomeClientProps) {
   const addItem = useCartStore((state) => state.addItem)
-  const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
 
   useEffect(() => {
-    const supabase = createClient()
-
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    authGetSession().then(({ user }) => {
       setUser(user)
     })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
-
-    return () => subscription.unsubscribe()
   }, [])
 
-  const userFirstName = user?.user_metadata?.full_name?.split(' ')[0] || null
+  const userFirstName = user?.name?.split(' ')[0] || null
 
   return (
     <CustomerLayout storeName={store.name}>

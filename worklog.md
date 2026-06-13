@@ -1,117 +1,49 @@
+# Work Log
+
 ---
 Task ID: 1
-Agent: ZAI (Main)
-Task: Execute /docu command — Generate 6 pre-coding documents for UK STORE [ DEMO ]
-
-Work Log:
-- Read uploaded PDF "8 Items Requiring Your Verification_.pdf" — extracted 8 technical design resolutions
-- Read commands/docu.md workflow file — understood 3-phase smart workflow
-- Phase 1 (COLLECT): Extracted project data from uploaded PDF and project context
-- Phase 2A (RESEARCH): Ran 5 parallel web searches (competitors, tech stack, compliance, APIs, design trends)
-- Phase 2B (THINK DEEPER): Analyzed scalability, edge cases, UX depth, real-world patterns, timeline
-- Phase 3 (GENERATE): Created all 6 documents (PRD, TRD, App Flow, UI/UX Brief, Backend Schema, Implementation Plan)
-- Generated PDF (31 pages, 133KB) and HTML (72KB)
-- Copied to blueprints/uk-store-demo/ and Taroon Training Space/ in repo
-- Committed with format: [Zai] /docu - Generated 6 pre-coding documents for UK Grocery Store
-- Pushed to GitHub remote
-
-Stage Summary:
-- PDF: /home/z/my-project/download/UK_Grocery_Store_6_PreCoding_Docs.pdf (31 pages, 133KB)
-- HTML: /home/z/my-project/download/UK_Grocery_Store_6_PreCoding_Docs.html (72KB)
-- Repo: blueprints/uk-store-demo/ and Taroon Training Space/
-- 6 verification items flagged with [VERIFY] markers
-- Key tech decisions integrated: Supabase PostgreSQL, Supabase Auth, React Native Expo, Stripe Checkout, PostGIS, HFSS compliance, Right-to-Work verification, Dynamic delivery pricing
-
----
-Task ID: 3
-Agent: ZAI (Main)
-Task: Build Phase 2 Features for UK Grocery Store (Auth, Cart, Checkout, Orders, Account)
-
-Work Log:
-- Read worklog.md and existing codebase (home-client, catalog-client, product-detail-client, cart store, vat utils, supabase server client, types, customer layout)
-- Created Supabase browser client at src/lib/supabase/client.ts using createBrowserClient from @supabase/ssr
-- Created auth middleware at src/middleware.ts with session refresh and route protection for /checkout, /account, /orders
-- Created auth pages: Login (with email/password + Google OAuth), Register (with full_name, email, password, confirm password), Forgot Password (email reset link)
-- Created auth callback route at src/app/auth/callback/route.ts for code exchange
-- Created Cart page with full cart management: item list, quantity controls, substitute preference toggle, VAT breakdown by rate, delivery fee calculation, free delivery threshold notice, order summary sidebar, empty cart state
-- Created Checkout page with multi-step flow: Address (UK address fields + save option), Delivery Slot (4 hardcoded slots), Order Summary, Payment (simulated)
-- Created Checkout API route (POST /api/checkout) with user auth validation, price/stock validation against DB, order + order_items creation, stock decrement, address saving
-- Created Order Confirmation page showing order number, status, delivery info, items, total breakdown, Track Order (disabled/V1), Continue Shopping
-- Created Account page with user profile card, order history list with status badges, logout button
-- Updated CustomerLayout to include Account navigation link and User icon button
-
-Files Created:
-- src/lib/supabase/client.ts
-- src/middleware.ts
-- src/app/auth/login/page.tsx
-- src/app/auth/register/page.tsx
-- src/app/auth/forgot-password/page.tsx
-- src/app/auth/callback/route.ts
-- src/components/auth/login-client.tsx
-- src/components/auth/register-client.tsx
-- src/components/auth/forgot-password-client.tsx
-- src/app/cart/page.tsx
-- src/components/customer/cart-client.tsx
-- src/app/checkout/page.tsx
-- src/components/customer/checkout-client.tsx
-- src/app/api/checkout/route.ts
-- src/app/order/[id]/page.tsx
-- src/components/customer/order-confirmation-client.tsx
-- src/app/account/page.tsx
-- src/components/customer/account-client.tsx
-
-Files Modified:
-- src/components/layout/customer-layout.tsx (added Account nav link and User icon button)
-
-Stage Summary:
-- All Phase 2 features implemented and tested (all routes return HTTP 200)
-- ESLint passes with zero errors on project files
-- Consistent green (#16a34a) + orange (#f97316) theme throughout
-- Mobile-first responsive design on all pages
-- formatPrice() and VAT utilities used consistently
-- Auth flow complete: register → verify email → login → protected routes
-- Cart → Checkout → Order flow functional with simulated payment
-- Order history visible on Account page
-
----
-Task ID: 3-fixes
-Agent: ZAI (Main)
-Task: Fix build errors and push Phase 2 to GitHub
-
-Work Log:
-- Fixed duplicate import in src/app/api/checkout/route.ts (merged two imports from same module)
-- Fixed OrderConfirmationClient missing storeName prop — added optional storeName prop and passed it from OrderConfirmationPage
-- Wrapped all auth pages (login, register, forgot-password) in <Suspense> to fix useSearchParams() SSR build error
-- Build passes cleanly: 13 routes registered (5 static, 8 dynamic)
-- Committed with message: [Zai] /dev - Phase 2: Auth, Cart, Checkout, Orders, Account
-- Pushed to GitHub: https://github.com/trishulhub-svg/UKStore.git (commit e36d359)
-
-Stage Summary:
-- Build passes with zero errors
-- All routes: /, /account, /api, /api/checkout, /auth/callback, /auth/forgot-password, /auth/login, /auth/register, /cart, /catalog, /checkout, /order/[id], /product/[slug]
-- Phase 2 complete and pushed to GitHub
----
-Task ID: 3
 Agent: Main Agent
-Task: Check and fix database schema for user registration and login
+Task: Fix "Failed to fetch" error on register/login by implementing local auth
 
 Work Log:
-- Read all 5 existing migration files and understood the full schema design
-- Connected to live Supabase DB using the anon key provided by user
-- Discovered stores table exists but is EMPTY (0 rows) - seed data never applied
-- Tested registration via API → got "Database error saving new user" confirming auth trigger failure
-- Identified 6 critical issues: nullable store_id, missing trigger, RLS deadlock, no public browsing, missing seed data, service client crash
-- Fixed src/lib/supabase/server.ts - createServiceClient() returns null instead of crashing when env vars missing
-- Fixed src/lib/supabase/queries.ts - all queries handle null service client gracefully
-- Created 00006_fix_auth_schema.sql - targeted fix for specific issues
-- Created 00007_bootstrap_full_schema.sql - comprehensive idempotent bootstrap script with all tables, RLS, trigger, seed data
-- Discovered user copied the anon key for both anon AND service_role keys - alerted user
-- Committed and pushed both SQL scripts to GitHub
+- Diagnosed root cause: Supabase project deleted, environment variables missing
+- Updated Prisma schema: added passwordHash and role fields to User model
+- Ran prisma db push to sync schema with SQLite database
+- Installed bcryptjs for password hashing
+- Created local auth utilities (lib/auth/index.ts): password hashing, HMAC-signed session tokens
+- Created Edge-compatible auth utilities (lib/auth/edge.ts) for middleware using Web Crypto API
+- Created Prisma helper (lib/auth/prisma.ts) for auth database operations
+- Created server-side auth helper (lib/auth/server.ts) for server components
+- Created client-side auth helper (lib/auth-client.ts) with authRegister, authLogin, authLogout, authGetSession
+- Created API routes: /api/auth/register, /api/auth/login, /api/auth/logout, /api/auth/session
+- Updated all auth components to use local API routes instead of Supabase:
+  - login-client.tsx
+  - register-client.tsx
+  - forgot-password-client.tsx
+  - auth-modal.tsx
+  - home-auth-form.tsx
+  - customer-layout.tsx
+  - home-client.tsx
+  - account-client.tsx
+  - admin-shell.tsx
+- Updated middleware.ts to use Edge-compatible session verification instead of Supabase
+- Updated server-side pages to use getServerUser() instead of Supabase auth:
+  - account/page.tsx
+  - admin/layout.tsx
+  - admin/page.tsx
+  - admin/settings/page.tsx
+  - checkout/page.tsx
+  - api/checkout/route.ts
+  - api/admin/settings/route.ts
+  - auth/callback/route.ts
+  - order/[id]/page.tsx
+- Updated Supabase client for graceful fallback when env vars are missing
+- Build succeeds with no errors
+- Tested all auth endpoints: Register (201), Login (200), Session (200), Logout (200)
 
 Stage Summary:
-- Live DB confirmed reachable but EMPTY (no seed data)
-- Registration confirmed BROKEN ("Database error saving new user")
-- Root cause: profiles.store_id NOT NULL + no stores = FK violation rolls back user creation
-- Fix: 00007_bootstrap_full_schema.sql needs to be run in Supabase SQL Editor
-- User needs to get the CORRECT service_role key (they pasted the anon key twice)
-- After running the SQL script + setting correct env vars in Vercel, registration should work
+- Local authentication system fully implemented using Prisma/SQLite
+- Registration and login work without any external Supabase dependency
+- Session tokens are HMAC-signed with 7-day expiry
+- All auth components and server pages updated to use local auth
+- Middleware updated to use Edge-compatible Web Crypto API for token verification

@@ -5,8 +5,7 @@ import { ShoppingCart, Store, User, LogOut, Menu, X, LogIn, UserPlus } from 'luc
 import { Button } from '@/components/ui/button'
 import { useCartStore } from '@/store/cart'
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import type { User as SupabaseUser } from '@supabase/supabase-js'
+import { authGetSession, authLogout, type AuthUser } from '@/lib/auth-client'
 import { AuthModal } from '@/components/auth/auth-modal'
 
 interface CustomerLayoutProps {
@@ -17,7 +16,7 @@ interface CustomerLayoutProps {
 export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: CustomerLayoutProps) {
   const getTotalItems = useCartStore((state) => state.getTotalItems)
   const [itemCount, setItemCount] = useState(0)
-  const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [authModalView, setAuthModalView] = useState<'login' | 'register'>('login')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -34,28 +33,15 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
     return unsub
   }, [])
 
-  // Listen for auth state changes
+  // Check auth state on mount
   useEffect(() => {
-    const supabase = createClient()
-
-    // Get initial session
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    authGetSession().then(({ user }) => {
       setUser(user)
     })
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      // Close mobile menu on auth change
-      setMobileMenuOpen(false)
-    })
-
-    return () => subscription.unsubscribe()
   }, [])
 
   const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await authLogout()
     setUser(null)
     setMobileMenuOpen(false)
     window.location.href = '/'
@@ -73,7 +59,7 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
     setMobileMenuOpen(false)
   }
 
-  const userFirstName = user?.user_metadata?.full_name?.split(' ')[0] || null
+  const userFirstName = user?.name?.split(' ')[0] || null
 
   return (
     <div className="min-h-screen flex flex-col bg-white">

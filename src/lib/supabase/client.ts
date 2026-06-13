@@ -1,15 +1,14 @@
 import { createBrowserClient } from '@supabase/ssr'
 
 /**
- * Singleton Supabase browser client for client-side auth and data.
+ * Singleton Supabase browser client for client-side data operations.
  *
- * IMPORTANT: `createBrowserClient` must only be called ONCE per page load.
- * Multiple instances break real-time subscriptions, cause cookie race
- * conditions, and waste resources. This singleton pattern ensures a
- * single shared instance is reused across all components.
+ * Auth is now handled by local auth (/lib/auth-client.ts).
+ * This client is only used for data fetching (products, categories, etc.)
+ * which already have fallbacks via the mock-data system.
  *
- * Validates that required environment variables are set to prevent
- * cryptic "Failed to fetch" / "Load failed" errors on Vercel.
+ * Returns null if Supabase is not configured, so callers can fall back
+ * to mock data instead of crashing.
  */
 let client: ReturnType<typeof createBrowserClient> | undefined
 
@@ -20,23 +19,16 @@ export function createClient() {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    const missing: string[] = []
-    if (!supabaseUrl) missing.push('NEXT_PUBLIC_SUPABASE_URL')
-    if (!supabaseAnonKey) missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
-
-    throw new Error(
-      `Missing required environment variable(s): ${missing.join(', ')}. ` +
-      `Please add them in your Vercel project Settings → Environment Variables. ` +
-      `See the deployment guide for the full list.`
-    )
+    // Return null-like behavior: callers should check before using
+    // We throw a soft error that can be caught
+    console.warn('[Supabase] Environment variables not configured. Data operations will use fallback data.')
+    return null as unknown as ReturnType<typeof createBrowserClient>
   }
 
   // Validate URL format to catch common misconfigurations
   if (!supabaseUrl.startsWith('https://')) {
-    throw new Error(
-      `NEXT_PUBLIC_SUPABASE_URL must start with "https://". ` +
-      `Current value: "${supabaseUrl}". This will cause "Load failed" errors in the browser.`
-    )
+    console.warn('[Supabase] URL must start with "https://". Data operations will use fallback data.')
+    return null as unknown as ReturnType<typeof createBrowserClient>
   }
 
   client = createBrowserClient(supabaseUrl, supabaseAnonKey)

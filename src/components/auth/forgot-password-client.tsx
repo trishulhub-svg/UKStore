@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createClient } from '@/lib/supabase/client'
 
 export function ForgotPasswordClient() {
   const [email, setEmail] = useState('')
@@ -20,17 +19,14 @@ export function ForgotPasswordClient() {
     setError(null)
     setLoading(true)
 
+    // Password reset requires email service (SendGrid, etc.)
+    // For local auth, we show a message that the feature requires configuration
     try {
-      const supabase = createClient()
-      const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      })
+      // Simulate a brief delay for UX
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
-      if (authError) {
-        setError(authError.message)
-        return
-      }
-
+      // In a production setup, this would send a reset email
+      // For now, show a helpful message
       setSuccess(true)
     } catch {
       setError('An unexpected error occurred. Please try again.')
@@ -47,9 +43,9 @@ export function ForgotPasswordClient() {
             <div className="mx-auto w-12 h-12 rounded-full bg-[#16a34a]/10 flex items-center justify-center mb-4">
               <Mail className="h-6 w-6 text-[#16a34a]" />
             </div>
-            <CardTitle className="text-2xl font-bold">Check Your Email</CardTitle>
+            <CardTitle className="text-2xl font-bold">Password Reset</CardTitle>
             <CardDescription className="mt-2">
-              If an account exists with <strong>{email}</strong>, you&apos;ll receive a password reset link shortly.
+              Password reset emails require an email service to be configured. Please contact the store owner to reset your password, or create a new account.
             </CardDescription>
           </CardHeader>
           <CardFooter className="justify-center">

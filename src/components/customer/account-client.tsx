@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { CustomerLayout } from '@/components/layout/customer-layout'
-import { createClient } from '@/lib/supabase/client'
+import { authLogout } from '@/lib/auth-client'
 import { formatPrice } from '@/lib/vat'
 import type { Order } from '@/types'
 
@@ -57,8 +57,7 @@ export function AccountClient({ storeName, user, orders }: AccountClientProps) {
   const handleLogout = async () => {
     setLoggingOut(true)
     try {
-      const supabase = createClient()
-      await supabase.auth.signOut()
+      await authLogout()
       router.push('/')
       router.refresh()
     } catch {

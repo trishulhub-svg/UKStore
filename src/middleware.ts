@@ -1,44 +1,17 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { verifySessionTokenEdge, SESSION_COOKIE_NAME } from '@/lib/auth/edge'
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
-
-  let user = null
+  let user: { uid: string; email: string; role: string; name: string } | null = null
 
   try {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value)
-            )
-            supabaseResponse = NextResponse.next({ request })
-            cookiesToSet.forEach(({ name, value, options }) =>
-              supabaseResponse.cookies.set(name, value, options)
-            )
-          },
-        },
-      }
-    )
+    const token = request.cookies.get(SESSION_COOKIE_NAME)?.value
 
-    // Refresh the session
-    const {
-      data: { user: sessionUser },
-    } = await supabase.auth.getUser()
-
-    user = sessionUser
+    if (token) {
+      user = await verifySessionTokenEdge(token)
+    }
   } catch (error) {
-    // If Supabase is unreachable (paused project, network issue, etc.),
-    // don't crash the entire site. Let the page render without auth.
-    // Protected routes will still show, but the user won't be authenticated.
-    console.error('[Middleware] Supabase unreachable:', error instanceof Error ? error.message : error)
+    console.error('[Middleware] Session verification error:', error instanceof Error ? error.message : error)
   }
 
   // Protect authenticated routes (customer)
@@ -69,7 +42,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 
-  return supabaseResponse
+  return NextResponse.next()
 }
 
 export const config = {

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getServerUser } from '@/lib/auth/server'
 import { getDefaultStore } from '@/lib/supabase/queries'
 import { CheckoutClient } from '@/components/customer/checkout-client'
 import type { Address } from '@/types'
@@ -7,8 +7,7 @@ import type { Address } from '@/types'
 export const dynamic = 'force-dynamic'
 
 export default async function CheckoutPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getServerUser()
 
   if (!user) {
     redirect('/auth/login?redirect=/checkout')
@@ -27,26 +26,13 @@ export default async function CheckoutPage() {
     )
   }
 
-  // Get user's saved addresses
-  let addresses: Address[] = []
-  try {
-    const { data: addressData } = await supabase
-      .from('addresses')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('is_default', { ascending: false })
-
-    if (addressData) {
-      addresses = addressData as Address[]
-    }
-  } catch {
-    // Addresses table might not exist yet, continue with empty array
-  }
+  // Addresses require Supabase tables - will be empty when using local auth
+  const addresses: Address[] = []
 
   return (
     <CheckoutClient
       store={store}
-      user={{ id: user.id, email: user.email || '', name: user.user_metadata?.full_name || '' }}
+      user={{ id: user.id, email: user.email, name: user.name }}
       addresses={addresses}
     />
   )

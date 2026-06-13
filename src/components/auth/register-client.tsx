@@ -2,14 +2,16 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Store, Mail, Lock, Eye, EyeOff, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createClient } from '@/lib/supabase/client'
+import { authRegister } from '@/lib/auth-client'
 
 export function RegisterClient() {
+  const router = useRouter()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -36,19 +38,18 @@ export function RegisterClient() {
     setLoading(true)
 
     try {
-      const supabase = createClient()
-      const { error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
-      })
+      const { error: authError, user } = await authRegister(email, password, fullName)
 
       if (authError) {
-        setError(authError.message)
+        setError(authError)
+        return
+      }
+
+      // If registration succeeded and we have a user, we're automatically logged in
+      if (user) {
+        // Redirect to home since we're auto-logged in
+        router.push('/')
+        router.refresh()
         return
       }
 
@@ -68,15 +69,15 @@ export function RegisterClient() {
             <div className="mx-auto w-12 h-12 rounded-full bg-[#16a34a]/10 flex items-center justify-center mb-4">
               <Mail className="h-6 w-6 text-[#16a34a]" />
             </div>
-            <CardTitle className="text-2xl font-bold">Check Your Email</CardTitle>
+            <CardTitle className="text-2xl font-bold">Account Created!</CardTitle>
             <CardDescription className="mt-2">
-              We&apos;ve sent a verification link to <strong>{email}</strong>. Please check your email and click the link to verify your account.
+              Your account has been created successfully. You can now sign in with your credentials.
             </CardDescription>
           </CardHeader>
           <CardFooter className="justify-center">
             <Link href="/auth/login">
               <Button variant="outline" className="mt-2">
-                Back to Login
+                Go to Login
               </Button>
             </Link>
           </CardFooter>

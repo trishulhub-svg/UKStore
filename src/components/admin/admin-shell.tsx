@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Store, Settings, LayoutDashboard, ChevronRight, User, LogOut, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { createClient } from '@/lib/supabase/client'
+import { authLogout } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/types'
 
@@ -25,8 +25,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
   const router = useRouter()
 
   const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await authLogout()
     router.push('/')
     router.refresh()
   }

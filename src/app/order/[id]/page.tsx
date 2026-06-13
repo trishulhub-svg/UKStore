@@ -15,6 +15,11 @@ export default async function OrderConfirmationPage({ params }: OrderPageProps) 
   const supabase = createServiceClient()
   const store = await getDefaultStore()
 
+  // If Supabase is not available, show a not-found page
+  if (!supabase) {
+    notFound()
+  }
+
   // Fetch the order
   const { data: order, error: orderError } = await supabase
     .from('orders')

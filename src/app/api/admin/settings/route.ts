@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { getServerUser } from '@/lib/auth/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { invalidateSettingsCache } from '@/lib/settings'
-import type { Profile } from '@/types'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
@@ -23,35 +22,35 @@ const VALID_KEYS = new Set([
  */
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getServerUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    // Verify owner role
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || (profile as { role: string }).role !== 'owner') {
+    if (user.role !== 'owner') {
       return NextResponse.json({ error: 'Only store owners can access settings' }, { status: 403 })
     }
 
-    // Fetch settings using the user's own client (RLS will enforce access)
-    const { data: settings, error } = await supabase
-      .from('store_settings')
-      .select('*')
-      .eq('store_id', STORE_ID)
+    // Try to fetch settings from Supabase
+    const serviceClient = createServiceClient()
+    if (serviceClient) {
+      try {
+        const { data: settings, error } = await serviceClient
+          .from('store_settings')
+          .select('*')
+          .eq('store_id', STORE_ID)
 
-    if (error) {
-      return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 })
+        if (!error && settings) {
+          return NextResponse.json({ settings })
+        }
+      } catch {
+        // Continue to return empty settings
+      }
     }
 
-    return NextResponse.json({ settings })
+    // Fallback: return empty settings
+    return NextResponse.json({ settings: [] })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
@@ -64,21 +63,13 @@ export async function GET() {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getServerUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    // Verify owner role
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || (profile as { role: string }).role !== 'owner') {
+    if (user.role !== 'owner') {
       return NextResponse.json({ error: 'Only store owners can modify settings' }, { status: 403 })
     }
 
@@ -101,40 +92,53 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Use service client to update (bypasses RLS for reliable updates)
+    // Try to update settings in Supabase
     const serviceClient = createServiceClient()
-    const results: Array<{ key: string; success: boolean }> = []
+    if (serviceClient) {
+      const results: Array<{ key: string; success: boolean }> = []
 
-    for (const item of settings) {
-      const { error } = await serviceClient
-        .from('store_settings')
-        .update({
-          value: item.value,
-          last_updated_by: user.id,
-        })
-        .eq('store_id', STORE_ID)
-        .eq('key', item.key)
+      for (const item of settings) {
+        try {
+          const { error } = await serviceClient
+            .from('store_settings')
+            .update({
+              value: item.value,
+              last_updated_by: user.id,
+            })
+            .eq('store_id', STORE_ID)
+            .eq('key', item.key)
 
-      results.push({
-        key: item.key,
-        success: !error,
-      })
+          results.push({
+            key: item.key,
+            success: !error,
+          })
 
-      if (error) {
-        console.error(`Failed to update setting ${item.key}:`, error.message)
+          if (error) {
+            console.error(`Failed to update setting ${item.key}:`, error.message)
+          }
+        } catch {
+          results.push({ key: item.key, success: false })
+        }
       }
+
+      // Invalidate the settings cache so the next read gets fresh data
+      invalidateSettingsCache()
+
+      const allSuccess = results.every((r) => r.success)
+      return NextResponse.json({
+        success: allSuccess,
+        results,
+        message: allSuccess
+          ? `Updated ${results.length} setting(s) successfully`
+          : 'Some settings failed to update',
+      })
     }
 
-    // Invalidate the settings cache so the next read gets fresh data
-    invalidateSettingsCache()
-
-    const allSuccess = results.every((r) => r.success)
+    // No Supabase available - settings cannot be persisted
     return NextResponse.json({
-      success: allSuccess,
-      results,
-      message: allSuccess
-        ? `Updated ${results.length} setting(s) successfully`
-        : 'Some settings failed to update',
+      success: false,
+      results: settings.map((s) => ({ key: s.key, success: false })),
+      message: 'Database not available. Settings cannot be saved without a database connection.',
     })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

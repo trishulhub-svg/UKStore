@@ -220,79 +220,159 @@ export default function AdminPromotionsPage() {
               <p className="text-gray-500">No promotions yet</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Type</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Value</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Dates</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">HFSS</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Active</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {promotions.map((p) => (
-                    <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4">
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Type</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Value</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Dates</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">HFSS</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Active</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {promotions.map((p) => (
+                      <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-4">
+                          <div>
+                            <p className="font-medium text-gray-900">{p.name}</p>
+                            {p.code && (
+                              <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">{p.code}</code>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="outline" className="text-xs">
+                            {p.discountType === 'percentage' ? '% Off' : '£ Off'}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 font-medium">
+                          {p.discountType === 'percentage'
+                            ? `${p.discountValue}%`
+                            : formatPrice(p.discountValue)}
+                        </td>
+                        <td className="py-3 px-4 text-xs text-gray-500">
+                          {new Date(p.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — {new Date(p.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </td>
+                        <td className="py-3 px-4">
+                          {p.excludesHfss ? (
+                            <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700">Excludes</Badge>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <button onClick={() => handleToggleActive(p.id, !p.isActive)}>
+                            {p.isActive ? (
+                              <ToggleRight className="h-5 w-5 text-green-600" />
+                            ) : (
+                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(p)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-3 p-4">
+                {promotions.map((p) => (
+                  <Card key={p.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
                         <div>
                           <p className="font-medium text-gray-900">{p.name}</p>
                           {p.code && (
-                            <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">{p.code}</code>
+                            <code className="text-xs bg-gray-100 px-2 py-0.5 rounded mt-1 inline-block">{p.code}</code>
                           )}
                         </div>
-                      </td>
-                      <td className="py-3 px-4">
                         <Badge variant="outline" className="text-xs">
                           {p.discountType === 'percentage' ? '% Off' : '£ Off'}
                         </Badge>
-                      </td>
-                      <td className="py-3 px-4 font-medium">
-                        {p.discountType === 'percentage'
-                          ? `${p.discountValue}%`
-                          : formatPrice(p.discountValue)}
-                      </td>
-                      <td className="py-3 px-4 text-xs text-gray-500">
-                        {new Date(p.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — {new Date(p.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </td>
-                      <td className="py-3 px-4">
-                        {p.excludesHfss ? (
-                          <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700">Excludes</Badge>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <button onClick={() => handleToggleActive(p.id, !p.isActive)}>
+                      </div>
+                      <div className="space-y-2 mb-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Value</span>
+                          <span className="font-medium">
+                            {p.discountType === 'percentage'
+                              ? `${p.discountValue}%`
+                              : formatPrice(p.discountValue)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Start</span>
+                          <span className="font-medium text-sm">
+                            {new Date(p.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">End</span>
+                          <span className="font-medium text-sm">
+                            {new Date(p.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">HFSS</span>
+                          {p.excludesHfss ? (
+                            <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700">Excludes</Badge>
+                          ) : (
+                            <span className="text-xs text-gray-400">Included</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mb-3">
+                        <button
+                          onClick={() => handleToggleActive(p.id, !p.isActive)}
+                          className="flex items-center gap-1.5 min-h-[44px]"
+                        >
                           {p.isActive ? (
                             <ToggleRight className="h-5 w-5 text-green-600" />
                           ) : (
                             <ToggleLeft className="h-5 w-5 text-gray-300" />
                           )}
+                          <span className="text-sm">{p.isActive ? 'Active' : 'Inactive'}</span>
                         </button>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(p)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleOpenEdit(p)}>
+                          <Pencil className="h-4 w-4 mr-1" /> Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 min-h-10 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" /> Delete
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

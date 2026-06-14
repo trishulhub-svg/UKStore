@@ -227,7 +227,7 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
 
       {/* Save Bar (sticky) */}
       {hasChanges && (
-        <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm -mx-6 px-6 py-3 mb-6 flex items-center justify-between">
+        <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm -mx-4 px-4 sm:-mx-6 sm:px-6 py-3 mb-6 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm">
             <RefreshCw className="h-4 w-4 text-amber-500" />
             <span className="text-gray-700">
@@ -290,8 +290,8 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
                   <div key={setting.key}>
                     {index > 0 && <Separator className="mb-6" />}
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor={setting.key} className="text-sm font-medium text-gray-700">
+                      <div className="flex flex-wrap items-center justify-between gap-1">
+                        <Label htmlFor={setting.key} className="text-sm font-medium text-gray-700 min-h-[44px] flex items-center">
                           {label}
                           {isSecret && (
                             <Badge variant="secondary" className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0">
@@ -328,7 +328,7 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
                           placeholder={placeholder}
                           value={formValues[setting.key] || ''}
                           onChange={(e) => handleValueChange(setting.key, e.target.value)}
-                          className={`${hasError ? 'border-red-300 focus-visible:ring-red-500' : ''} ${isChanged ? 'border-blue-300' : ''}`}
+                          className={`${hasError ? 'border-red-300 focus-visible:ring-red-500' : ''} ${isChanged ? 'border-blue-300' : ''} h-11`}
                           autoComplete="off"
                           data-1p-ignore
                         />
@@ -336,7 +336,7 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
                           <button
                             type="button"
                             onClick={() => toggleVisibility(setting.key)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center"
                           >
                             {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>

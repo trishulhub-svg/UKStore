@@ -47,6 +47,14 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AdminAnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   useEffect(() => {
     fetch('/api/admin/analytics')
@@ -100,7 +108,7 @@ export default function AdminAnalyticsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Total Revenue</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{formatPrice(summary.totalRevenue)}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{formatPrice(summary.totalRevenue)}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
                 <DollarSign className="h-5 w-5 text-green-600" />
@@ -113,7 +121,7 @@ export default function AdminAnalyticsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Total Orders</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{summary.totalOrders}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{summary.totalOrders}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
                 <ShoppingBag className="h-5 w-5 text-blue-600" />
@@ -126,7 +134,7 @@ export default function AdminAnalyticsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Customers</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{summary.totalCustomers}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{summary.totalCustomers}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center">
                 <Users className="h-5 w-5 text-purple-600" />
@@ -139,7 +147,7 @@ export default function AdminAnalyticsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Avg Delivery</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{summary.avgDeliveryMinutes} min</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{summary.avgDeliveryMinutes} min</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center">
                 <Truck className="h-5 w-5 text-orange-600" />
@@ -162,22 +170,22 @@ export default function AdminAnalyticsPage() {
               Revenue (Last 30 Days)
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-hidden">
             {revenueChart.length === 0 ? (
               <div className="text-center py-8 text-gray-500 text-sm">No revenue data yet</div>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={isMobile ? 220 : 300}>
                 <LineChart data={revenueChart}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: isMobile ? 9 : 11 }}
                     tickFormatter={(v: string) => {
                       const d = new Date(v)
                       return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
                     }}
                   />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `£${v}`} />
+                  <YAxis tick={{ fontSize: isMobile ? 9 : 11 }} width={isMobile ? 40 : 60} tickFormatter={(v: number) => `£${v}`} />
                   <Tooltip
                     formatter={(value: number) => [formatPrice(value), 'Revenue']}
                     labelFormatter={(label: string) => new Date(label).toLocaleDateString('en-GB', {
@@ -206,22 +214,27 @@ export default function AdminAnalyticsPage() {
               Orders by Status
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-hidden">
             {statusPieChart.length === 0 ? (
               <div className="text-center py-8 text-gray-500 text-sm">No order data yet</div>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={isMobile ? 220 : 300}>
                 <PieChart>
                   <Pie
                     data={statusPieChart}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
+                    innerRadius={isMobile ? 40 : 60}
+                    outerRadius={isMobile ? 70 : 100}
                     paddingAngle={3}
                     dataKey="count"
                     nameKey="status"
-                    label={({ status, count }) => `${status.replace(/_/g, ' ')}: ${count}`}
+                    label={({ status, count }) => {
+                      const label = isMobile
+                        ? status.length > 8 ? status.substring(0, 7) + '…' : status
+                        : status.replace(/_/g, ' ')
+                      return `${label}: ${count}`
+                    }}
                   >
                     {statusPieChart.map((entry) => (
                       <Cell
@@ -230,8 +243,8 @@ export default function AdminAnalyticsPage() {
                       />
                     ))}
                   </Pie>
-                  <Tooltip />
-                  <Legend />
+                  <Tooltip formatter={(value: number, name: string) => [value, name.replace(/_/g, ' ')]} />
+                  <Legend formatter={(value: string) => value.replace(/_/g, ' ')} wrapperStyle={{ fontSize: isMobile ? 10 : 12 }} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -247,23 +260,26 @@ export default function AdminAnalyticsPage() {
             Top Selling Products
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-hidden">
           {topProductsChart.length === 0 ? (
             <div className="text-center py-8 text-gray-500 text-sm">No sales data yet</div>
           ) : (
-            <ResponsiveContainer width="100%" height={350}>
+            <ResponsiveContainer width="100%" height={isMobile ? 260 : 350}>
               <BarChart data={topProductsChart} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <XAxis type="number" tick={{ fontSize: isMobile ? 9 : 11 }} />
                 <YAxis
                   type="category"
                   dataKey="name"
-                  tick={{ fontSize: 11 }}
-                  width={120}
-                  tickFormatter={(v: string) => v.length > 15 ? v.substring(0, 15) + '…' : v}
+                  tick={{ fontSize: isMobile ? 9 : 11 }}
+                  width={isMobile ? 70 : 120}
+                  tickFormatter={(v: string) => {
+                    const maxLen = isMobile ? 8 : 15
+                    return v.length > maxLen ? v.substring(0, maxLen) + '…' : v
+                  }}
                 />
                 <Tooltip />
-                <Legend />
+                <Legend wrapperStyle={{ fontSize: isMobile ? 10 : 12 }} />
                 <Bar dataKey="quantity" fill="#16a34a" name="Quantity" radius={[0, 4, 4, 0]} />
                 <Bar dataKey="revenue" fill="#3b82f6" name="Revenue (£)" radius={[0, 4, 4, 0]} />
               </BarChart>

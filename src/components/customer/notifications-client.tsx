@@ -116,7 +116,7 @@ export function NotificationsClient() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-10 w-10">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -136,7 +136,7 @@ export function NotificationsClient() {
 
       {/* Filter Tabs */}
       <Tabs value={activeFilter} onValueChange={setActiveFilter}>
-        <TabsList className="w-full">
+        <TabsList className="w-full overflow-x-auto">
           <TabsTrigger value="all" className="flex-1">
             All
           </TabsTrigger>

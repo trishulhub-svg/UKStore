@@ -134,25 +134,25 @@ export function DriverDashboardClient() {
   return (
     <div className="p-4 space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="border-0 shadow-sm">
           <CardContent className="p-3 text-center">
             <CheckCircle2 className="h-5 w-5 text-[#16a34a] mx-auto mb-1" />
-            <p className="text-2xl font-bold text-gray-900">{stats.completedToday}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.completedToday}</p>
             <p className="text-[10px] text-gray-500 font-medium">Today</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm">
           <CardContent className="p-3 text-center">
             <ShoppingCart className="h-5 w-5 text-amber-500 mx-auto mb-1" />
-            <p className="text-2xl font-bold text-gray-900">{stats.pickingCount}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.pickingCount}</p>
             <p className="text-[10px] text-gray-500 font-medium">Picking</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm">
           <CardContent className="p-3 text-center">
             <Package className="h-5 w-5 text-blue-500 mx-auto mb-1" />
-            <p className="text-2xl font-bold text-gray-900">{stats.completedThisWeek}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.completedThisWeek}</p>
             <p className="text-[10px] text-gray-500 font-medium">This Week</p>
           </CardContent>
         </Card>
@@ -262,7 +262,7 @@ export function DriverDashboardClient() {
                   </div>
                   <Button
                     onClick={() => handleClaimOrder(order.id)}
-                    className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white text-sm h-9"
+                    className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white text-sm h-10"
                   >
                     Claim Order
                   </Button>

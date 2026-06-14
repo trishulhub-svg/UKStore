@@ -142,7 +142,7 @@ export function OrdersClient() {
     <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-8 w-8">
+        <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-10 w-10">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
@@ -153,7 +153,7 @@ export function OrdersClient() {
 
       {/* Filter Tabs */}
       <Tabs value={activeFilter} onValueChange={setActiveFilter}>
-        <TabsList className="w-full">
+        <TabsList className="w-full overflow-x-auto">
           <TabsTrigger value="all" className="flex-1">All</TabsTrigger>
           <TabsTrigger value="placed" className="flex-1">Placed</TabsTrigger>
           <TabsTrigger value="out_for_delivery" className="flex-1">Active</TabsTrigger>
@@ -222,14 +222,14 @@ export function OrdersClient() {
                             size="sm"
                             onClick={(e) => handleReorder(e, order.id)}
                             disabled={reorderLoading === order.id}
-                            className="h-7 text-xs border-[#16a34a] text-[#16a34a] hover:bg-[#16a34a] hover:text-white"
+                            className="h-9 min-h-[36px] text-xs border-[#16a34a] text-[#16a34a] hover:bg-[#16a34a] hover:text-white"
                           >
                             <RotateCcw className="h-3 w-3 mr-1" />
                             {reorderLoading === order.id ? 'Adding...' : 'Reorder'}
                           </Button>
                         )}
                         <Link href={`/orders/${order.id}/track`}>
-                          <Button variant="ghost" size="sm" className="h-7 text-xs text-gray-500">
+                          <Button variant="ghost" size="sm" className="h-9 min-h-[36px] text-xs text-gray-500">
                             View
                             <ChevronRight className="h-3 w-3 ml-0.5" />
                           </Button>

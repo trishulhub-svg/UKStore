@@ -239,7 +239,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
                 <div key={step.id} className="flex items-center flex-1 last:flex-none">
                   <div className="flex flex-col items-center">
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
+                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
                         isCompleted
                           ? 'bg-[#16a34a] border-[#16a34a] text-white'
                           : isCurrent
@@ -247,10 +247,10 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
                           : 'bg-white border-gray-200 text-gray-400'
                       }`}
                     >
-                      {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                      {isCompleted ? <Check className="h-4 w-4 sm:h-5 sm:w-5" /> : <Icon className="h-4 w-4 sm:h-5 sm:w-5" />}
                     </div>
                     <span
-                      className={`text-xs mt-1.5 font-medium ${
+                      className={`hidden sm:block text-xs mt-1.5 font-medium ${
                         isCurrent ? 'text-[#16a34a]' : isCompleted ? 'text-gray-700' : 'text-gray-400'
                       }`}
                     >
@@ -259,7 +259,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
                   </div>
                   {index < steps.length - 1 && (
                     <div
-                      className={`flex-1 h-0.5 mx-2 mt-[-1.25rem] ${
+                      className={`flex-1 h-0.5 mx-1 sm:mx-2 mt-[-0.75rem] sm:mt-[-1.25rem] ${
                         isCompleted ? 'bg-[#16a34a]' : 'bg-gray-200'
                       }`}
                     />

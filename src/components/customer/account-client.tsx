@@ -143,7 +143,7 @@ export function AccountClient({ storeName, user, orders }: AccountClientProps) {
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {orders.map((order) => (
                       <Link key={order.id} href={`/order/${order.id}`}>
-                        <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:border-[#16a34a]/30 hover:shadow-sm transition-all cursor-pointer">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg border border-gray-200 hover:border-[#16a34a]/30 hover:shadow-sm transition-all cursor-pointer gap-2">
                           <div className="flex items-center gap-4">
                             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
                               <Package className="h-5 w-5 text-gray-500" />
@@ -169,7 +169,7 @@ export function AccountClient({ storeName, user, orders }: AccountClientProps) {
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3 sm:ml-auto">
                             <Badge
                               variant="outline"
                               className={`text-xs ${statusColors[order.status] || 'bg-gray-50 text-gray-700'}`}

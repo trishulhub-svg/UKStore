@@ -138,49 +138,101 @@ export default function AdminCustomersPage() {
               <p className="text-gray-500">No customers found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Email</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Orders</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Total Spent</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Joined</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customers.map((c) => (
-                    <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium text-gray-900">
-                        {c.name || 'N/A'}
-                        {!c.isActive && (
-                          <Badge variant="outline" className="ml-2 text-xs text-gray-400">Inactive</Badge>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-gray-500">{c.email}</td>
-                      <td className="py-3 px-4">
-                        <Badge variant="secondary" className="text-xs">{c.orderCount}</Badge>
-                      </td>
-                      <td className="py-3 px-4 font-medium">{formatPrice(c.totalSpent)}</td>
-                      <td className="py-3 px-4 text-gray-500 text-xs">
-                        {new Date(c.createdAt).toLocaleDateString('en-GB', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => handleViewDetail(c.id)}>
-                          <Eye className="h-4 w-4 mr-1" /> View
-                        </Button>
-                      </td>
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Email</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Orders</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Total Spent</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Joined</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {customers.map((c) => (
+                      <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-4 font-medium text-gray-900">
+                          {c.name || 'N/A'}
+                          {!c.isActive && (
+                            <Badge variant="outline" className="ml-2 text-xs text-gray-400">Inactive</Badge>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-gray-500">{c.email}</td>
+                        <td className="py-3 px-4">
+                          <Badge variant="secondary" className="text-xs">{c.orderCount}</Badge>
+                        </td>
+                        <td className="py-3 px-4 font-medium">{formatPrice(c.totalSpent)}</td>
+                        <td className="py-3 px-4 text-gray-500 text-xs">
+                          {new Date(c.createdAt).toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <Button variant="ghost" size="sm" onClick={() => handleViewDetail(c.id)}>
+                            <Eye className="h-4 w-4 mr-1" /> View
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-3 p-4">
+                {customers.map((c) => (
+                  <Card key={c.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {c.name || 'N/A'}
+                          </p>
+                          {!c.isActive && (
+                            <Badge variant="outline" className="text-xs text-gray-400 mt-1">Inactive</Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2 mb-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Email</span>
+                          <span className="font-medium text-sm">{c.email}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Orders</span>
+                          <Badge variant="secondary" className="text-xs">{c.orderCount}</Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Total Spent</span>
+                          <span className="font-medium">{formatPrice(c.totalSpent)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Joined</span>
+                          <span className="font-medium text-sm">
+                            {new Date(c.createdAt).toLocaleDateString('en-GB', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleViewDetail(c.id)}>
+                          <Eye className="h-4 w-4 mr-1" /> View Details
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

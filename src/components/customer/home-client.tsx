@@ -86,7 +86,7 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
               <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg mx-auto">
                 Order from {store.name} and get same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
               </p>
-              <div className="mt-6 flex items-center justify-center gap-4 text-sm text-green-200">
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm sm:gap-4 text-green-200">
                 <span className="flex items-center gap-1.5"><Truck className="h-4 w-4" /> Same-Day Delivery</span>
                 <span className="flex items-center gap-1.5"><Leaf className="h-4 w-4" /> Fresh & Local</span>
                 <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> Order by 2pm</span>
@@ -145,7 +145,7 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
       {/* Live Categories Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Shop by Category</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Shop by Category</h2>
           <Link href="/catalog" className="text-sm font-medium text-[#16a34a] hover:underline">
             View All <ChevronRight className="inline h-3 w-3" />
           </Link>
@@ -226,7 +226,7 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
                       </span>
                       <Button
                         size="sm"
-                        className="bg-[#f97316] hover:bg-[#ea580c] text-white h-8 px-3 text-xs"
+                        className="bg-[#f97316] hover:bg-[#ea580c] text-white h-10 px-3 text-xs"
                         onClick={() => addItem(product)}
                       >
                         <ShoppingCart className="h-3 w-3 mr-1" />

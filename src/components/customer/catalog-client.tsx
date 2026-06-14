@@ -162,7 +162,7 @@ export function CatalogClient({
                 <SlidersHorizontal className="h-4 w-4" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-72">
+            <SheetContent side="left" className="w-[280px] sm:w-72">
               <SheetTitle className="text-lg font-semibold mb-4">Categories</SheetTitle>
               <CategorySidebar
                 categories={categories}
@@ -235,7 +235,7 @@ export function CatalogClient({
                 </Button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                 {products.map((product) => (
                   <Card key={product.id} className="group hover:shadow-md transition-all duration-200 overflow-hidden">
                     <Link href={`/product/${product.slug}`}>
@@ -289,14 +289,14 @@ export function CatalogClient({
                         {product.stock_quantity > 0 ? (
                           <Button
                             size="sm"
-                            className="bg-[#f97316] hover:bg-[#ea580c] text-white h-8 px-3 text-xs"
+                            className="bg-[#f97316] hover:bg-[#ea580c] text-white h-10 px-3 text-xs"
                             onClick={() => addItem(product)}
                           >
                             <ShoppingCart className="h-3 w-3 mr-1" />
                             Add
                           </Button>
                         ) : (
-                          <Button size="sm" disabled className="h-8 px-3 text-xs">
+                          <Button size="sm" disabled className="h-10 px-3 text-xs">
                             Sold Out
                           </Button>
                         )}

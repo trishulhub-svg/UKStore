@@ -289,84 +289,155 @@ export default function AdminProductsPage() {
               <p className="text-gray-500">No products found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">
-                      <button onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-gray-700">
-                        Name <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Category</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">
-                      <button onClick={() => toggleSort('price')} className="flex items-center gap-1 hover:text-gray-700">
-                        Price <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">VAT</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">HFSS</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">
-                      <button onClick={() => toggleSort('stock')} className="flex items-center gap-1 hover:text-gray-700">
-                        Stock <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Available</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((p) => (
-                    <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium text-gray-900">{p.name}</td>
-                      <td className="py-3 px-4">
-                        <Badge variant="secondary" className="text-xs">{p.category.name}</Badge>
-                      </td>
-                      <td className="py-3 px-4">{formatPrice(p.price)}</td>
-                      <td className="py-3 px-4 text-gray-500 text-xs">{getVatRateLabel(p.vatRate)}</td>
-                      <td className="py-3 px-4">
-                        <button onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}>
-                          {p.isHfss ? (
-                            <ToggleRight className="h-5 w-5 text-amber-500" />
-                          ) : (
-                            <ToggleLeft className="h-5 w-5 text-gray-300" />
-                          )}
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+                        <button onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-gray-700">
+                          Name <ArrowUpDown className="h-3 w-3" />
                         </button>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={p.stockQuantity <= 5 ? 'text-red-600 font-medium' : ''}>
-                          {p.stockQuantity}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <button onClick={() => handleToggle(p.id, 'isAvailable', !p.isAvailable)}>
-                          {p.isAvailable ? (
-                            <ToggleRight className="h-5 w-5 text-green-600" />
-                          ) : (
-                            <ToggleLeft className="h-5 w-5 text-gray-300" />
-                          )}
+                      </th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Category</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+                        <button onClick={() => toggleSort('price')} className="flex items-center gap-1 hover:text-gray-700">
+                          Price <ArrowUpDown className="h-3 w-3" />
                         </button>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(p)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
+                      </th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">VAT</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">HFSS</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+                        <button onClick={() => toggleSort('stock')} className="flex items-center gap-1 hover:text-gray-700">
+                          Stock <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Available</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {products.map((p) => (
+                      <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-4 font-medium text-gray-900">{p.name}</td>
+                        <td className="py-3 px-4">
+                          <Badge variant="secondary" className="text-xs">{p.category.name}</Badge>
+                        </td>
+                        <td className="py-3 px-4">{formatPrice(p.price)}</td>
+                        <td className="py-3 px-4 text-gray-500 text-xs">{getVatRateLabel(p.vatRate)}</td>
+                        <td className="py-3 px-4">
+                          <button onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}>
+                            {p.isHfss ? (
+                              <ToggleRight className="h-5 w-5 text-amber-500" />
+                            ) : (
+                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={p.stockQuantity <= 5 ? 'text-red-600 font-medium' : ''}>
+                            {p.stockQuantity}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <button onClick={() => handleToggle(p.id, 'isAvailable', !p.isAvailable)}>
+                            {p.isAvailable ? (
+                              <ToggleRight className="h-5 w-5 text-green-600" />
+                            ) : (
+                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(p)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-3 p-4">
+                {products.map((p) => (
+                  <Card key={p.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="font-medium text-gray-900">{p.name}</p>
+                          <Badge variant="secondary" className="text-xs mt-1">{p.category.name}</Badge>
+                        </div>
+                        <span className={`text-sm ${p.stockQuantity <= 5 ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                          Stock: {p.stockQuantity}
+                        </span>
+                      </div>
+                      <div className="space-y-2 mb-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Price</span>
+                          <span className="font-medium">{formatPrice(p.price)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">VAT Rate</span>
+                          <span className="font-medium">{getVatRateLabel(p.vatRate)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleToggle(p.id, 'isAvailable', !p.isAvailable)}
+                            className="flex items-center gap-1.5 min-h-[44px]"
+                          >
+                            {p.isAvailable ? (
+                              <ToggleRight className="h-5 w-5 text-green-600" />
+                            ) : (
+                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+                            )}
+                            <span className="text-sm">Available</span>
+                          </button>
+                          <button
+                            onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}
+                            className="flex items-center gap-1.5 min-h-[44px]"
+                          >
+                            {p.isHfss ? (
+                              <ToggleRight className="h-5 w-5 text-amber-500" />
+                            ) : (
+                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+                            )}
+                            <span className="text-sm">HFSS</span>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleOpenEdit(p)}>
+                          <Pencil className="h-4 w-4 mr-1" /> Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 min-h-10 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" /> Delete
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -216,74 +216,143 @@ export default function AdminDriversPage() {
               <p className="text-gray-500">No drivers found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Email</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Vehicle</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Verification</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Deliveries</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {drivers.map((d) => {
-                    const VIcon = verificationIcons[d.driverProfile?.verificationStatus || 'pending'] || Clock
-                    return (
-                      <tr key={d.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-3 px-4 font-medium text-gray-900">{d.name || 'N/A'}</td>
-                        <td className="py-3 px-4 text-gray-500">{d.email}</td>
-                        <td className="py-3 px-4 text-gray-500 capitalize">{d.driverProfile?.vehicleType || '-'}</td>
-                        <td className="py-3 px-4">
-                          <Badge
-                            variant="secondary"
-                            className={`text-xs ${verificationColors[d.driverProfile?.verificationStatus || 'pending']}`}
-                          >
-                            <VIcon className="h-3 w-3 mr-1" />
-                            {d.driverProfile?.verificationStatus || 'pending'}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4">{d._count.drivenOrders}</td>
-                        <td className="py-3 px-4">
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Email</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Vehicle</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Verification</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Deliveries</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drivers.map((d) => {
+                      const VIcon = verificationIcons[d.driverProfile?.verificationStatus || 'pending'] || Clock
+                      return (
+                        <tr key={d.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-3 px-4 font-medium text-gray-900">{d.name || 'N/A'}</td>
+                          <td className="py-3 px-4 text-gray-500">{d.email}</td>
+                          <td className="py-3 px-4 text-gray-500 capitalize">{d.driverProfile?.vehicleType || '-'}</td>
+                          <td className="py-3 px-4">
+                            <Badge
+                              variant="secondary"
+                              className={`text-xs ${verificationColors[d.driverProfile?.verificationStatus || 'pending']}`}
+                            >
+                              <VIcon className="h-3 w-3 mr-1" />
+                              {d.driverProfile?.verificationStatus || 'pending'}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4">{d._count.drivenOrders}</td>
+                          <td className="py-3 px-4">
+                            <Badge variant={d.isActive ? 'default' : 'secondary'} className="text-xs">
+                              {d.isActive ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="sm" onClick={() => handleViewDetail(d.id)}>
+                                <Eye className="h-4 w-4 mr-1" /> View
+                              </Button>
+                              {d.driverProfile?.verificationStatus === 'pending' && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-[#16a34a] hover:bg-[#15803d] text-white h-8"
+                                    onClick={() => handleApprove(d.id)}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    className="h-8"
+                                    onClick={() => setRejectDriverId(d.id)}
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-3 p-4">
+                {drivers.map((d) => {
+                  const VIcon = verificationIcons[d.driverProfile?.verificationStatus || 'pending'] || Clock
+                  return (
+                    <Card key={d.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <p className="font-medium text-gray-900">{d.name || 'N/A'}</p>
+                            <p className="text-xs text-gray-500">{d.email}</p>
+                          </div>
                           <Badge variant={d.isActive ? 'default' : 'secondary'} className="text-xs">
                             {d.isActive ? 'Active' : 'Inactive'}
                           </Badge>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => handleViewDetail(d.id)}>
-                              <Eye className="h-4 w-4 mr-1" /> View
-                            </Button>
-                            {d.driverProfile?.verificationStatus === 'pending' && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  className="bg-[#16a34a] hover:bg-[#15803d] text-white h-8"
-                                  onClick={() => handleApprove(d.id)}
-                                >
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  className="h-8"
-                                  onClick={() => setRejectDriverId(d.id)}
-                                >
-                                  Reject
-                                </Button>
-                              </>
-                            )}
+                        </div>
+                        <div className="space-y-2 mb-3">
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-500">Vehicle</span>
+                            <span className="font-medium text-sm capitalize">{d.driverProfile?.vehicleType || '-'}</span>
                           </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-500">Verification</span>
+                            <Badge
+                              variant="secondary"
+                              className={`text-xs ${verificationColors[d.driverProfile?.verificationStatus || 'pending']}`}
+                            >
+                              <VIcon className="h-3 w-3 mr-1" />
+                              {d.driverProfile?.verificationStatus || 'pending'}
+                            </Badge>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-500">Deliveries</span>
+                            <span className="font-medium">{d._count.drivenOrders}</span>
+                          </div>
+                        </div>
+                        {d.driverProfile?.verificationStatus === 'pending' && (
+                          <div className="flex items-center gap-2 mb-3">
+                            <Button
+                              size="sm"
+                              className="flex-1 min-h-10 bg-[#16a34a] hover:bg-[#15803d] text-white"
+                              onClick={() => handleApprove(d.id)}
+                            >
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="flex-1 min-h-10"
+                              onClick={() => setRejectDriverId(d.id)}
+                            >
+                              <XCircle className="h-4 w-4 mr-1" /> Reject
+                            </Button>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 pt-2 border-t">
+                          <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleViewDetail(d.id)}>
+                            <Eye className="h-4 w-4 mr-1" /> View Details
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

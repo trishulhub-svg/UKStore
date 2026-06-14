@@ -203,7 +203,7 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-10 w-10"
+                    className="h-11 w-11"
                     onClick={decrementQuantity}
                     disabled={quantity <= 1}
                   >
@@ -213,7 +213,7 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-10 w-10"
+                    className="h-11 w-11"
                     onClick={incrementQuantity}
                     disabled={quantity >= product.stock_quantity}
                   >
@@ -233,15 +233,15 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
                   onValueChange={(val) => setSubstitutePreference(val as 'closest_match' | 'do_not_substitute')}
                   className="space-y-2"
                 >
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 min-h-[44px]">
                     <RadioGroupItem value="closest_match" id="closest_match" />
-                    <Label htmlFor="closest_match" className="text-sm font-normal cursor-pointer">
+                    <Label htmlFor="closest_match" className="text-sm font-normal cursor-pointer py-2">
                       Closest match — pick the most similar alternative
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 min-h-[44px]">
                     <RadioGroupItem value="do_not_substitute" id="do_not_substitute" />
-                    <Label htmlFor="do_not_substitute" className="text-sm font-normal cursor-pointer">
+                    <Label htmlFor="do_not_substitute" className="text-sm font-normal cursor-pointer py-2">
                       Do not substitute — refund if unavailable
                     </Label>
                   </div>

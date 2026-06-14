@@ -111,7 +111,7 @@ export function FavouritesClient() {
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-8 w-8">
+        <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-10 w-10">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
@@ -174,7 +174,7 @@ export function FavouritesClient() {
                     size="sm"
                     onClick={() => handleAddToCart(favourite)}
                     disabled={!favourite.product.isAvailable}
-                    className="flex-1 h-8 text-xs bg-[#16a34a] hover:bg-[#15803d] text-white"
+                    className="flex-1 h-10 text-xs bg-[#16a34a] hover:bg-[#15803d] text-white"
                   >
                     <ShoppingCart className="h-3 w-3 mr-1" />
                     Add
@@ -183,7 +183,7 @@ export function FavouritesClient() {
                     variant="ghost"
                     size="icon"
                     onClick={() => handleRemove(favourite.productId)}
-                    className="h-8 w-8 text-gray-400 hover:text-red-500 shrink-0"
+                    className="h-10 w-10 text-gray-400 hover:text-red-500 shrink-0"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

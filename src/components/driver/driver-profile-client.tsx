@@ -217,7 +217,7 @@ export function DriverProfileClient() {
               Vehicle Information
             </CardTitle>
             {!editMode && (
-              <Button variant="ghost" size="sm" onClick={() => setEditMode(true)} className="h-7 text-xs">
+              <Button variant="ghost" size="sm" onClick={() => setEditMode(true)} className="h-9 text-xs">
                 Edit
               </Button>
             )}
@@ -225,7 +225,7 @@ export function DriverProfileClient() {
         </CardHeader>
         <CardContent className="px-4 pb-4">
           {editMode ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
                 <Label htmlFor="vehicleType" className="text-xs">Vehicle Type</Label>
                 <Select value={vehicleType} onValueChange={setVehicleType}>
@@ -258,14 +258,14 @@ export function DriverProfileClient() {
                     setVehicleReg(profile.vehicleReg || '')
                     setEditMode(false)
                   }}
-                  className="flex-1"
+                  className="flex-1 h-10"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex-1 bg-[#16a34a] hover:bg-[#15803d] text-white"
+                  className="flex-1 bg-[#16a34a] hover:bg-[#15803d] text-white h-10"
                 >
                   {saving ? 'Saving...' : 'Save'}
                 </Button>
@@ -312,7 +312,7 @@ export function DriverProfileClient() {
               variant="outline"
               size="sm"
               onClick={() => handleDocumentUpload('rightToWorkUrl')}
-              className="h-7 text-xs"
+              className="h-9 text-xs"
             >
               <Upload className="h-3 w-3 mr-1" />
               {profile.rightToWorkUrl ? 'Re-upload' : 'Upload'}
@@ -334,7 +334,7 @@ export function DriverProfileClient() {
               variant="outline"
               size="sm"
               onClick={() => handleDocumentUpload('drivingLicenseUrl')}
-              className="h-7 text-xs"
+              className="h-9 text-xs"
             >
               <Upload className="h-3 w-3 mr-1" />
               {profile.drivingLicenseUrl ? 'Re-upload' : 'Upload'}

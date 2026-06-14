@@ -186,67 +186,129 @@ export default function AdminCategoriesPage() {
               <p className="text-gray-500">No categories yet</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Slug</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Products</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Sort Order</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Active</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {categories.map((c) => (
-                    <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium text-gray-900">
-                        {c.name}
-                        {c.parent && (
-                          <span className="text-xs text-gray-400 ml-2">
-                            (child of {c.parent.name})
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">{c.slug}</code>
-                      </td>
-                      <td className="py-3 px-4">
-                        <Badge variant="secondary" className="text-xs">
-                          {c._count?.products || 0}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-gray-500">{c.sortOrder}</td>
-                      <td className="py-3 px-4">
-                        <button onClick={() => handleToggleActive(c.id, !c.isActive)}>
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Slug</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Products</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Sort Order</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Active</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map((c) => (
+                      <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-4 font-medium text-gray-900">
+                          {c.name}
+                          {c.parent && (
+                            <span className="text-xs text-gray-400 ml-2">
+                              (child of {c.parent.name})
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">{c.slug}</code>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="secondary" className="text-xs">
+                            {c._count?.products || 0}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-gray-500">{c.sortOrder}</td>
+                        <td className="py-3 px-4">
+                          <button onClick={() => handleToggleActive(c.id, !c.isActive)}>
+                            {c.isActive ? (
+                              <ToggleRight className="h-5 w-5 text-green-600" />
+                            ) : (
+                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(c)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => { setDeleteId(c.id); setDeleteName(c.name) }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-3 p-4">
+                {categories.map((c) => (
+                  <Card key={c.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {c.name}
+                          </p>
+                          {c.parent && (
+                            <span className="text-xs text-gray-400">
+                              Child of {c.parent.name}
+                            </span>
+                          )}
+                          <p className="mt-1">
+                            <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">{c.slug}</code>
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleToggleActive(c.id, !c.isActive)}
+                          className="flex items-center gap-1.5 min-h-[44px]"
+                        >
                           {c.isActive ? (
                             <ToggleRight className="h-5 w-5 text-green-600" />
                           ) : (
                             <ToggleLeft className="h-5 w-5 text-gray-300" />
                           )}
+                          <span className="text-sm">{c.isActive ? 'Active' : 'Inactive'}</span>
                         </button>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(c)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => { setDeleteId(c.id); setDeleteName(c.name) }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                      </div>
+                      <div className="space-y-2 mb-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Products</span>
+                          <Badge variant="secondary" className="text-xs">{c._count?.products || 0}</Badge>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Sort Order</span>
+                          <span className="font-medium">{c.sortOrder}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleOpenEdit(c)}>
+                          <Pencil className="h-4 w-4 mr-1" /> Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 min-h-10 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          onClick={() => { setDeleteId(c.id); setDeleteName(c.name) }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" /> Delete
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

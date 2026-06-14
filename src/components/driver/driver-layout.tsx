@@ -109,7 +109,7 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <Icon className={`h-5 w-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
-                <span className={`text-[10px] ${isActive ? 'font-semibold' : 'font-medium'}`}>
+                <span className={`text-[11px] ${isActive ? 'font-semibold' : 'font-medium'}`}>
                   {item.label}
                 </span>
               </Link>

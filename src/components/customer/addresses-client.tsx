@@ -181,7 +181,7 @@ export function AddressesClient() {
     <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-8 w-8">
+        <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-10 w-10">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
@@ -241,7 +241,7 @@ export function AddressesClient() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleSetDefault(address.id)}
-                        className="h-8 w-8 text-gray-400 hover:text-[#16a34a]"
+                        className="h-10 w-10 text-gray-400 hover:text-[#16a34a]"
                         title="Set as default"
                       >
                         <Star className="h-4 w-4" />
@@ -251,7 +251,7 @@ export function AddressesClient() {
                       variant="ghost"
                       size="icon"
                       onClick={() => openEditDialog(address)}
-                      className="h-8 w-8 text-gray-400 hover:text-gray-600"
+                      className="h-10 w-10 text-gray-400 hover:text-gray-600"
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -259,7 +259,7 @@ export function AddressesClient() {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleDelete(address.id)}
-                      className="h-8 w-8 text-gray-400 hover:text-red-600"
+                      className="h-10 w-10 text-gray-400 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

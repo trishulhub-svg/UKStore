@@ -61,11 +61,11 @@ export function DriverEarningsClient() {
       <h1 className="text-xl font-bold text-gray-900">Earnings</h1>
 
       {/* Earnings Summary Cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="border-0 shadow-sm bg-gradient-to-br from-[#16a34a] to-[#15803d]">
           <CardContent className="p-3 text-center text-white">
             <PoundSterling className="h-4 w-4 mx-auto mb-1 opacity-80" />
-            <p className="text-xl font-bold">£{data.today.earnings.toFixed(2)}</p>
+            <p className="text-lg sm:text-xl font-bold">£{data.today.earnings.toFixed(2)}</p>
             <p className="text-[10px] opacity-80 font-medium">Today</p>
             <p className="text-[9px] opacity-60">{data.today.deliveries} delivery{data.today.deliveries !== 1 ? 'ies' : 'y'}</p>
           </CardContent>
@@ -73,7 +73,7 @@ export function DriverEarningsClient() {
         <Card className="border-0 shadow-sm">
           <CardContent className="p-3 text-center">
             <TrendingUp className="h-4 w-4 text-blue-500 mx-auto mb-1" />
-            <p className="text-xl font-bold text-gray-900">£{data.thisWeek.earnings.toFixed(2)}</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">£{data.thisWeek.earnings.toFixed(2)}</p>
             <p className="text-[10px] text-gray-500 font-medium">This Week</p>
             <p className="text-[9px] text-gray-400">{data.thisWeek.deliveries} delivery{data.thisWeek.deliveries !== 1 ? 'ies' : 'y'}</p>
           </CardContent>
@@ -81,7 +81,7 @@ export function DriverEarningsClient() {
         <Card className="border-0 shadow-sm">
           <CardContent className="p-3 text-center">
             <Calendar className="h-4 w-4 text-purple-500 mx-auto mb-1" />
-            <p className="text-xl font-bold text-gray-900">£{data.thisMonth.earnings.toFixed(2)}</p>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">£{data.thisMonth.earnings.toFixed(2)}</p>
             <p className="text-[10px] text-gray-500 font-medium">This Month</p>
             <p className="text-[9px] text-gray-400">{data.thisMonth.deliveries} delivery{data.thisMonth.deliveries !== 1 ? 'ies' : 'y'}</p>
           </CardContent>

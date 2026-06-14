@@ -226,29 +226,29 @@ export function DriverOrderFlowClient() {
       {/* Status Timeline */}
       <Card className="shadow-sm">
         <CardContent className="p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between">
             {statusSteps.map((step, i) => {
               const isCompleted = i <= currentStepIndex
               const isCurrent = i === currentStepIndex
               const Icon = step.icon
 
               return (
-                <div key={step.key} className="flex flex-col items-center flex-1">
+                <div key={step.key} className="flex flex-col items-center flex-1 relative">
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center mb-1 ${
                       isCompleted
                         ? 'bg-[#16a34a] text-white'
                         : 'bg-gray-100 text-gray-400'
                     } ${isCurrent ? 'ring-2 ring-[#16a34a]/30' : ''}`}
                   >
                     {isCompleted ? (
-                      <CheckCircle2 className="h-4 w-4" />
+                      <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     ) : (
-                      <Circle className="h-4 w-4" />
+                      <Circle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     )}
                   </div>
                   <span
-                    className={`text-[9px] text-center leading-tight ${
+                    className={`text-[10px] sm:text-xs text-center leading-tight ${
                       isCompleted ? 'text-[#16a34a] font-semibold' : 'text-gray-400'
                     }`}
                   >
@@ -256,10 +256,10 @@ export function DriverOrderFlowClient() {
                   </span>
                   {i < statusSteps.length - 1 && (
                     <div
-                      className={`h-0.5 w-full mt-[-16px] mb-2 ${
+                      className={`absolute top-[12px] sm:top-[14px] left-1/2 w-full h-0.5 ${
                         i < currentStepIndex ? 'bg-[#16a34a]' : 'bg-gray-200'
                       }`}
-                      style={{ position: 'relative', top: '-20px', zIndex: -1 }}
+                      style={{ zIndex: -1, transform: 'translateX(50%)' }}
                     />
                   )}
                 </div>
@@ -306,7 +306,7 @@ export function DriverOrderFlowClient() {
         <Button
           onClick={handleClaimOrder}
           disabled={actionLoading === 'claim'}
-          className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white"
+          className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white h-10"
         >
           {actionLoading === 'claim' ? 'Claiming...' : 'Claim This Order'}
         </Button>
@@ -442,14 +442,14 @@ export function DriverOrderFlowClient() {
                 <Button
                   variant="outline"
                   onClick={() => setShowConfirmDelivery(false)}
-                  className="flex-1"
+                  className="flex-1 h-10"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleConfirmDelivery}
                   disabled={actionLoading === 'deliver'}
-                  className="flex-1 bg-[#16a34a] hover:bg-[#15803d] text-white"
+                  className="flex-1 bg-[#16a34a] hover:bg-[#15803d] text-white h-10"
                 >
                   {actionLoading === 'deliver' ? 'Confirming...' : 'Confirm Delivered'}
                 </Button>

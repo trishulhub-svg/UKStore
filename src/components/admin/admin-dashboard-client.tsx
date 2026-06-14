@@ -47,7 +47,7 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Products</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.products}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{stats.products}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
                 <Package className="h-5 w-5 text-blue-600" />
@@ -61,7 +61,7 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Orders</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.orders}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{stats.orders}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
                 <ShoppingBag className="h-5 w-5 text-green-600" />
@@ -75,7 +75,7 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Customers</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.customers}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{stats.customers}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center">
                 <Users className="h-5 w-5 text-purple-600" />
@@ -89,7 +89,7 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">API Keys</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
                   {stats.configuredKeys}/{stats.totalKeys}
                 </p>
               </div>
@@ -116,9 +116,9 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
       {needsAttention && (
         <Card className="mb-8 border-amber-200 bg-amber-50">
           <CardContent className="p-5">
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-3 flex-wrap">
               <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="font-medium text-amber-800">API Keys Need Configuration</p>
                 <p className="text-sm text-amber-700 mt-1">
                   Some integrations are not yet configured. Go to{' '}
@@ -154,39 +154,65 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
               <p className="text-gray-500">No orders yet</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-2 font-medium text-gray-500">Order</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-500">Status</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-500">Total</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-500">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentOrders.map((order) => (
-                    <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-2">
-                        <span className="font-mono text-xs">#{order.id.substring(0, 8).toUpperCase()}</span>
-                      </td>
-                      <td className="py-3 px-2">
-                        <Badge variant="secondary" className={`text-xs ${statusColors[order.status] || ''}`}>
-                          {order.status}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-2 font-medium">{formatPrice(order.total)}</td>
-                      <td className="py-3 px-2 text-gray-500">
+            <>
+              {/* Mobile Card List */}
+              <div className="md:hidden space-y-3">
+                {recentOrders.map((order) => (
+                  <div key={order.id} className="border border-gray-100 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs text-gray-700">#{order.id.substring(0, 8).toUpperCase()}</span>
+                      <Badge variant="secondary" className={`text-xs ${statusColors[order.status] || ''}`}>
+                        {order.status.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{formatPrice(order.total)}</span>
+                      <span className="text-gray-500">
                         {new Date(order.created_at).toLocaleDateString('en-GB', {
                           day: 'numeric',
                           month: 'short',
                         })}
-                      </td>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-3 px-2 font-medium text-gray-500">Order</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-500">Status</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-500">Total</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-500">Date</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {recentOrders.map((order) => (
+                      <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-2">
+                          <span className="font-mono text-xs">#{order.id.substring(0, 8).toUpperCase()}</span>
+                        </td>
+                        <td className="py-3 px-2">
+                          <Badge variant="secondary" className={`text-xs ${statusColors[order.status] || ''}`}>
+                            {order.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-2 font-medium">{formatPrice(order.total)}</td>
+                        <td className="py-3 px-2 text-gray-500">
+                          {new Date(order.created_at).toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

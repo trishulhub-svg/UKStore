@@ -237,59 +237,129 @@ export default function AdminOrdersPage() {
               <p className="text-gray-500">No orders found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Order ID</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Customer</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Payment</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Total</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Date</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((o) => {
-                    const StatusIcon = statusIcons[o.status] || Clock
-                    return (
-                      <tr key={o.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-3 px-4 font-mono text-xs">#{o.id.substring(0, 8).toUpperCase()}</td>
-                        <td className="py-3 px-4">
-                          <div className="font-medium">{o.customer.name || 'N/A'}</div>
-                          <div className="text-xs text-gray-500">{o.customer.email}</div>
-                        </td>
-                        <td className="py-3 px-4">
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Order ID</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Customer</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Payment</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Total</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Date</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map((o) => {
+                      const StatusIcon = statusIcons[o.status] || Clock
+                      return (
+                        <tr key={o.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-3 px-4 font-mono text-xs">#{o.id.substring(0, 8).toUpperCase()}</td>
+                          <td className="py-3 px-4">
+                            <div className="font-medium">{o.customer.name || 'N/A'}</div>
+                            <div className="text-xs text-gray-500">{o.customer.email}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge variant="secondary" className={`text-xs ${statusColors[o.status] || ''}`}>
+                              <StatusIcon className="h-3 w-3 mr-1" />
+                              {o.status.replace(/_/g, ' ')}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge variant="outline" className="text-xs">
+                              {o.paymentStatus}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4 font-medium">{formatPrice(o.total)}</td>
+                          <td className="py-3 px-4 text-gray-500 text-xs">
+                            {new Date(o.createdAt).toLocaleDateString('en-GB', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <Button variant="ghost" size="sm" onClick={() => handleViewDetail(o.id)}>
+                              <Eye className="h-4 w-4 mr-1" /> View
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-3 p-4">
+                {orders.map((o) => {
+                  const StatusIcon = statusIcons[o.status] || Clock
+                  const nextStatuses = getNextStatuses(o.status)
+                  return (
+                    <Card key={o.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <p className="font-mono text-xs text-gray-500">#{o.id.substring(0, 8).toUpperCase()}</p>
+                            <p className="font-medium text-gray-900 mt-1">{o.customer.name || 'N/A'}</p>
+                            <p className="text-xs text-gray-500">{o.customer.email}</p>
+                          </div>
                           <Badge variant="secondary" className={`text-xs ${statusColors[o.status] || ''}`}>
                             <StatusIcon className="h-3 w-3 mr-1" />
                             {o.status.replace(/_/g, ' ')}
                           </Badge>
-                        </td>
-                        <td className="py-3 px-4">
-                          <Badge variant="outline" className="text-xs">
-                            {o.paymentStatus}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4 font-medium">{formatPrice(o.total)}</td>
-                        <td className="py-3 px-4 text-gray-500 text-xs">
-                          {new Date(o.createdAt).toLocaleDateString('en-GB', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <Button variant="ghost" size="sm" onClick={() => handleViewDetail(o.id)}>
-                            <Eye className="h-4 w-4 mr-1" /> View
+                        </div>
+                        <div className="space-y-2 mb-3">
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-500">Total</span>
+                            <span className="font-medium">{formatPrice(o.total)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-500">Date</span>
+                            <span className="font-medium text-sm">
+                              {new Date(o.createdAt).toLocaleDateString('en-GB', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-500">Payment</span>
+                            <Badge variant="outline" className="text-xs">{o.paymentStatus}</Badge>
+                          </div>
+                        </div>
+                        {nextStatuses.length > 0 && (
+                          <div className="mb-3">
+                            <p className="text-sm text-gray-500 mb-1">Update Status</p>
+                            <Select onValueChange={(v) => handleUpdateStatus(o.id, v)}>
+                              <SelectTrigger className="w-full min-h-10">
+                                <SelectValue placeholder="Change status..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {nextStatuses.map((s) => (
+                                  <SelectItem key={s} value={s}>
+                                    {s.replace(/_/g, ' ')}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 pt-2 border-t">
+                          <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleViewDetail(o.id)}>
+                            <Eye className="h-4 w-4 mr-1" /> View Details
                           </Button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

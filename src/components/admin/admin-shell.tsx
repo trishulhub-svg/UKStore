@@ -4,12 +4,14 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Store, Settings, LayoutDashboard, ChevronRight, User as UserIcon, LogOut, ArrowLeft,
-  Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3,
+  Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3, Menu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet'
 import { authLogout } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import type { Profile } from '@/types'
 
 interface AdminShellProps {
@@ -31,9 +33,17 @@ const navItems = [
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ]
 
+function getPageTitle(pathname: string): string {
+  const item = navItems.find(
+    (item) => pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
+  )
+  return item?.label ?? 'Admin'
+}
+
 export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const handleLogout = async () => {
     await authLogout()
@@ -43,7 +53,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
 
   return (
     <div className="min-h-screen flex bg-gray-50">
-      {/* Sidebar */}
+      {/* Desktop Sidebar - unchanged */}
       <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-gray-200">
         {/* Logo */}
         <div className="flex items-center gap-2 px-6 h-16 border-b border-gray-200">
@@ -114,46 +124,91 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
       <div className="lg:pl-64 flex-1">
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-40 bg-white border-b border-gray-200">
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center justify-between px-4 h-14">
             <div className="flex items-center gap-2">
               <Store className="h-5 w-5 text-[#16a34a]" />
               <span className="font-bold text-sm text-gray-900">Admin</span>
+              <Separator orientation="vertical" className="h-5 mx-1" />
+              <span className="text-sm text-gray-600">{getPageTitle(pathname)}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <Link href="/">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <ArrowLeft className="h-4 w-4" />
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Open menu">
+                  <Menu className="h-5 w-5" />
                 </Button>
-              </Link>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-red-600"
-                onClick={handleLogout}
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[280px] sm:max-w-[280px] p-0 flex flex-col">
+                <SheetHeader className="px-6 h-16 flex flex-row items-center gap-2 border-b border-gray-200 p-0 mx-0 mb-0">
+                  <div className="flex items-center gap-2 px-6 w-full h-16">
+                    <Store className="h-6 w-6 text-[#16a34a]" />
+                    <div>
+                      <SheetTitle className="font-bold text-gray-900 text-sm leading-tight">Fresh Mart Admin</SheetTitle>
+                      <SheetDescription className="text-xs text-gray-500 leading-tight">Store Management</SheetDescription>
+                    </div>
+                  </div>
+                </SheetHeader>
+
+                {/* Navigation */}
+                <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                  {navItems.map((item) => {
+                    const Icon = item.icon
+                    const isActive = pathname === item.href ||
+                      (item.href !== '/admin' && pathname.startsWith(item.href))
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
+                          isActive
+                            ? 'bg-[#16a34a]/10 text-[#16a34a]'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" />
+                        {item.label}
+                        {isActive && <ChevronRight className="h-4 w-4 ml-auto" />}
+                      </Link>
+                    )
+                  })}
+                </nav>
+
+                {/* User Info & Actions */}
+                <div className="border-t border-gray-200 p-4">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+                      <UserIcon className="h-5 w-5 text-[#16a34a]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{profile.full_name}</p>
+                      <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Link href="/" className="flex-1" onClick={() => setMobileMenuOpen(false)}>
+                      <Button variant="outline" size="sm" className="w-full min-h-[44px]">
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Store
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 min-h-[44px] text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      onClick={() => {
+                        setMobileMenuOpen(false)
+                        handleLogout()
+                      }}
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Logout
+                    </Button>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
-          <nav className="flex overflow-x-auto gap-1 px-2 pb-2 scrollbar-none">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href ||
-                (item.href !== '/admin' && pathname.startsWith(item.href))
-              return (
-                <Link key={item.href} href={item.href}>
-                  <Button
-                    variant={isActive ? 'default' : 'ghost'}
-                    size="sm"
-                    className={`text-xs shrink-0 ${isActive ? 'bg-[#16a34a] hover:bg-[#15803d]' : ''}`}
-                  >
-                    <Icon className="h-3.5 w-3.5 mr-1" />
-                    {item.label}
-                  </Button>
-                </Link>
-              )
-            })}
-          </nav>
         </header>
 
         {/* Page Content */}

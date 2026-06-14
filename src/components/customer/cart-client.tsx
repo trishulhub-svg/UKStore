@@ -135,7 +135,7 @@ export function CartClient({ store }: CartClientProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="flex-shrink-0 h-8 w-8 text-gray-400 hover:text-red-500"
+                          className="flex-shrink-0 h-10 w-10 text-gray-400 hover:text-red-500"
                           onClick={() => removeItem(item.product.id)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -148,7 +148,7 @@ export function CartClient({ store }: CartClientProps) {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-10 w-10"
                             onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
                           >
                             <Minus className="h-3 w-3" />
@@ -157,7 +157,7 @@ export function CartClient({ store }: CartClientProps) {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-10 w-10"
                             onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
                           >
                             <Plus className="h-3 w-3" />

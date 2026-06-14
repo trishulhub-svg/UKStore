@@ -1,26 +1,31 @@
 -- ============================================================
--- FRESH MART: Fix Auth Trigger & Seed Users
+-- FRESH MART: Fix Auth Trigger, Constraint & Seed Users
 -- Run this ENTIRE script in Supabase SQL Editor:
 -- Dashboard → SQL Editor → New Query → Paste → Run
 -- ============================================================
 
--- STEP 1: Drop the broken trigger temporarily
+-- STEP 1: Fix the role check constraint to include 'driver'
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
+ALTER TABLE profiles ADD CONSTRAINT profiles_role_check
+  CHECK (role IN ('customer', 'owner', 'manager', 'driver'));
+
+-- Migrate any old picker/rider roles to driver
+UPDATE profiles SET role = 'driver' WHERE role IN ('picker', 'rider');
+
+-- STEP 2: Drop and recreate the trigger with a resilient version
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
--- STEP 2: Replace with a simple, resilient trigger function
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
     default_store_id UUID;
 BEGIN
-    -- Get default store (may be NULL if no stores exist yet)
     BEGIN
         SELECT id INTO default_store_id FROM stores WHERE is_active = true LIMIT 1;
     EXCEPTION WHEN OTHERS THEN
         default_store_id := NULL;
     END;
 
-    -- Insert profile — store_id is nullable
     INSERT INTO profiles (id, store_id, email, full_name, role)
     VALUES (
         NEW.id,
@@ -33,18 +38,15 @@ BEGIN
     RETURN NEW;
 EXCEPTION
     WHEN OTHERS THEN
-        -- If profile insert fails, still let the user be created
-        -- The profile can be created/updated manually later
         RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- STEP 3: Re-create the trigger
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
--- STEP 4: Seed admin user (owner role) — only if not exists
+-- STEP 3: Seed admin user — only if not exists
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@freshmart.co.uk') THEN
@@ -64,15 +66,12 @@ BEGIN
             '{"full_name": "Admin User", "role": "owner"}',
             now(),
             now(),
-            '',
-            '',
-            '',
-            ''
+            '', '', '', ''
         );
     END IF;
 END $$;
 
--- STEP 5: Seed customer user — only if not exists
+-- STEP 4: Seed customer user — only if not exists
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'customer@freshmart.co.uk') THEN
@@ -92,15 +91,12 @@ BEGIN
             '{"full_name": "Test Customer", "role": "customer"}',
             now(),
             now(),
-            '',
-            '',
-            '',
-            ''
+            '', '', '', ''
         );
     END IF;
 END $$;
 
--- STEP 6: Seed driver user — only if not exists
+-- STEP 5: Seed driver user — only if not exists
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'driver@freshmart.co.uk') THEN
@@ -120,15 +116,12 @@ BEGIN
             '{"full_name": "Test Driver", "role": "driver"}',
             now(),
             now(),
-            '',
-            '',
-            '',
-            ''
+            '', '', '', ''
         );
     END IF;
 END $$;
 
--- STEP 7: Fill in any missing profiles (in case trigger didn't fire)
+-- STEP 6: Fill in any missing profiles
 INSERT INTO profiles (id, store_id, email, full_name, role, is_active)
 SELECT
     u.id,
@@ -140,14 +133,14 @@ SELECT
 FROM auth.users u
 WHERE NOT EXISTS (SELECT 1 FROM profiles p WHERE p.id = u.id);
 
--- STEP 8: Create driver profile — only if not exists
+-- STEP 7: Create driver profile — only if not exists
 INSERT INTO driver_profiles (user_id, vehicle_type, verification_status, is_on_duty)
 SELECT u.id, 'bicycle', 'approved', false
 FROM auth.users u
 WHERE u.email = 'driver@freshmart.co.uk'
 AND NOT EXISTS (SELECT 1 FROM driver_profiles dp WHERE dp.user_id = u.id);
 
--- STEP 9: Seed delivery zone — only if not exists
+-- STEP 8: Seed delivery zone — only if not exists
 INSERT INTO delivery_zones (store_id, name, postcodes, delivery_fee, minimum_order, is_active)
 SELECT
     'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890',
@@ -161,7 +154,7 @@ WHERE NOT EXISTS (
 );
 
 -- ============================================================
--- DONE! Now run these VERIFICATION QUERIES one by one:
+-- DONE! Verify with these queries (run one at a time):
 -- ============================================================
 -- SELECT email, raw_user_meta_data->>'role' as role FROM auth.users ORDER BY created_at;
 -- SELECT email, role, full_name FROM profiles ORDER BY created_at;

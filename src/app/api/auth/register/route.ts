@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
         email: email.toLowerCase(),
         name: fullName || null,
         passwordHash,
-        role: 'customer',
+        role: 'CUSTOMER',
       },
     })
 

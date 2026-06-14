@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { getPrisma } from '@/lib/auth/prisma'
 import { AdminDashboardClient } from '@/components/admin/admin-dashboard-client'
 
 export const dynamic = 'force-dynamic'
@@ -6,9 +6,8 @@ export const dynamic = 'force-dynamic'
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
 export default async function AdminDashboardPage() {
-  const supabase = createServiceClient()
+  const prisma = await getPrisma()
 
-  // Default stats when Supabase is not available
   let stats = {
     products: 0,
     orders: 0,
@@ -16,39 +15,50 @@ export default async function AdminDashboardPage() {
     configuredKeys: 0,
     totalKeys: 0,
   }
-  let recentOrders: Array<Record<string, unknown>> = []
+  let recentOrders: any[] = []
 
-  if (supabase) {
-    try {
-      const [
-        { count: productCount },
-        { count: orderCount },
-        { count: customerCount },
-        { data: recentOrdersData },
-        { data: settings },
-      ] = await Promise.all([
-        supabase.from('products').select('*', { count: 'exact', head: true }).eq('store_id', STORE_ID),
-        supabase.from('orders').select('*', { count: 'exact', head: true }).eq('store_id', STORE_ID),
-        supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('store_id', STORE_ID).eq('role', 'customer'),
-        supabase.from('orders').select('*').eq('store_id', STORE_ID).order('created_at', { ascending: false }).limit(5),
-        supabase.from('store_settings').select('key, value, is_secret, category').eq('store_id', STORE_ID),
-      ])
+  try {
+    const [
+      productCount,
+      orderCount,
+      customerCount,
+      recentOrdersData,
+    ] = await Promise.all([
+      prisma.product.count({ where: { storeId: STORE_ID } }),
+      prisma.order.count({ where: { storeId: STORE_ID } }),
+      prisma.user.count({ where: { role: 'CUSTOMER' } }),
+      prisma.order.findMany({
+        where: { storeId: STORE_ID },
+        include: {
+          customer: { select: { name: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+    ])
 
-      // Check which integrations are configured
-      const configuredKeys = (settings || []).filter((s) => s.value && s.value.length > 0)
-      const totalKeys = (settings || []).length
+    const settingsCount = await prisma.storeSetting.count({ where: { storeId: STORE_ID } })
+    const configuredCount = await prisma.storeSetting.count({
+      where: { storeId: STORE_ID, value: { not: '' } },
+    })
 
-      stats = {
-        products: productCount || 0,
-        orders: orderCount || 0,
-        customers: customerCount || 0,
-        configuredKeys: configuredKeys.length,
-        totalKeys: totalKeys,
-      }
-      recentOrders = (recentOrdersData || []) as Array<Record<string, unknown>>
-    } catch {
-      // Use default empty stats
+    stats = {
+      products: productCount,
+      orders: orderCount,
+      customers: customerCount,
+      configuredKeys: configuredCount,
+      totalKeys: settingsCount,
     }
+
+    recentOrders = recentOrdersData.map((o) => ({
+      id: o.id,
+      status: o.status,
+      total: o.total,
+      created_at: o.createdAt.toISOString(),
+      customer: o.customer,
+    }))
+  } catch (err) {
+    console.error('[Admin Dashboard] Error fetching stats:', err)
   }
 
   return (

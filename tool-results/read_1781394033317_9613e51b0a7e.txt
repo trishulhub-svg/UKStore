@@ -1,0 +1,627 @@
+     1→     1→-- ============================================================
+     2→     2→-- UK STORE: Complete Database Bootstrap Script
+     3→     3→-- Run this ENTIRE script in Supabase SQL Editor to set up
+     4→     4→-- everything needed for user registration and login.
+     5→     5→--
+     6→     6→-- This script is idempotent (safe to re-run multiple times).
+     7→     7→-- It creates tables if missing, fixes RLS, seeds data, etc.
+     8→     8→-- ============================================================
+     9→     9→
+    10→    10→-- ============================================================
+    11→    11→-- STEP 1: Enable required extensions
+    12→    12→-- ============================================================
+    13→    13→CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    14→    14→CREATE EXTENSION IF NOT EXISTS "postgis";
+    15→    15→CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+    16→    16→
+    17→    17→-- ============================================================
+    18→    18→-- STEP 2: Create tables (IF NOT EXISTS for safety)
+    19→    19→-- ============================================================
+    20→    20→
+    21→    21→-- Stores table
+    22→    22→CREATE TABLE IF NOT EXISTS stores (
+    23→    23→    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    24→    24→    name VARCHAR(255) NOT NULL,
+    25→    25→    slug VARCHAR(100) UNIQUE NOT NULL,
+    26→    26→    address TEXT NOT NULL,
+    27→    27→    latitude DECIMAL(10, 8) NOT NULL,
+    28→    28→    longitude DECIMAL(11, 8) NOT NULL,
+    29→    29→    location GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
+    30→    30→        ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
+    31→    31→    ) STORED,
+    32→    32→    phone VARCHAR(20),
+    33→    33→    email VARCHAR(255),
+    34→    34→    base_delivery_fee DECIMAL(10, 2) DEFAULT 3.50,
+    35→    35→    per_km_charge DECIMAL(10, 2) DEFAULT 0.50,
+    36→    36→    free_delivery_threshold DECIMAL(10, 2) DEFAULT 20.00,
+    37→    37→    delivery_radius_km DECIMAL(5, 2) DEFAULT 5.00,
+    38→    38→    is_active BOOLEAN DEFAULT true,
+    39→    39→    created_at TIMESTAMPTZ DEFAULT now(),
+    40→    40→    updated_at TIMESTAMPTZ DEFAULT now()
+    41→    41→);
+    42→    42→CREATE INDEX IF NOT EXISTS idx_stores_location ON stores USING GIST (location);
+    43→    43→
+    44→    44→-- Profiles table (store_id is NULLABLE - critical for registration)
+    45→    45→CREATE TABLE IF NOT EXISTS profiles (
+    46→    46→    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    47→    47→    store_id UUID REFERENCES stores(id) ON DELETE RESTRICT,
+    48→    48→    email VARCHAR(255) NOT NULL,
+    49→    49→    full_name VARCHAR(255) NOT NULL,
+    50→    50→    phone VARCHAR(20),
+    51→    51→    role VARCHAR(20) NOT NULL DEFAULT 'customer' CHECK (role IN ('customer', 'owner', 'manager', 'picker', 'rider')),
+    52→    52→    avatar_url TEXT,
+    53→    53→    is_active BOOLEAN DEFAULT true,
+    54→    54→    created_at TIMESTAMPTZ DEFAULT now(),
+    55→    55→    updated_at TIMESTAMPTZ DEFAULT now()
+    56→    56→);
+    57→    57→CREATE INDEX IF NOT EXISTS idx_profiles_store ON profiles (store_id);
+    58→    58→CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles (store_id, role);
+    59→    59→
+    60→    60→-- Categories table
+    61→    61→CREATE TABLE IF NOT EXISTS categories (
+    62→    62→    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    63→    63→    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    64→    64→    name VARCHAR(100) NOT NULL,
+    65→    65→    slug VARCHAR(100) NOT NULL,
+    66→    66→    description TEXT,
+    67→    67→    image_url TEXT,
+    68→    68→    parent_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+    69→    69→    sort_order INTEGER DEFAULT 0,
+    70→    70→    is_active BOOLEAN DEFAULT true,
+    71→    71→    created_at TIMESTAMPTZ DEFAULT now()
+    72→    72→);
+    73→    73→CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_slug ON categories (store_id, slug);
+    74→    74→CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories (store_id, parent_id);
+    75→    75→
+    76→    76→-- Products table
+    77→    77→CREATE TABLE IF NOT EXISTS products (
+    78→    78→    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    79→    79→    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    80→    80→    category_id UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+    81→    81→    name VARCHAR(255) NOT NULL,
+    82→    82→    slug VARCHAR(255) NOT NULL,
+    83→    83→    description TEXT,
+    84→    84→    price DECIMAL(10, 2) NOT NULL,
+    85→    85→    vat_rate DECIMAL(5, 4) NOT NULL CHECK (vat_rate IN (0.0000, 0.0500, 0.2000)),
+    86→    86→    is_hfss BOOLEAN DEFAULT false,
+    87→    87→    image_url TEXT,
+    88→    88→    barcode VARCHAR(50),
+    89→    89→    unit VARCHAR(20) DEFAULT 'each',
+    90→    90→    weight_kg DECIMAL(8, 3),
+    91→    91→    is_available BOOLEAN DEFAULT true,
+    92→    92→    stock_quantity INTEGER DEFAULT 0,
+    93→    93→    is_featured BOOLEAN DEFAULT false,
+    94→    94→    sort_order INTEGER DEFAULT 0,
+    95→    95→    created_at TIMESTAMPTZ DEFAULT now(),
+    96→    96→    updated_at TIMESTAMPTZ DEFAULT now()
+    97→    97→);
+    98→    98→CREATE UNIQUE INDEX IF NOT EXISTS idx_products_slug ON products (store_id, slug);
+    99→    99→CREATE INDEX IF NOT EXISTS idx_products_store_category ON products (store_id, category_id);
+   100→   100→CREATE INDEX IF NOT EXISTS idx_products_name_trgm ON products USING GIN (name gin_trgm_ops);
+   101→   101→CREATE INDEX IF NOT EXISTS idx_products_hfss ON products (is_hfss, is_featured) WHERE is_available = true;
+   102→   102→
+   103→   103→-- Addresses table
+   104→   104→CREATE TABLE IF NOT EXISTS addresses (
+   105→   105→    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+   106→   106→    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+   107→   107→    label VARCHAR(50),
+   108→   108→    address_line_1 VARCHAR(255) NOT NULL,
+   109→   109→    address_line_2 VARCHAR(255),
+   110→   110→    city VARCHAR(100) NOT NULL,
+   111→   111→    postcode VARCHAR(10) NOT NULL,
+   112→   112→    latitude DECIMAL(10, 8),
+   113→   113→    longitude DECIMAL(11, 8),
+   114→   114→    location GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
+   115→   115→        CASE
+   116→   116→            WHEN latitude IS NOT NULL AND longitude IS NOT NULL
+   117→   117→            THEN ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
+   118→   118→            ELSE NULL
+   119→   119→        END
+   120→   120→    ) STORED,
+   121→   121→    is_default BOOLEAN DEFAULT false,
+   122→   122→    created_at TIMESTAMPTZ DEFAULT now()
+   123→   123→);
+   124→   124→CREATE INDEX IF NOT EXISTS idx_addresses_location ON addresses USING GIST (location);
+   125→   125→CREATE INDEX IF NOT EXISTS idx_addresses_user ON addresses (user_id);
+   126→   126→
+   127→   127→-- Orders table
+   128→   128→CREATE TABLE IF NOT EXISTS orders (
+   129→   129→    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+   130→   130→    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE RESTRICT,
+   131→   131→    customer_id UUID NOT NULL REFERENCES profiles(id),
+   132→   132→    picker_id UUID REFERENCES profiles(id),
+   133→   133→    rider_id UUID REFERENCES profiles(id),
+   134→   134→    address_id UUID NOT NULL REFERENCES addresses(id) ON DELETE RESTRICT,
+   135→   135→    status VARCHAR(20) NOT NULL DEFAULT 'placed' CHECK (status IN ('placed', 'picking', 'ready', 'out_for_delivery', 'delivered', 'cancelled')),
+   136→   136→    subtotal DECIMAL(10, 2) NOT NULL,
+   137→   137→    vat_amount DECIMAL(10, 2) NOT NULL,
+   138→   138→    delivery_fee DECIMAL(10, 2) NOT NULL,
+   139→   139→    total DECIMAL(10, 2) NOT NULL,
+   140→   140→    stripe_session_id VARCHAR(255),
+   141→   141→    stripe_payment_intent_id VARCHAR(255),
+   142→   142→    payment_status VARCHAR(20) DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid', 'failed', 'refunded')),
+   143→   143→    delivery_slot TIMESTAMPTZ,
+   144→   144→    notes TEXT,
+   145→   145→    created_at TIMESTAMPTZ DEFAULT now(),
+   146→   146→    updated_at TIMESTAMPTZ DEFAULT now()
+   147→   147→);
+   148→   148→CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders (customer_id, created_at DESC);
+   149→   149→CREATE INDEX IF NOT EXISTS idx_orders_store_status ON orders (store_id, status);
+   150→   150→CREATE INDEX IF NOT EXISTS idx_orders_rider ON orders (rider_id, status) WHERE rider_id IS NOT NULL;
+   151→   151→
+   152→   152→-- Order items table
+   153→   153→CREATE TABLE IF NOT EXISTS order_items (
+   154→   154→    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+   155→   155→    order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+   156→   156→    product_id UUID NOT NULL REFERENCES products(id),
+   157→   157→    product_name VARCHAR(255) NOT NULL,
+   158→   158→    quantity INTEGER NOT NULL CHECK (quantity > 0),
+   159→   159→    unit_price DECIMAL(10, 2) NOT NULL,
+   160→   160→    vat_rate DECIMAL(5, 4) NOT NULL,
+   161→   161→    vat_amount DECIMAL(10, 2) NOT NULL,
+   162→   162→    subtotal DECIMAL(10, 2) NOT NULL,
+   163→   163→    substitute_preference VARCHAR(20) CHECK (substitute_preference IN ('closest_match', 'do_not_substitute')),
+   164→   164→    substituted_with UUID REFERENCES products(id),
+   165→   165→    picked BOOLEAN DEFAULT false
+   166→   166→);
+   167→   167→CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items (order_id);
+   168→   168→
+   169→   169→-- Rider verifications table
+   170→   170→CREATE TABLE IF NOT EXISTS rider_verifications (
+   171→   171→    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+   172→   172→    rider_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+   173→   173→    document_type VARCHAR(30) NOT NULL CHECK (document_type IN ('passport', 'driving_license', 'visa', 'national_id')),
+   174→   174→    document_url TEXT NOT NULL,
+   175→   175→    verification_status VARCHAR(20) DEFAULT 'pending' CHECK (verification_status IN ('pending', 'approved', 'rejected')),
+   176→   176→    verified_by UUID REFERENCES profiles(id),
+   177→   177→    verified_at TIMESTAMPTZ,
+   178→   178→    rejection_reason TEXT,
+   179→   179→    created_at TIMESTAMPTZ DEFAULT now()
+   180→   180→);
+   181→   181→CREATE INDEX IF NOT EXISTS idx_rider_verifications_rider ON rider_verifications (rider_id);
+   182→   182→CREATE INDEX IF NOT EXISTS idx_rider_verifications_status ON rider_verifications (verification_status);
+   183→   183→
+   184→   184→-- ============================================================
+   185→   185→-- STEP 3: Ensure profiles.store_id is nullable
+   186→   186→-- THIS IS THE MOST CRITICAL FIX FOR REGISTRATION
+   187→   187→-- ============================================================
+   188→   188→ALTER TABLE profiles ALTER COLUMN store_id DROP NOT NULL;
+   189→   189→
+   190→   190→-- ============================================================
+   191→   191→-- STEP 4: Helper functions for RLS
+   192→   192→-- ============================================================
+   193→   193→CREATE OR REPLACE FUNCTION update_updated_at()
+   194→   194→RETURNS TRIGGER AS $$
+   195→   195→BEGIN
+   196→   196→    NEW.updated_at = now();
+   197→   197→    RETURN NEW;
+   198→   198→END;
+   199→   199→$$ LANGUAGE plpgsql;
+   200→   200→
+   201→   201→CREATE OR REPLACE FUNCTION get_user_role()
+   202→   202→RETURNS VARCHAR AS $$
+   203→   203→    SELECT role FROM profiles WHERE id = auth.uid();
+   204→   204→$$ LANGUAGE sql SECURITY DEFINER STABLE;
+   205→   205→
+   206→   206→CREATE OR REPLACE FUNCTION get_user_store_id()
+   207→   207→RETURNS UUID AS $$
+   208→   208→    SELECT store_id FROM profiles WHERE id = auth.uid();
+   209→   209→$$ LANGUAGE sql SECURITY DEFINER STABLE;
+   210→   210→
+   211→   211→-- updated_at triggers
+   212→   212→DROP TRIGGER IF EXISTS update_stores_updated_at ON stores;
+   213→   213→CREATE TRIGGER update_stores_updated_at BEFORE UPDATE ON stores
+   214→   214→    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+   215→   215→DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+   216→   216→CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles
+   217→   217→    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+   218→   218→DROP TRIGGER IF EXISTS update_products_updated_at ON products;
+   219→   219→CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON products
+   220→   220→    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+   221→   221→DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;
+   222→   222→CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders
+   223→   223→    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+   224→   224→
+   225→   225→-- ============================================================
+   226→   226→-- STEP 5: Auth trigger — auto-create profile on signup
+   227→   227→-- ============================================================
+   228→   228→CREATE OR REPLACE FUNCTION handle_new_user()
+   229→   229→RETURNS TRIGGER AS $$
+   230→   230→DECLARE
+   231→   231→    default_store_id UUID;
+   232→   232→BEGIN
+   233→   233→    SELECT id INTO default_store_id FROM stores WHERE is_active = true LIMIT 1;
+   234→   234→
+   235→   235→    INSERT INTO profiles (id, store_id, email, full_name, role)
+   236→   236→    VALUES (
+   237→   237→        NEW.id,
+   238→   238→        default_store_id,
+   239→   239→        COALESCE(NEW.email, ''),
+   240→   240→        COALESCE(NEW.raw_user_meta_data->>'full_name', 'New Customer'),
+   241→   241→        'customer'
+   242→   242→    );
+   243→   243→
+   244→   244→    RETURN NEW;
+   245→   245→END;
+   246→   246→$$ LANGUAGE plpgsql SECURITY DEFINER;
+   247→   247→
+   248→   248→DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+   249→   249→CREATE TRIGGER on_auth_user_created
+   250→   250→    AFTER INSERT ON auth.users
+   251→   251→    FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+   252→   252→
+   253→   253→-- ============================================================
+   254→   254→-- STEP 6: Enable RLS on all tables
+   255→   255→-- ============================================================
+   256→   256→ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
+   257→   257→ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+   258→   258→ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+   259→   259→ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+   260→   260→ALTER TABLE addresses ENABLE ROW LEVEL SECURITY;
+   261→   261→ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+   262→   262→ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+   263→   263→ALTER TABLE rider_verifications ENABLE ROW LEVEL SECURITY;
+   264→   264→
+   265→   265→-- ============================================================
+   266→   266→-- STEP 7: RLS Policies — Stores
+   267→   267→-- ============================================================
+   268→   268→DROP POLICY IF EXISTS "Public can view active stores" ON stores;
+   269→   269→CREATE POLICY "Public can view active stores" ON stores
+   270→   270→    FOR SELECT TO anon, authenticated
+   271→   271→    USING (is_active = true);
+   272→   272→
+   273→   273→DROP POLICY IF EXISTS "Owner can view own store" ON stores;
+   274→   274→CREATE POLICY "Owner can view own store" ON stores
+   275→   275→    FOR SELECT TO authenticated
+   276→   276→    USING (id = get_user_store_id() AND get_user_role() = 'owner');
+   277→   277→
+   278→   278→DROP POLICY IF EXISTS "Manager can view own store" ON stores;
+   279→   279→CREATE POLICY "Manager can view own store" ON stores
+   280→   280→    FOR SELECT TO authenticated
+   281→   281→    USING (id = get_user_store_id() AND get_user_role() = 'manager');
+   282→   282→
+   283→   283→DROP POLICY IF EXISTS "Staff can view own store" ON stores;
+   284→   284→CREATE POLICY "Staff can view own store" ON stores
+   285→   285→    FOR SELECT TO authenticated
+   286→   286→    USING (id = get_user_store_id() AND get_user_role() IN ('picker', 'rider'));
+   287→   287→
+   288→   288→DROP POLICY IF EXISTS "Owner can update own store" ON stores;
+   289→   289→CREATE POLICY "Owner can update own store" ON stores
+   290→   290→    FOR UPDATE TO authenticated
+   291→   291→    USING (id = get_user_store_id() AND get_user_role() = 'owner')
+   292→   292→    WITH CHECK (id = get_user_store_id() AND get_user_role() = 'owner');
+   293→   293→
+   294→   294→DROP POLICY IF EXISTS "Owner can insert store" ON stores;
+   295→   295→CREATE POLICY "Owner can insert store" ON stores
+   296→   296→    FOR INSERT TO authenticated
+   297→   297→    WITH CHECK (get_user_role() = 'owner');
+   298→   298→
+   299→   299→-- ============================================================
+   300→   300→-- STEP 8: RLS Policies — Profiles (DEADLOCK-FIXED)
+   301→   301→-- ============================================================
+   302→   302→-- Drop ALL old policies to start fresh
+   303→   303→DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
+   304→   304→DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
+   305→   305→DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+   306→   306→DROP POLICY IF EXISTS "Customers can view own profile" ON profiles;
+   307→   307→DROP POLICY IF EXISTS "Staff can view own profile" ON profiles;
+   308→   308→DROP POLICY IF EXISTS "Customers can update own profile" ON profiles;
+   309→   309→DROP POLICY IF EXISTS "Staff can update own profile" ON profiles;
+   310→   310→DROP POLICY IF EXISTS "Owner can view own store profiles" ON profiles;
+   311→   311→DROP POLICY IF EXISTS "Manager can view own store profiles" ON profiles;
+   312→   312→DROP POLICY IF EXISTS "Owner can update own store profiles" ON profiles;
+   313→   313→
+   314→   314→-- NEW: Deadlock-free profile policies
+   315→   315→-- These don't depend on get_user_role() for self-service operations
+   316→   316→CREATE POLICY "Users can insert own profile" ON profiles
+   317→   317→    FOR INSERT TO authenticated
+   318→   318→    WITH CHECK (id = auth.uid());
+   319→   319→
+   320→   320→CREATE POLICY "Users can view own profile" ON profiles
+   321→   321→    FOR SELECT TO authenticated
+   322→   322→    USING (id = auth.uid());
+   323→   323→
+   324→   324→CREATE POLICY "Users can update own profile" ON profiles
+   325→   325→    FOR UPDATE TO authenticated
+   326→   326→    USING (id = auth.uid())
+   327→   327→    WITH CHECK (id = auth.uid());
+   328→   328→
+   329→   329→-- Admin profile access (requires role check)
+   330→   330→CREATE POLICY "Owner can view own store profiles" ON profiles
+   331→   331→    FOR SELECT TO authenticated
+   332→   332→    USING (store_id = get_user_store_id() AND get_user_role() = 'owner');
+   333→   333→
+   334→   334→CREATE POLICY "Manager can view own store profiles" ON profiles
+   335→   335→    FOR SELECT TO authenticated
+   336→   336→    USING (store_id = get_user_store_id() AND get_user_role() = 'manager');
+   337→   337→
+   338→   338→CREATE POLICY "Owner can update own store profiles" ON profiles
+   339→   339→    FOR UPDATE TO authenticated
+   340→   340→    USING (store_id = get_user_store_id() AND get_user_role() = 'owner')
+   341→   341→    WITH CHECK (store_id = get_user_store_id());
+   342→   342→
+   343→   343→-- ============================================================
+   344→   344→-- STEP 9: RLS Policies — Categories & Products (Public + Admin)
+   345→   345→-- ============================================================
+   346→   346→DROP POLICY IF EXISTS "Public can view active categories" ON categories;
+   347→   347→CREATE POLICY "Public can view active categories" ON categories
+   348→   348→    FOR SELECT TO anon, authenticated
+   349→   349→    USING (is_active = true);
+   350→   350→
+   351→   351→DROP POLICY IF EXISTS "Public can view available products" ON products;
+   352→   352→CREATE POLICY "Public can view available products" ON products
+   353→   353→    FOR SELECT TO anon, authenticated
+   354→   354→    USING (is_available = true);
+   355→   355→
+   356→   356→DROP POLICY IF EXISTS "Owner can manage own store categories" ON categories;
+   357→   357→CREATE POLICY "Owner can manage own store categories" ON categories
+   358→   358→    FOR ALL TO authenticated
+   359→   359→    USING (store_id = get_user_store_id() AND get_user_role() = 'owner')
+   360→   360→    WITH CHECK (store_id = get_user_store_id() AND get_user_role() = 'owner');
+   361→   361→
+   362→   362→DROP POLICY IF EXISTS "Manager can manage own store categories" ON categories;
+   363→   363→CREATE POLICY "Manager can manage own store categories" ON categories
+   364→   364→    FOR ALL TO authenticated
+   365→   365→    USING (store_id = get_user_store_id() AND get_user_role() = 'manager')
+   366→   366→    WITH CHECK (store_id = get_user_store_id() AND get_user_role() = 'manager');
+   367→   367→
+   368→   368→DROP POLICY IF EXISTS "Owner can manage own store products" ON products;
+   369→   369→CREATE POLICY "Owner can manage own store products" ON products
+   370→   370→    FOR ALL TO authenticated
+   371→   371→    USING (store_id = get_user_store_id() AND get_user_role() = 'owner')
+   372→   372→    WITH CHECK (store_id = get_user_store_id() AND get_user_role() = 'owner');
+   373→   373→
+   374→   374→DROP POLICY IF EXISTS "Manager can manage own store products" ON products;
+   375→   375→CREATE POLICY "Manager can manage own store products" ON products
+   376→   376→    FOR ALL TO authenticated
+   377→   377→    USING (store_id = get_user_store_id() AND get_user_role() = 'manager')
+   378→   378→    WITH CHECK (store_id = get_user_store_id() AND get_user_role() = 'manager');
+   379→   379→
+   380→   380→DROP POLICY IF EXISTS "Picker can view store categories" ON categories;
+   381→   381→CREATE POLICY "Picker can view store categories" ON categories
+   382→   382→    FOR SELECT TO authenticated
+   383→   383→    USING (store_id = get_user_store_id() AND get_user_role() = 'picker');
+   384→   384→
+   385→   385→DROP POLICY IF EXISTS "Picker can view store products" ON products;
+   386→   386→CREATE POLICY "Picker can view store products" ON products
+   387→   387→    FOR SELECT TO authenticated
+   388→   388→    USING (store_id = get_user_store_id() AND get_user_role() = 'picker');
+   389→   389→
+   390→   390→-- ============================================================
+   391→   391→-- STEP 10: RLS Policies — Addresses
+   392→   392→-- ============================================================
+   393→   393→DROP POLICY IF EXISTS "Users can view own addresses" ON addresses;
+   394→   394→CREATE POLICY "Users can view own addresses" ON addresses
+   395→   395→    FOR SELECT TO authenticated USING (user_id = auth.uid());
+   396→   396→
+   397→   397→DROP POLICY IF EXISTS "Users can insert own addresses" ON addresses;
+   398→   398→CREATE POLICY "Users can insert own addresses" ON addresses
+   399→   399→    FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+   400→   400→
+   401→   401→DROP POLICY IF EXISTS "Users can update own addresses" ON addresses;
+   402→   402→CREATE POLICY "Users can update own addresses" ON addresses
+   403→   403→    FOR UPDATE TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+   404→   404→
+   405→   405→DROP POLICY IF EXISTS "Users can delete own addresses" ON addresses;
+   406→   406→CREATE POLICY "Users can delete own addresses" ON addresses
+   407→   407→    FOR DELETE TO authenticated USING (user_id = auth.uid());
+   408→   408→
+   409→   409→DROP POLICY IF EXISTS "Staff can view order addresses" ON addresses;
+   410→   410→CREATE POLICY "Staff can view order addresses" ON addresses
+   411→   411→    FOR SELECT TO authenticated
+   412→   412→    USING (EXISTS (SELECT 1 FROM orders WHERE orders.address_id = addresses.id AND orders.store_id = get_user_store_id() AND get_user_role() IN ('owner', 'manager')));
+   413→   413→
+   414→   414→-- ============================================================
+   415→   415→-- STEP 11: RLS Policies — Orders
+   416→   416→-- ============================================================
+   417→   417→DROP POLICY IF EXISTS "Owner can manage own store orders" ON orders;
+   418→   418→CREATE POLICY "Owner can manage own store orders" ON orders
+   419→   419→    FOR SELECT TO authenticated
+   420→   420→    USING (store_id = get_user_store_id() AND get_user_role() = 'owner');
+   421→   421→
+   422→   422→DROP POLICY IF EXISTS "Manager can view own store orders" ON orders;
+   423→   423→CREATE POLICY "Manager can view own store orders" ON orders
+   424→   424→    FOR SELECT TO authenticated
+   425→   425→    USING (store_id = get_user_store_id() AND get_user_role() = 'manager');
+   426→   426→
+   427→   427→DROP POLICY IF EXISTS "Owner can update own store orders" ON orders;
+   428→   428→CREATE POLICY "Owner can update own store orders" ON orders
+   429→   429→    FOR UPDATE TO authenticated
+   430→   430→    USING (store_id = get_user_store_id() AND get_user_role() = 'owner')
+   431→   431→    WITH CHECK (store_id = get_user_store_id());
+   432→   432→
+   433→   433→DROP POLICY IF EXISTS "Manager can update own store orders" ON orders;
+   434→   434→CREATE POLICY "Manager can update own store orders" ON orders
+   435→   435→    FOR UPDATE TO authenticated
+   436→   436→    USING (store_id = get_user_store_id() AND get_user_role() = 'manager')
+   437→   437→    WITH CHECK (store_id = get_user_store_id());
+   438→   438→
+   439→   439→DROP POLICY IF EXISTS "Customers can view own orders" ON orders;
+   440→   440→CREATE POLICY "Customers can view own orders" ON orders
+   441→   441→    FOR SELECT TO authenticated
+   442→   442→    USING (customer_id = auth.uid() AND get_user_role() = 'customer');
+   443→   443→
+   444→   444→DROP POLICY IF EXISTS "Customers can insert own orders" ON orders;
+   445→   445→CREATE POLICY "Customers can insert own orders" ON orders
+   446→   446→    FOR INSERT TO authenticated
+   447→   447→    WITH CHECK (customer_id = auth.uid() AND get_user_role() = 'customer');
+   448→   448→
+   449→   449→DROP POLICY IF EXISTS "Picker can view assigned orders" ON orders;
+   450→   450→CREATE POLICY "Picker can view assigned orders" ON orders
+   451→   451→    FOR SELECT TO authenticated
+   452→   452→    USING (picker_id = auth.uid() AND get_user_role() = 'picker');
+   453→   453→
+   454→   454→DROP POLICY IF EXISTS "Picker can update assigned orders" ON orders;
+   455→   455→CREATE POLICY "Picker can update assigned orders" ON orders
+   456→   456→    FOR UPDATE TO authenticated
+   457→   457→    USING (picker_id = auth.uid() AND get_user_role() = 'picker')
+   458→   458→    WITH CHECK (picker_id = auth.uid());
+   459→   459→
+   460→   460→DROP POLICY IF EXISTS "Rider can view assigned orders" ON orders;
+   461→   461→CREATE POLICY "Rider can view assigned orders" ON orders
+   462→   462→    FOR SELECT TO authenticated
+   463→   463→    USING (rider_id = auth.uid() AND get_user_role() = 'rider');
+   464→   464→
+   465→   465→DROP POLICY IF EXISTS "Rider can update assigned orders" ON orders;
+   466→   466→CREATE POLICY "Rider can update assigned orders" ON orders
+   467→   467→    FOR UPDATE TO authenticated
+   468→   468→    USING (rider_id = auth.uid() AND get_user_role() = 'rider')
+   469→   469→    WITH CHECK (rider_id = auth.uid());
+   470→   470→
+   471→   471→-- ============================================================
+   472→   472→-- STEP 12: RLS Policies — Order Items
+   473→   473→-- ============================================================
+   474→   474→DROP POLICY IF EXISTS "Owner can view own store order items" ON order_items;
+   475→   475→CREATE POLICY "Owner can view own store order items" ON order_items
+   476→   476→    FOR SELECT TO authenticated
+   477→   477→    USING (EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.store_id = get_user_store_id() AND get_user_role() = 'owner'));
+   478→   478→
+   479→   479→DROP POLICY IF EXISTS "Manager can view own store order items" ON order_items;
+   480→   480→CREATE POLICY "Manager can view own store order items" ON order_items
+   481→   481→    FOR SELECT TO authenticated
+   482→   482→    USING (EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.store_id = get_user_store_id() AND get_user_role() = 'manager'));
+   483→   483→
+   484→   484→DROP POLICY IF EXISTS "Customers can view own order items" ON order_items;
+   485→   485→CREATE POLICY "Customers can view own order items" ON order_items
+   486→   486→    FOR SELECT TO authenticated
+   487→   487→    USING (EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.customer_id = auth.uid() AND get_user_role() = 'customer'));
+   488→   488→
+   489→   489→DROP POLICY IF EXISTS "Picker can view assigned order items" ON order_items;
+   490→   490→CREATE POLICY "Picker can view assigned order items" ON order_items
+   491→   491→    FOR SELECT TO authenticated
+   492→   492→    USING (EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.picker_id = auth.uid() AND get_user_role() = 'picker'));
+   493→   493→
+   494→   494→DROP POLICY IF EXISTS "Picker can update assigned order items" ON order_items;
+   495→   495→CREATE POLICY "Picker can update assigned order items" ON order_items
+   496→   496→    FOR UPDATE TO authenticated
+   497→   497→    USING (EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.picker_id = auth.uid() AND get_user_role() = 'picker'));
+   498→   498→
+   499→   499→DROP POLICY IF EXISTS "Rider can view assigned order items" ON order_items;
+   500→   500→CREATE POLICY "Rider can view assigned order items" ON order_items
+   501→   501→    FOR SELECT TO authenticated
+   502→   502→    USING (EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.rider_id = auth.uid() AND get_user_role() = 'rider'));
+   503→   503→
+   504→   504→DROP POLICY IF EXISTS "Customers can insert order items" ON order_items;
+   505→   505→CREATE POLICY "Customers can insert order items" ON order_items
+   506→   506→    FOR INSERT TO authenticated
+   507→   507→    WITH CHECK (EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.customer_id = auth.uid()));
+   508→   508→
+   509→   509→-- ============================================================
+   510→   510→-- STEP 13: RLS Policies — Rider Verifications
+   511→   511→-- ============================================================
+   512→   512→DROP POLICY IF EXISTS "Owner can manage rider verifications" ON rider_verifications;
+   513→   513→CREATE POLICY "Owner can manage rider verifications" ON rider_verifications
+   514→   514→    FOR SELECT TO authenticated
+   515→   515→    USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = rider_verifications.rider_id AND profiles.store_id = get_user_store_id() AND get_user_role() = 'owner'));
+   516→   516→
+   517→   517→DROP POLICY IF EXISTS "Manager can view rider verifications" ON rider_verifications;
+   518→   518→CREATE POLICY "Manager can view rider verifications" ON rider_verifications
+   519→   519→    FOR SELECT TO authenticated
+   520→   520→    USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = rider_verifications.rider_id AND profiles.store_id = get_user_store_id() AND get_user_role() = 'manager'));
+   521→   521→
+   522→   522→DROP POLICY IF EXISTS "Owner can update rider verifications" ON rider_verifications;
+   523→   523→CREATE POLICY "Owner can update rider verifications" ON rider_verifications
+   524→   524→    FOR UPDATE TO authenticated
+   525→   525→    USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = rider_verifications.rider_id AND profiles.store_id = get_user_store_id() AND get_user_role() = 'owner'));
+   526→   526→
+   527→   527→DROP POLICY IF EXISTS "Rider can view own verifications" ON rider_verifications;
+   528→   528→CREATE POLICY "Rider can view own verifications" ON rider_verifications
+   529→   529→    FOR SELECT TO authenticated
+   530→   530→    USING (rider_id = auth.uid() AND get_user_role() = 'rider');
+   531→   531→
+   532→   532→DROP POLICY IF EXISTS "Rider can insert own verifications" ON rider_verifications;
+   533→   533→CREATE POLICY "Rider can insert own verifications" ON rider_verifications
+   534→   534→    FOR INSERT TO authenticated
+   535→   535→    WITH CHECK (rider_id = auth.uid() AND get_user_role() = 'rider');
+   536→   536→
+   537→   537→-- ============================================================
+   538→   538→-- STEP 14: Seed Data — Store
+   539→   539→-- ============================================================
+   540→   540→INSERT INTO stores (id, name, slug, address, latitude, longitude, phone, email, base_delivery_fee, per_km_charge, free_delivery_threshold, delivery_radius_km)
+   541→   541→VALUES (
+   542→   542→    'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890',
+   543→   543→    'Fresh Mart London',
+   544→   544→    'fresh-mart-london',
+   545→   545→    '123 High Street, Lewisham, London, SE13 6LG',
+   546→   546→    51.46120,
+   547→   547→    -0.01170,
+   548→   548→    '+44 20 1234 5678',
+   549→   549→    'hello@freshmartlondon.co.uk',
+   550→   550→    3.50,
+   551→   551→    0.50,
+   552→   552→    20.00,
+   553→   553→    5.00
+   554→   554→) ON CONFLICT (id) DO UPDATE SET
+   555→   555→    name = EXCLUDED.name,
+   556→   556→    slug = EXCLUDED.slug,
+   557→   557→    address = EXCLUDED.address,
+   558→   558→    phone = EXCLUDED.phone,
+   559→   559→    email = EXCLUDED.email,
+   560→   560→    is_active = true;
+   561→   561→
+   562→   562→-- ============================================================
+   563→   563→-- STEP 15: Seed Data — Categories
+   564→   564→-- ============================================================
+   565→   565→INSERT INTO categories (id, store_id, name, slug, description, sort_order) VALUES
+   566→   566→    ('b1a10000-0000-4a00-b000-000000000001', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'Fruits & Vegetables', 'fruits-vegetables', 'Fresh produce delivered daily', 1),
+   567→   567→    ('b1a10000-0000-4a00-b000-000000000002', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'Dairy & Eggs', 'dairy-eggs', 'Milk, cheese, butter and eggs', 2),
+   568→   568→    ('b1a10000-0000-4a00-b000-000000000003', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'Meat & Fish', 'meat-fish', 'Fresh meat and fish counter', 3),
+   569→   569→    ('b1a10000-0000-4a00-b000-000000000004', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'Bakery', 'bakery', 'Freshly baked bread and pastries', 4),
+   570→   570→    ('b1a10000-0000-4a00-b000-000000000005', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'Pantry', 'pantry', 'Rice, pasta, sauces and more', 5),
+   571→   571→    ('b1a10000-0000-4a00-b000-000000000006', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'Drinks', 'drinks', 'Juices, water, soft drinks and tea', 6),
+   572→   572→    ('b1a10000-0000-4a00-b000-000000000007', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'Frozen', 'frozen', 'Frozen meals, ice cream and more', 7),
+   573→   573→    ('b1a10000-0000-4a00-b000-000000000008', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'Snacks & Sweets', 'snacks-sweets', 'Crisps, biscuits, chocolate and more', 8)
+   574→   574→ON CONFLICT (id) DO UPDATE SET
+   575→   575→    name = EXCLUDED.name,
+   576→   576→    slug = EXCLUDED.slug,
+   577→   577→    description = EXCLUDED.description,
+   578→   578→    sort_order = EXCLUDED.sort_order;
+   579→   579→
+   580→   580→-- ============================================================
+   581→   581→-- STEP 16: Seed Data — Products (20 items)
+   582→   582→-- ============================================================
+   583→   583→INSERT INTO products (id, store_id, category_id, name, slug, description, price, vat_rate, is_hfss, unit, is_available, stock_quantity, is_featured) VALUES
+   584→   584→    ('a1000000-0000-4a00-b000-000000000001', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000001', 'Organic Bananas', 'organic-bananas', 'Fairtrade organic bananas, pack of 6', 1.49, 0.0000, false, 'each', true, 150, true),
+   585→   585→    ('a1000000-0000-4a00-b000-000000000002', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000001', 'Baby Spinach', 'baby-spinach', 'Fresh baby spinach leaves, 200g bag', 1.89, 0.0000, false, 'each', true, 80, false),
+   586→   586→    ('a1000000-0000-4a00-b000-000000000003', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000001', 'British Strawberries', 'british-strawberries', 'Sweet British strawberries, 400g', 3.49, 0.0000, false, 'each', true, 45, true),
+   587→   587→    ('a1000000-0000-4a00-b000-000000000004', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000002', 'Free Range Eggs', 'free-range-eggs', 'Free range large eggs, pack of 12', 2.79, 0.0000, false, 'each', true, 100, true),
+   588→   588→    ('a1000000-0000-4a00-b000-000000000005', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000002', 'Semi-Skimmed Milk', 'semi-skimmed-milk', 'British semi-skimmed milk, 2 litres', 1.65, 0.0000, false, 'each', true, 200, false),
+   589→   589→    ('a1000000-0000-4a00-b000-000000000006', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000002', 'Mature Cheddar', 'mature-cheddar', 'Strong mature cheddar cheese, 400g', 3.29, 0.0000, false, 'each', true, 60, false),
+   590→   590→    ('a1000000-0000-4a00-b000-000000000007', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000003', 'Chicken Breast', 'chicken-breast', 'Free range chicken breast fillets, 500g', 5.99, 0.0000, false, 'kg', true, 40, true),
+   591→   591→    ('a1000000-0000-4a00-b000-000000000008', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000003', 'Scottish Salmon Fillet', 'scottish-salmon-fillet', 'Fresh Scottish salmon fillet, 200g', 6.49, 0.0000, false, 'each', true, 25, false),
+   592→   592→    ('a1000000-0000-4a00-b000-000000000009', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000004', 'Sourdough Loaf', 'sourdough-loaf', 'Artisan sourdough bread, freshly baked', 3.49, 0.0000, false, 'each', true, 30, true),
+   593→   593→    ('a1000000-0000-4a00-b000-000000000010', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000004', 'Croissants', 'croissants', 'Butter croissants, pack of 4', 2.29, 0.0000, false, 'each', true, 50, false),
+   594→   594→    ('a1000000-0000-4a00-b000-000000000011', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000005', 'Basmati Rice', 'basmati-rice', 'Premium basmati rice, 1kg', 2.99, 0.0000, false, 'each', true, 90, false),
+   595→   595→    ('a1000000-0000-4a00-b000-000000000012', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000005', 'Penne Pasta', 'penne-pasta', 'Italian penne pasta, 500g', 1.29, 0.0000, false, 'each', true, 120, false),
+   596→   596→    ('a1000000-0000-4a00-b000-000000000013', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000006', 'Orange Juice', 'orange-juice', 'Freshly squeezed orange juice, 1L', 2.49, 0.0000, false, 'each', true, 75, true),
+   597→   597→    ('a1000000-0000-4a00-b000-000000000014', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000006', 'Coca-Cola', 'coca-cola', 'Classic Coca-Cola, 1.5L bottle', 1.99, 0.2000, true, 'each', true, 100, false),
+   598→   598→    ('a1000000-0000-4a00-b000-000000000015', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000007', 'Frozen Pizza', 'frozen-pizza', 'Stone baked margherita pizza', 3.49, 0.0000, true, 'each', true, 55, false),
+   599→   599→    ('a1000000-0000-4a00-b000-000000000016', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000008', 'Salt & Vinegar Crisps', 'salt-vinegar-crisps', 'Classic salt and vinegar crisps, 150g', 1.59, 0.2000, true, 'each', true, 80, false),
+   600→   600→    ('a1000000-0000-4a00-b000-000000000017', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000008', 'Dark Chocolate Bar', 'dark-chocolate-bar', '70% cocoa dark chocolate, 100g', 1.89, 0.0000, true, 'each', true, 60, false),
+   601→   601→    ('a1000000-0000-4a00-b000-000000000018', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000008', 'Mixed Nuts', 'mixed-nuts', 'Roasted and salted mixed nuts, 200g', 3.29, 0.0000, false, 'each', true, 40, false),
+   602→   602→    ('a1000000-0000-4a00-b000-000000000019', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000002', 'Greek Yogurt', 'greek-yogurt', 'Thick and creamy Greek yogurt, 500g', 2.49, 0.0000, false, 'each', true, 70, true),
+   603→   603→    ('a1000000-0000-4a00-b000-000000000020', 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890', 'b1a10000-0000-4a00-b000-000000000005', 'Extra Virgin Olive Oil', 'extra-virgin-olive-oil', 'Italian extra virgin olive oil, 500ml', 5.99, 0.0000, false, 'each', true, 35, true)
+   604→   604→ON CONFLICT (id) DO UPDATE SET
+   605→   605→    name = EXCLUDED.name,
+   606→   606→    slug = EXCLUDED.slug,
+   607→   607→    price = EXCLUDED.price,
+   608→   608→    is_available = EXCLUDED.is_available,
+   609→   609→    stock_quantity = EXCLUDED.stock_quantity,
+   610→   610→    is_featured = EXCLUDED.is_featured;
+   611→   611→
+   612→   612→-- ============================================================
+   613→   613→-- STEP 17: Fix any existing profiles with NULL store_id
+   614→   614→-- ============================================================
+   615→   615→UPDATE profiles
+   616→   616→SET store_id = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+   617→   617→WHERE store_id IS NULL
+   618→   618→AND EXISTS (SELECT 1 FROM stores WHERE id = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890');
+   619→   619→
+   620→   620→-- ============================================================
+   621→   621→-- DONE! Verify with these queries:
+   622→   622→-- ============================================================
+   623→   623→-- SELECT count(*) as stores FROM stores;           -- expect: 1
+   624→   624→-- SELECT count(*) as categories FROM categories;    -- expect: 8
+   625→   625→-- SELECT count(*) as products FROM products;        -- expect: 20
+   626→   626→-- SELECT proname FROM pg_proc WHERE proname IN ('handle_new_user', 'get_user_role', 'get_user_store_id');  -- expect: 3 functions
+   627→   627→

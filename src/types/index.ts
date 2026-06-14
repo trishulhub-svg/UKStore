@@ -1,7 +1,36 @@
 // ============================================================
 // UK Grocery Store - TypeScript Types
-// Aligned with Supabase database schema
+// Aligned with Supabase database schema (snake_case)
+// and Prisma models (camelCase with mapping)
 // ============================================================
+
+// ─── Enums ────────────────────────────────────────────────────
+
+export type Role = 'CUSTOMER' | 'DRIVER' | 'OWNER' | 'MANAGER'
+
+/** @deprecated Legacy role type for backward compatibility */
+export type LegacyRole = 'customer' | 'driver' | 'owner' | 'manager'
+
+export type OrderStatus = 'placed' | 'picking' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled'
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded'
+
+export type VerificationStatus = 'pending' | 'approved' | 'rejected'
+
+export type SettingCategory = 'integrations' | 'delivery' | 'notifications' | 'general'
+
+export type DiscountType = 'percentage' | 'fixed_amount'
+
+/** VAT rate type — 0%, 5%, or 20% (UK) */
+export type VatRate = 0 | 0.05 | 0.2
+
+/** Substitute preference for cart items */
+export type SubstitutePreference = 'closest_match' | 'do_not_substitute'
+
+/** @deprecated Use Role instead */
+export type UserRole = Role | LegacyRole
+
+// ─── Core Models (snake_case for frontend compatibility) ──────
 
 export interface Store {
   id: string;
@@ -62,18 +91,19 @@ export interface ProductWithCategory extends Product {
 }
 
 export interface CartItem {
+  product_id: string;
   product: Product;
   quantity: number;
-  substitute_preference: 'closest_match' | 'do_not_substitute';
+  substitute_preference: SubstitutePreference;
 }
 
 export interface Profile {
   id: string;
-  store_id: string;
+  store_id: string | null;
   email: string;
   full_name: string;
   phone: string | null;
-  role: 'customer' | 'owner' | 'manager' | 'picker' | 'rider';
+  role: Role | LegacyRole;
   avatar_url: string | null;
   is_active: boolean;
   created_at: string;
@@ -98,17 +128,16 @@ export interface Order {
   id: string;
   store_id: string;
   customer_id: string;
-  picker_id: string | null;
-  rider_id: string | null;
+  driver_id: string | null;
   address_id: string;
-  status: 'placed' | 'picking' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled';
+  status: OrderStatus;
   subtotal: number;
   vat_amount: number;
   delivery_fee: number;
   total: number;
   stripe_session_id: string | null;
   stripe_payment_intent_id: string | null;
-  payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
+  payment_status: PaymentStatus;
   delivery_slot: string | null;
   notes: string | null;
   created_at: string;
@@ -125,7 +154,7 @@ export interface OrderItem {
   vat_rate: number;
   vat_amount: number;
   subtotal: number;
-  substitute_preference: 'closest_match' | 'do_not_substitute' | null;
+  substitute_preference: string | null;
   substituted_with: string | null;
   picked: boolean;
 }
@@ -136,12 +165,95 @@ export interface StoreSetting {
   key: string;
   value: string;
   is_secret: boolean;
-  category: 'integrations' | 'delivery' | 'notifications' | 'general';
+  category: SettingCategory;
   description: string | null;
-  last_updated_by: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export interface Favourite {
+  id: string;
+  user_id: string;
+  product_id: string;
+  created_at: string;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  link: string | null;
+  created_at: string;
+}
+
+export interface DriverProfile {
+  id: string;
+  user_id: string;
+  vehicle_type: string | null;
+  vehicle_reg: string | null;
+  national_insurance_number: string | null;
+  right_to_work_url: string | null;
+  driving_license_url: string | null;
+  verification_status: VerificationStatus;
+  verified_by: string | null;
+  verified_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeliveryPricing {
+  base_fee: number;
+  per_km_charge: number;
+  free_delivery_threshold: number;
+  distance_km: number;
+  delivery_fee: number;
+  is_free_delivery: boolean;
+}
+
+export interface DeliveryZone {
+  id: string;
+  store_id: string;
+  name: string;
+  postcodes: string;  // JSON array of postcode strings
+  delivery_fee: number;
+  minimum_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface Promotion {
+  id: string;
+  store_id: string;
+  name: string;
+  description: string | null;
+  discount_type: DiscountType;
+  discount_value: number;
+  start_date: string;
+  end_date: string;
+  applies_to_category_ids: string | null;  // JSON array of category IDs
+  excludes_hfss: boolean;
+  is_active: boolean;
+  code: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Auth Types ───────────────────────────────────────────────
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  authProvider?: 'local' | 'supabase';
+  createdAt?: string;
+}
+
+// ─── Setting Definitions ──────────────────────────────────────
 
 /**
  * Known setting keys with their metadata.

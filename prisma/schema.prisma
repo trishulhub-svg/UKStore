@@ -1,8 +1,8 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// ============================================================
+// Fresh Mart London - Comprehensive Prisma Schema
+// SQLite for local dev (will switch to PostgreSQL later)
+// Includes all models needed for the full grocery store app
+// ============================================================
 
 generator client {
   provider = "prisma-client-js"
@@ -13,22 +13,329 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Enums ────────────────────────────────────────────────────
+// SQLite stores enums as strings; Prisma still validates them
+
+enum Role {
+  CUSTOMER
+  DRIVER
+  OWNER
+  MANAGER
+}
+
+enum OrderStatus {
+  placed
+  picking
+  ready
+  out_for_delivery
+  delivered
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum VerificationStatus {
+  pending
+  approved
+  rejected
+}
+
+enum SettingCategory {
+  integrations
+  delivery
+  notifications
+  general
+}
+
+enum DiscountType {
+  percentage
+  fixed_amount
+}
+
+// ─── Models ───────────────────────────────────────────────────
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   name         String?
   passwordHash String?
-  role         String   @default("customer")
+  phone        String?
+  role         Role     @default(CUSTOMER)
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  // Relations
+  addresses       Address[]
+  orders          Order[]       @relation("CustomerOrders")
+  drivenOrders    Order[]       @relation("DriverOrders")
+  favourites      Favourite[]
+  notifications   Notification[]
+  driverProfile   DriverProfile?
+
+  @@map("users")
 }
 
-model Post {
+model Store {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  address              String
+  latitude             Float
+  longitude            Float
+  phone                String?
+  email                String?
+  baseDeliveryFee      Float    @default(3.50)
+  perKmCharge          Float    @default(0.50)
+  freeDeliveryThreshold Float   @default(20.00)
+  deliveryRadiusKm     Float    @default(5.00)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relations
+  categories     Category[]
+  products       Product[]
+  orders         Order[]
+  settings       StoreSetting[]
+  deliveryZones  DeliveryZone[]
+  promotions     Promotion[]
+
+  @@map("stores")
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  storeId     String
+  name        String
+  slug        String
+  description String?
+  imageUrl    String?
+  parentId    String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  store    Store     @relation(fields: [storeId], references: [id])
+  parent   Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryHierarchy")
+  products Product[]
+
+  @@unique([storeId, slug])
+  @@map("categories")
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  storeId       String
+  categoryId    String
+  name          String
+  slug          String
+  description   String?
+  price         Float
+  vatRate       Float    @default(0.0)
+  isHfss        Boolean  @default(false)
+  imageUrl      String?
+  barcode       String?
+  unit          String   @default("each")
+  weightKg      Float?
+  isAvailable   Boolean  @default(true)
+  stockQuantity Int      @default(0)
+  isFeatured    Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  store       Store      @relation(fields: [storeId], references: [id])
+  category    Category   @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+  favourites  Favourite[]
+
+  @@unique([storeId, slug])
+  @@map("products")
+}
+
+model Address {
+  id           String   @id @default(cuid())
+  userId       String
+  label        String?
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  postcode     String
+  latitude     Float?
+  longitude    Float?
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  // Relations
+  user  User   @relation(fields: [userId], references: [id])
+  orders Order[]
+
+  @@map("addresses")
+}
+
+model Order {
+  id                   String        @id @default(cuid())
+  storeId              String
+  customerId           String
+  driverId             String?
+  addressId            String
+  status               OrderStatus   @default(placed)
+  subtotal             Float
+  vatAmount            Float
+  deliveryFee          Float
+  total                Float
+  stripeSessionId      String?
+  stripePaymentIntentId String?
+  paymentStatus        PaymentStatus @default(pending)
+  deliverySlot         DateTime?
+  notes                String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  // Relations
+  store     Store      @relation(fields: [storeId], references: [id])
+  customer  User       @relation("CustomerOrders", fields: [customerId], references: [id])
+  driver    User?      @relation("DriverOrders", fields: [driverId], references: [id])
+  address   Address    @relation(fields: [addressId], references: [id])
+  items     OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id                   String   @id @default(cuid())
+  orderId              String
+  productId            String
+  productName          String
+  quantity             Int
+  unitPrice            Float
+  vatRate              Float
+  vatAmount            Float
+  subtotal             Float
+  substitutePreference String?  // 'closest_match' | 'do_not_substitute'
+  substitutedWith      String?  // product ID
+  picked               Boolean  @default(false)
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model StoreSetting {
+  id          String          @id @default(cuid())
+  storeId     String
+  key         String
+  value       String          @default("")
+  isSecret    Boolean         @default(true)
+  category    SettingCategory @default(integrations)
+  description String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, key])
+  @@map("store_settings")
+}
+
+model Favourite {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  userId    String
+  productId String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("favourites")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // 'order_update', 'promotion', 'system', etc.
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model DriverProfile {
+  id                    String             @id @default(cuid())
+  userId                String             @unique
+  vehicleType           String?            // 'bicycle', 'motorcycle', 'car', 'van'
+  vehicleReg            String?
+  nationalInsuranceNumber String?
+  rightToWorkUrl        String?
+  drivingLicenseUrl     String?
+  verificationStatus    VerificationStatus @default(pending)
+  verifiedBy            String?
+  verifiedAt            DateTime?
+  rejectionReason       String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("driver_profiles")
+}
+
+model DeliveryZone {
+  id            String   @id @default(cuid())
+  storeId       String
+  name          String
+  postcodes     String   // JSON array of postcode strings, e.g. '["SE1","SE2"]'
+  deliveryFee   Float    @default(0)
+  minimumOrder  Float    @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_zones")
+}
+
+model Promotion {
+  id                    String       @id @default(cuid())
+  storeId               String
+  name                  String
+  description           String?
+  discountType          DiscountType
+  discountValue         Float
+  startDate             DateTime
+  endDate               DateTime
+  appliesToCategoryIds  String?      // JSON array of category IDs
+  excludesHfss          Boolean      @default(false)
+  isActive              Boolean      @default(true)
+  code                  String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("promotions")
 }

@@ -2,7 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Store, Settings, LayoutDashboard, ChevronRight, User, LogOut, ArrowLeft } from 'lucide-react'
+import {
+  Store, Settings, LayoutDashboard, ChevronRight, User as UserIcon, LogOut, ArrowLeft,
+  Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { authLogout } from '@/lib/auth-client'
@@ -17,7 +20,15 @@ interface AdminShellProps {
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/settings', label: 'API Keys & Settings', icon: Settings },
+  { href: '/admin/products', label: 'Products', icon: Package },
+  { href: '/admin/categories', label: 'Categories', icon: FolderOpen },
+  { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+  { href: '/admin/customers', label: 'Customers', icon: Users },
+  { href: '/admin/drivers', label: 'Drivers', icon: Truck },
+  { href: '/admin/promotions', label: 'Promotions', icon: Tag },
+  { href: '/admin/delivery-zones', label: 'Delivery Zones', icon: MapPin },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/admin/settings', label: 'Settings', icon: Settings },
 ]
 
 export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
@@ -72,7 +83,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
         <div className="border-t border-gray-200 p-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
-              <User className="h-4 w-4 text-[#16a34a]" />
+              <UserIcon className="h-4 w-4 text-[#16a34a]" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{profile.full_name}</p>
@@ -102,30 +113,47 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
       {/* Main Content */}
       <div className="lg:pl-64 flex-1">
         {/* Mobile Header */}
-        <header className="lg:hidden sticky top-0 z-40 bg-white border-b border-gray-200 px-4 py-3">
-          <div className="flex items-center justify-between">
+        <header className="lg:hidden sticky top-0 z-40 bg-white border-b border-gray-200">
+          <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2">
               <Store className="h-5 w-5 text-[#16a34a]" />
               <span className="font-bold text-sm text-gray-900">Admin</span>
             </div>
-            <div className="flex items-center gap-2">
-              {navItems.map((item) => {
-                const Icon = item.icon
-                const isActive = pathname === item.href
-                return (
-                  <Link key={item.href} href={item.href}>
-                    <Button
-                      variant={isActive ? 'default' : 'ghost'}
-                      size="icon"
-                      className={isActive ? 'bg-[#16a34a] hover:bg-[#15803d]' : ''}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                )
-              })}
+            <div className="flex items-center gap-1">
+              <Link href="/">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
           </div>
+          <nav className="flex overflow-x-auto gap-1 px-2 pb-2 scrollbar-none">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname === item.href ||
+                (item.href !== '/admin' && pathname.startsWith(item.href))
+              return (
+                <Link key={item.href} href={item.href}>
+                  <Button
+                    variant={isActive ? 'default' : 'ghost'}
+                    size="sm"
+                    className={`text-xs shrink-0 ${isActive ? 'bg-[#16a34a] hover:bg-[#15803d]' : ''}`}
+                  >
+                    <Icon className="h-3.5 w-3.5 mr-1" />
+                    {item.label}
+                  </Button>
+                </Link>
+              )
+            })}
+          </nav>
         </header>
 
         {/* Page Content */}

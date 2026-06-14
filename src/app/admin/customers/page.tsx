@@ -1,0 +1,281 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { Search, Eye, AlertTriangle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from 'sonner'
+import { formatPrice } from '@/lib/vat'
+
+interface Customer {
+  id: string
+  name: string | null
+  email: string
+  phone: string | null
+  isActive: boolean
+  createdAt: string
+  orderCount: number
+  totalSpent: number
+  orders: Array<{
+    id: string
+    total: number
+    status: string
+    createdAt: string
+  }>
+}
+
+interface CustomerDetail {
+  id: string
+  name: string | null
+  email: string
+  phone: string | null
+  isActive: boolean
+  createdAt: string
+  totalSpent: number
+  addresses: any[]
+  orders: Array<{
+    id: string
+    total: number
+    subtotal: number
+    vatAmount: number
+    deliveryFee: number
+    status: string
+    paymentStatus: string
+    createdAt: string
+    items: Array<{ productName: string; quantity: number; unitPrice: number }>
+  }>
+}
+
+export default function AdminCustomersPage() {
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [total, setTotal] = useState(0)
+
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  const fetchCustomers = useCallback(async () => {
+    try {
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      const res = await fetch(`/api/admin/customers?${params}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setCustomers(data.customers)
+      setTotal(data.total)
+    } catch {
+      toast.error('Failed to load customers')
+    } finally {
+      setLoading(false)
+    }
+  }, [search])
+
+  useEffect(() => {
+    fetchCustomers()
+  }, [fetchCustomers])
+
+  const handleViewDetail = async (customerId: string) => {
+    setDetailLoading(true)
+    setSheetOpen(true)
+    try {
+      const res = await fetch(`/api/admin/customers/${customerId}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setSelectedCustomer(data.customer)
+    } catch {
+      toast.error('Failed to load customer details')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
+        <p className="text-gray-500 text-sm">{total} customers</p>
+      </div>
+
+      {/* Search */}
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search by name or email..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-6 space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : customers.length === 0 ? (
+            <div className="text-center py-12">
+              <AlertTriangle className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">No customers found</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Email</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Orders</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Total Spent</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Joined</th>
+                    <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customers.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4 font-medium text-gray-900">
+                        {c.name || 'N/A'}
+                        {!c.isActive && (
+                          <Badge variant="outline" className="ml-2 text-xs text-gray-400">Inactive</Badge>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500">{c.email}</td>
+                      <td className="py-3 px-4">
+                        <Badge variant="secondary" className="text-xs">{c.orderCount}</Badge>
+                      </td>
+                      <td className="py-3 px-4 font-medium">{formatPrice(c.totalSpent)}</td>
+                      <td className="py-3 px-4 text-gray-500 text-xs">
+                        {new Date(c.createdAt).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Button variant="ghost" size="sm" onClick={() => handleViewDetail(c.id)}>
+                          <Eye className="h-4 w-4 mr-1" /> View
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Detail Sheet */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Customer Details</SheetTitle>
+          </SheetHeader>
+          {detailLoading ? (
+            <div className="py-8 space-y-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </div>
+          ) : selectedCustomer ? (
+            <div className="py-4 space-y-6">
+              {/* Customer Info */}
+              <div className="bg-gray-50 p-4 rounded-lg space-y-1">
+                <p className="font-medium">{selectedCustomer.name || 'N/A'}</p>
+                <p className="text-sm text-gray-500">{selectedCustomer.email}</p>
+                {selectedCustomer.phone && <p className="text-sm text-gray-500">{selectedCustomer.phone}</p>}
+                <p className="text-sm text-gray-500">
+                  Joined {new Date(selectedCustomer.createdAt).toLocaleDateString('en-GB', {
+                    day: 'numeric', month: 'long', year: 'numeric',
+                  })}
+                </p>
+                <Separator className="my-2" />
+                <div className="flex gap-6 text-sm">
+                  <div>
+                    <span className="text-gray-500">Orders:</span>{' '}
+                    <span className="font-medium">{selectedCustomer.orders.length}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Total Spent:</span>{' '}
+                    <span className="font-medium">{formatPrice(selectedCustomer.totalSpent)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Addresses */}
+              {selectedCustomer.addresses.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">Addresses</h4>
+                  {selectedCustomer.addresses.map((addr: any) => (
+                    <div key={addr.id} className="bg-gray-50 p-3 rounded-lg text-sm">
+                      <p>{addr.addressLine1}</p>
+                      {addr.addressLine2 && <p>{addr.addressLine2}</p>}
+                      <p>{addr.city}, {addr.postcode}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Order History */}
+              <div className="space-y-2">
+                <h4 className="font-medium text-sm">Order History</h4>
+                {selectedCustomer.orders.length === 0 ? (
+                  <p className="text-sm text-gray-500">No orders yet</p>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {selectedCustomer.orders.map((o) => (
+                      <div key={o.id} className="bg-gray-50 p-3 rounded-lg text-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-mono text-xs">#{o.id.substring(0, 8).toUpperCase()}</span>
+                          <Badge variant="secondary" className="text-xs">{o.status}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500">
+                            {new Date(o.createdAt).toLocaleDateString('en-GB')}
+                          </span>
+                          <span className="font-medium">{formatPrice(o.total)}</span>
+                        </div>
+                        {o.items.length > 0 && (
+                          <div className="mt-2 text-xs text-gray-500">
+                            {o.items.map((item, idx) => (
+                              <span key={idx}>
+                                {item.productName} ×{item.quantity}
+                                {idx < o.items.length - 1 ? ', ' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
+    </div>
+  )
+}

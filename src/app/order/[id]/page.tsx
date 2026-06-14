@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { getPrisma } from '@/lib/auth/prisma'
 import { getDefaultStore } from '@/lib/supabase/queries'
 import { OrderConfirmationClient } from '@/components/customer/order-confirmation-client'
 import { notFound } from 'next/navigation'
@@ -12,50 +12,88 @@ export const dynamic = 'force-dynamic'
 
 export default async function OrderConfirmationPage({ params }: OrderPageProps) {
   const { id } = await params
-  const supabase = createServiceClient()
   const store = await getDefaultStore()
 
-  // If Supabase is not available, show a not-found page
-  if (!supabase) {
-    notFound()
-  }
+  // Fetch order from Prisma
+  try {
+    const prisma = await getPrisma()
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: true,
+        address: true,
+      },
+    })
 
-  // Fetch the order
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (orderError || !order) {
-    notFound()
-  }
-
-  // Fetch order items
-  const { data: orderItems } = await supabase
-    .from('order_items')
-    .select('*')
-    .eq('order_id', id)
-
-  // Fetch address
-  let address: Address | null = null
-  if ((order as Order).address_id) {
-    const { data: addressData } = await supabase
-      .from('addresses')
-      .select('*')
-      .eq('id', (order as Order).address_id)
-      .single()
-    if (addressData) {
-      address = addressData as Address
+    if (!order) {
+      notFound()
     }
-  }
 
-  return (
-    <OrderConfirmationClient
-      order={order as Order}
-      orderItems={(orderItems as OrderItem[]) || []}
-      address={address}
-      storeName={store?.name}
-    />
-  )
+    // Map Prisma order to frontend type
+    const mappedOrder: Order = {
+      id: order.id,
+      store_id: order.storeId,
+      customer_id: order.customerId,
+      driver_id: order.driverId,
+      address_id: order.addressId,
+      status: order.status as Order['status'],
+      subtotal: order.subtotal,
+      vat_amount: order.vatAmount,
+      delivery_fee: order.deliveryFee,
+      total: order.total,
+      stripe_session_id: order.stripeSessionId,
+      stripe_payment_intent_id: order.stripePaymentIntentId,
+      payment_status: order.paymentStatus as Order['payment_status'],
+      delivery_slot: order.deliverySlot?.toISOString() ?? null,
+      notes: order.notes,
+      created_at: order.createdAt.toISOString(),
+      updated_at: order.updatedAt.toISOString(),
+    }
+
+    // Map Prisma order items to frontend type
+    const mappedItems: OrderItem[] = order.items.map((item) => ({
+      id: item.id,
+      order_id: item.orderId,
+      product_id: item.productId,
+      product_name: item.productName,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      vat_rate: item.vatRate,
+      vat_amount: item.vatAmount,
+      subtotal: item.subtotal,
+      substitute_preference: item.substitutePreference,
+      substituted_with: item.substitutedWith,
+      picked: item.picked,
+    }))
+
+    // Map Prisma address to frontend type
+    let mappedAddress: Address | null = null
+    if (order.address) {
+      mappedAddress = {
+        id: order.address.id,
+        user_id: order.address.userId,
+        label: order.address.label,
+        address_line_1: order.address.addressLine1,
+        address_line_2: order.address.addressLine2,
+        city: order.address.city,
+        postcode: order.address.postcode,
+        latitude: order.address.latitude,
+        longitude: order.address.longitude,
+        is_default: order.address.isDefault,
+        created_at: order.address.createdAt.toISOString(),
+      }
+    }
+
+    return (
+      <OrderConfirmationClient
+        order={mappedOrder}
+        orderItems={mappedItems}
+        address={mappedAddress}
+        storeName={store?.name}
+      />
+    )
+  } catch (err) {
+    console.error('[Order Page] Failed to fetch order:', err)
+    notFound()
+  }
 }

@@ -1,15 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { verifySessionTokenEdge, SESSION_COOKIE_NAME } from '@/lib/auth/edge'
+import { getUserFromCookies, SESSION_COOKIE_NAME } from '@/lib/auth/edge'
 
 export async function middleware(request: NextRequest) {
-  let user: { uid: string; email: string; role: string; name: string } | null = null
+  let user: { uid: string; email: string; role: string; name: string; authProvider: 'local' | 'supabase' } | null = null
 
   try {
-    const token = request.cookies.get(SESSION_COOKIE_NAME)?.value
-
-    if (token) {
-      user = await verifySessionTokenEdge(token)
-    }
+    user = await getUserFromCookies(request.cookies)
   } catch (error) {
     console.error('[Middleware] Session verification error:', error instanceof Error ? error.message : error)
   }

@@ -42,7 +42,7 @@ export function calculateCartVat(items: CartItem[]): number {
   return items.reduce((total, item) => {
     const itemVat = calculateVat(
       item.product.price * item.quantity,
-      item.product.vat_rate
+      item.product.vat_rate as VatRate
     );
     return total + itemVat;
   }, 0);

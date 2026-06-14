@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getServerUser } from '@/lib/auth/server'
+import { getPrisma } from '@/lib/auth/prisma'
 import { getDefaultStore } from '@/lib/supabase/queries'
 import { CheckoutClient } from '@/components/customer/checkout-client'
 import type { Address } from '@/types'
@@ -26,8 +27,31 @@ export default async function CheckoutPage() {
     )
   }
 
-  // Addresses require Supabase tables - will be empty when using local auth
-  const addresses: Address[] = []
+  // Fetch user addresses from Prisma
+  let addresses: Address[] = []
+  try {
+    const prisma = await getPrisma()
+    const dbAddresses = await prisma.address.findMany({
+      where: { userId: user.id },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    })
+
+    addresses = dbAddresses.map((a) => ({
+      id: a.id,
+      user_id: a.userId,
+      label: a.label,
+      address_line_1: a.addressLine1,
+      address_line_2: a.addressLine2,
+      city: a.city,
+      postcode: a.postcode,
+      latitude: a.latitude,
+      longitude: a.longitude,
+      is_default: a.isDefault,
+      created_at: a.createdAt.toISOString(),
+    }))
+  } catch (err) {
+    console.warn('[Checkout Page] Failed to fetch addresses:', err)
+  }
 
   return (
     <CheckoutClient

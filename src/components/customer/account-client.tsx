@@ -97,7 +97,7 @@ export function AccountClient({ storeName, user, orders }: AccountClientProps) {
                 </div>
                 <Separator className="my-3" />
                 {/* Admin link for owner/manager roles */}
-                {(user.role === 'owner' || user.role === 'manager') && (
+                {(user.role.toUpperCase() === 'OWNER' || user.role.toUpperCase() === 'MANAGER') && (
                   <Link href="/admin" className="block">
                     <Button variant="outline" className="w-full mb-2 border-[#16a34a]/30 text-[#16a34a] hover:bg-[#16a34a]/5">
                       <Settings className="h-4 w-4 mr-2" />

@@ -16,8 +16,10 @@ export default async function AdminLayout({
     redirect('/auth/login?redirect=/admin')
   }
 
-  // Check user's role - only owners can access admin
-  if (user.role !== 'owner') {
+  // Check user's role - only owners and managers can access admin
+  // Support both uppercase (Prisma enum) and lowercase (legacy tokens)
+  const role = user.role.toUpperCase()
+  if (role !== 'OWNER' && role !== 'MANAGER') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center max-w-md">
@@ -28,7 +30,7 @@ export default async function AdminLayout({
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
           <p className="text-gray-600 mb-4">
-            Only store owners can access the admin dashboard. Your current role is <strong>{user.role}</strong>.
+            Only store owners and managers can access the admin dashboard. Your current role is <strong>{user.role}</strong>.
           </p>
           <a href="/" className="inline-flex items-center px-4 py-2 bg-[#16a34a] text-white rounded-md hover:bg-[#15803d] font-medium">
             Return to Store
@@ -43,7 +45,7 @@ export default async function AdminLayout({
     id: user.id,
     store_id: '',
     email: user.email,
-    full_name: user.name,
+    full_name: user.name || '',
     phone: null,
     role: user.role as Profile['role'],
     avatar_url: null,

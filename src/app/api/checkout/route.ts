@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getPrisma } from '@/lib/auth/prisma'
 import { calculateVatFromGross } from '@/lib/vat'
 import { getStripeConfig } from '@/lib/settings'
 
@@ -83,57 +83,50 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check Stripe configuration from DB/env
-    const stripeConfig = await getStripeConfig()
+    // Get Prisma client
+    const prisma = await getPrisma()
 
-    // Try to use Supabase service client for order creation if available
-    const serviceClient = createServiceClient()
-
-    // Validate items against database (check prices and stock)
-    let dbProducts: Array<{ id: string; name: string; price: number; vat_rate: number; is_available: boolean; stock_quantity: number }> | null = null
-    if (serviceClient) {
-      try {
-        const productIds = items.map((item: { product_id: string }) => item.product_id)
-        const { data, error: productsError } = await serviceClient
-          .from('products')
-          .select('id, name, price, vat_rate, is_available, stock_quantity')
-          .in('id', productIds)
-
-        if (!productsError && data) {
-          dbProducts = data as typeof dbProducts
-        }
-      } catch {
-        // Continue anyway — the database might not be fully set up
+    // Validate items against database (check prices and stock) via Prisma
+    let dbProducts: Map<string, { id: string; name: string; price: number; vatRate: number; isAvailable: boolean; stockQuantity: number }> = new Map()
+    try {
+      const productIds = items.map((item: { product_id: string }) => item.product_id)
+      const dbProductRows = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, name: true, price: true, vatRate: true, isAvailable: true, stockQuantity: true },
+      })
+      for (const p of dbProductRows) {
+        dbProducts.set(p.id, p)
       }
+    } catch {
+      // Continue anyway — the database might not be fully set up
     }
 
     // If we have database products, validate them
-    if (dbProducts && dbProducts.length > 0) {
-      const dbProductMap = new Map(dbProducts.map((p) => [p.id, p]))
+    if (dbProducts.size > 0) {
       for (const item of items) {
-        const dbProduct = dbProductMap.get(item.product_id)
+        const dbProduct = dbProducts.get(item.product_id)
         if (dbProduct) {
-          if (!dbProduct.is_available) {
+          if (!dbProduct.isAvailable) {
             return buildApiError(
               `${dbProduct.name} is no longer available.`,
               'PRODUCT_UNAVAILABLE',
               400,
-              `Product ID: ${dbProduct.id}, Name: ${dbProduct.name}, is_available: ${dbProduct.is_available}`,
+              `Product ID: ${dbProduct.id}, Name: ${dbProduct.name}, is_available: ${dbProduct.isAvailable}`,
               endpoint,
             )
           }
-          if (dbProduct.stock_quantity < item.quantity) {
+          if (dbProduct.stockQuantity < item.quantity) {
             return buildApiError(
-              `${dbProduct.name} has insufficient stock (only ${dbProduct.stock_quantity} available).`,
+              `${dbProduct.name} has insufficient stock (only ${dbProduct.stockQuantity} available).`,
               'INSUFFICIENT_STOCK',
               400,
-              `Product ID: ${dbProduct.id}, Name: ${dbProduct.name}, Requested: ${item.quantity}, Available: ${dbProduct.stock_quantity}`,
+              `Product ID: ${dbProduct.id}, Name: ${dbProduct.name}, Requested: ${item.quantity}, Available: ${dbProduct.stockQuantity}`,
               endpoint,
             )
           }
           // Use the database price (not the client-submitted price)
           item.unit_price = dbProduct.price
-          item.vat_rate = dbProduct.vat_rate
+          item.vat_rate = dbProduct.vatRate
         }
       }
     }
@@ -155,7 +148,59 @@ export async function POST(request: NextRequest) {
     const finalVatAmount = validatedVatAmount || vat_amount
     const finalTotal = finalSubtotal + delivery_fee
 
+    // Save address if requested and user is authenticated
+    let addressId: string | null = null
+    try {
+      // Check if user already has this address
+      const existingAddress = await prisma.address.findFirst({
+        where: {
+          userId: user.id,
+          addressLine1: address.address_line_1,
+          postcode: address.postcode,
+        },
+      })
+
+      if (existingAddress) {
+        addressId = existingAddress.id
+      } else if (save_address) {
+        // Create new address
+        const newAddress = await prisma.address.create({
+          data: {
+            userId: user.id,
+            label: address.label || null,
+            addressLine1: address.address_line_1,
+            addressLine2: address.address_line_2 || null,
+            city: address.city,
+            postcode: address.postcode,
+            latitude: address.latitude || null,
+            longitude: address.longitude || null,
+            isDefault: false,
+          },
+        })
+        addressId = newAddress.id
+      } else {
+        // Create a temporary address for the order
+        const tempAddress = await prisma.address.create({
+          data: {
+            userId: user.id,
+            addressLine1: address.address_line_1,
+            addressLine2: address.address_line_2 || null,
+            city: address.city,
+            postcode: address.postcode,
+            latitude: address.latitude || null,
+            longitude: address.longitude || null,
+            isDefault: false,
+          },
+        })
+        addressId = tempAddress.id
+      }
+    } catch {
+      // Address creation failed — continue without address_id
+    }
+
     // If Stripe is configured, create a real Checkout Session
+    const stripeConfig = await getStripeConfig()
+
     if (stripeConfig.isConfigured && stripeConfig.secretKey) {
       try {
         let Stripe: any
@@ -218,55 +263,48 @@ export async function POST(request: NextRequest) {
           },
         })
 
-        // Try to create order in Supabase
-        if (serviceClient) {
-          try {
-            const { data: order } = await serviceClient
-              .from('orders')
-              .insert({
-                store_id: STORE_ID,
-                customer_id: user.id,
-                status: 'placed',
-                subtotal: finalSubtotal,
-                vat_amount: finalVatAmount,
-                delivery_fee: delivery_fee,
-                total: finalTotal,
-                stripe_session_id: session.id,
-                payment_status: 'pending',
-                delivery_slot: delivery_slot,
-              })
-              .select('id')
-              .single()
+        // Create order in Prisma
+        try {
+          const order = await prisma.order.create({
+            data: {
+              storeId: STORE_ID,
+              customerId: user.id,
+              addressId: addressId || '',
+              status: 'placed',
+              subtotal: finalSubtotal,
+              vatAmount: finalVatAmount,
+              deliveryFee: delivery_fee,
+              total: finalTotal,
+              stripeSessionId: session.id,
+              paymentStatus: 'pending',
+              deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+              items: {
+                create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
+                  const itemGross = item.unit_price * item.quantity
+                  const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
+                  return {
+                    productId: item.product_id,
+                    productName: item.product_name,
+                    quantity: item.quantity,
+                    unitPrice: item.unit_price,
+                    vatRate: item.vat_rate,
+                    vatAmount: itemVat,
+                    subtotal: itemGross,
+                    substitutePreference: item.substitute_preference || 'closest_match',
+                    picked: false,
+                  }
+                }),
+              },
+            },
+          })
 
-            if (order) {
-              const orderItems = items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
-                const itemGross = item.unit_price * item.quantity
-                const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
-                return {
-                  order_id: order.id,
-                  product_id: item.product_id,
-                  product_name: item.product_name,
-                  quantity: item.quantity,
-                  unit_price: item.unit_price,
-                  vat_rate: item.vat_rate,
-                  vat_amount: itemVat,
-                  subtotal: itemGross,
-                  substitute_preference: item.substitute_preference || 'closest_match',
-                  picked: false,
-                }
-              })
-
-              await serviceClient.from('order_items').insert(orderItems)
-
-              return NextResponse.json({
-                orderId: order.id,
-                sessionId: session.id,
-                checkoutUrl: session.url,
-              })
-            }
-          } catch {
-            // Fall through to return Stripe session without order
-          }
+          return NextResponse.json({
+            orderId: order.id,
+            sessionId: session.id,
+            checkoutUrl: session.url,
+          })
+        } catch {
+          // Fall through to return Stripe session without order
         }
 
         return NextResponse.json({
@@ -279,55 +317,48 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Demo mode: Create order in Supabase if available, otherwise return demo response
-    if (serviceClient) {
-      try {
-        const { data: order, error: orderError } = await serviceClient
-          .from('orders')
-          .insert({
-            store_id: STORE_ID,
-            customer_id: user.id,
-            status: 'placed',
-            subtotal: finalSubtotal,
-            vat_amount: finalVatAmount,
-            delivery_fee: delivery_fee,
-            total: finalTotal,
-            stripe_session_id: `demo-session-${Date.now()}`,
-            payment_status: 'paid',
-            delivery_slot: delivery_slot,
-          })
-          .select('id')
-          .single()
+    // Demo mode: Create order in Prisma
+    try {
+      const order = await prisma.order.create({
+        data: {
+          storeId: STORE_ID,
+          customerId: user.id,
+          addressId: addressId || '',
+          status: 'placed',
+          subtotal: finalSubtotal,
+          vatAmount: finalVatAmount,
+          deliveryFee: delivery_fee,
+          total: finalTotal,
+          stripeSessionId: `demo-session-${Date.now()}`,
+          paymentStatus: 'paid',
+          deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+          items: {
+            create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
+              const itemGross = item.unit_price * item.quantity
+              const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
+              return {
+                productId: item.product_id,
+                productName: item.product_name,
+                quantity: item.quantity,
+                unitPrice: item.unit_price,
+                vatRate: item.vat_rate,
+                vatAmount: itemVat,
+                subtotal: itemGross,
+                substitutePreference: item.substitute_preference || 'closest_match',
+                picked: false,
+              }
+            }),
+          },
+        },
+      })
 
-        if (!orderError && order) {
-          const orderItems = items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
-            const itemGross = item.unit_price * item.quantity
-            const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
-            return {
-              order_id: order.id,
-              product_id: item.product_id,
-              product_name: item.product_name,
-              quantity: item.quantity,
-              unit_price: item.unit_price,
-              vat_rate: item.vat_rate,
-              vat_amount: itemVat,
-              subtotal: itemGross,
-              substitute_preference: item.substitute_preference || 'closest_match',
-              picked: false,
-            }
-          })
-
-          await serviceClient.from('order_items').insert(orderItems)
-
-          return NextResponse.json({
-            orderId: order.id,
-            sessionId: `demo-session-${Date.now()}`,
-            demoMode: true,
-          })
-        }
-      } catch {
-        // Fall through to simple demo response
-      }
+      return NextResponse.json({
+        orderId: order.id,
+        sessionId: `demo-session-${Date.now()}`,
+        demoMode: true,
+      })
+    } catch (err) {
+      console.error('[Checkout] Failed to create order in Prisma:', err)
     }
 
     // Fallback: return demo response without database

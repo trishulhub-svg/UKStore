@@ -1,8 +1,7 @@
 // ============================================================
 // Prisma client singleton for auth operations
-// Resolves the database path at runtime for both local dev
-// and production (serverless) environments.
-// Auto-creates the DB file and schema if they don't exist.
+// Works with the expanded grocery store schema.
+// Auto-creates the DB file if it doesn't exist.
 // ============================================================
 
 import { PrismaClient } from '@prisma/client'
@@ -16,40 +15,13 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 /**
- * SQL statements to create the schema from scratch.
- * These mirror the Prisma schema in prisma/schema.prisma.
- */
-const SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS "User" (
-  "id" TEXT NOT NULL PRIMARY KEY,
-  "email" TEXT NOT NULL,
-  "name" TEXT,
-  "passwordHash" TEXT,
-  "role" TEXT NOT NULL DEFAULT 'customer',
-  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
-
-CREATE TABLE IF NOT EXISTS "Post" (
-  "id" TEXT NOT NULL PRIMARY KEY,
-  "title" TEXT NOT NULL,
-  "content" TEXT,
-  "published" BOOLEAN NOT NULL DEFAULT false,
-  "authorId" TEXT NOT NULL,
-  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-`
-
-/**
  * Resolve the database URL at runtime.
  *
  * Production runs from /var/task/ (serverless). The .env
  * DATABASE_URL=file:./db/custom.db is relative to CWD.
  * We need to:
  * 1. Resolve the relative path to absolute
- * 2. If the file doesn't exist, create it with schema
+ * 2. If the file doesn't exist, create it
  * 3. Fall back to /tmp if needed
  */
 async function resolveAndEnsureDatabase(): Promise<string> {
@@ -99,46 +71,14 @@ async function resolveAndEnsureDatabase(): Promise<string> {
         return dbUrl
       }
 
-      // DB file doesn't exist or is empty — create it with schema
-      console.log(`[Prisma] Database not found at ${dbPath}, creating with schema...`)
+      // DB file doesn't exist or is empty — create it
+      console.log(`[Prisma] Database not found at ${dbPath}, creating...`)
 
       // Create empty SQLite file
       fs.writeFileSync(dbPath, '')
       process.env.DATABASE_URL = dbUrl
 
-      // Create a temporary client to push the schema
-      const tempClient = new PrismaClient({
-        datasources: { db: { url: dbUrl } },
-      })
-
-      try {
-        // Execute each statement separately for reliability
-        const statements = SCHEMA_SQL
-          .split(';')
-          .map(s => s.trim())
-          .filter(s => s.length > 0)
-
-        for (const stmt of statements) {
-          await tempClient.$executeRawUnsafe(stmt)
-        }
-
-        console.log('[Prisma] Database schema created successfully at:', dbPath)
-
-        // Seed the admin owner account
-        try {
-          const adminHash = await bcrypt.hash('Admin@2026', 12)
-          await tempClient.$executeRawUnsafe(
-            `INSERT INTO "User" ("id", "email", "name", "passwordHash", "role", "createdAt", "updatedAt") VALUES ('admin-seed-001', 'admin@freshmart.co.uk', 'Store Owner', '${adminHash}', 'owner', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-          )
-          console.log('[Prisma] Admin owner account seeded: admin@freshmart.co.uk / Admin@2026')
-        } catch (seedErr) {
-          console.error('[Prisma] Admin seed error (may already exist):', seedErr)
-        }
-      } catch (schemaErr) {
-        console.error('[Prisma] Schema creation error:', schemaErr)
-      } finally {
-        await tempClient.$disconnect()
-      }
+      console.log('[Prisma] Database file created. Schema will be applied via prisma db push.')
 
       return dbUrl
     } catch {
@@ -153,7 +93,6 @@ async function resolveAndEnsureDatabase(): Promise<string> {
 }
 
 // Initialize Prisma client
-// We need to handle the async initialization properly
 let prismaInstance: PrismaClient | undefined
 let initPromise: Promise<void> | undefined
 

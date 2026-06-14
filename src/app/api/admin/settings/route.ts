@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getPrisma } from '@/lib/auth/prisma'
 import { invalidateSettingsCache } from '@/lib/settings'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -59,7 +59,7 @@ export async function GET() {
       )
     }
 
-    if (user.role !== 'owner') {
+    if (user.role !== 'owner' && user.role !== 'OWNER') {
       return buildApiError(
         'Only store owners can access settings.',
         'FORBIDDEN_ROLE',
@@ -69,21 +69,29 @@ export async function GET() {
       )
     }
 
-    // Try to fetch settings from Supabase
-    const serviceClient = createServiceClient()
-    if (serviceClient) {
-      try {
-        const { data: settings, error } = await serviceClient
-          .from('store_settings')
-          .select('*')
-          .eq('store_id', STORE_ID)
+    // Fetch settings from Prisma
+    try {
+      const prisma = await getPrisma()
+      const settings = await prisma.storeSetting.findMany({
+        where: { storeId: STORE_ID },
+      })
 
-        if (!error && settings) {
-          return NextResponse.json({ settings })
-        }
-      } catch {
-        // Continue to return empty settings
-      }
+      // Map to frontend snake_case format
+      const mappedSettings = settings.map((s) => ({
+        id: s.id,
+        store_id: s.storeId,
+        key: s.key,
+        value: s.value,
+        is_secret: s.isSecret,
+        category: s.category,
+        description: s.description,
+        created_at: s.createdAt.toISOString(),
+        updated_at: s.updatedAt.toISOString(),
+      }))
+
+      return NextResponse.json({ settings: mappedSettings })
+    } catch (err) {
+      console.error('[Admin Settings GET] Prisma error:', err)
     }
 
     // Fallback: return empty settings
@@ -104,7 +112,7 @@ export async function GET() {
 /**
  * PUT /api/admin/settings
  * Update multiple settings at once (owner only)
- * Body: { settings: [{ key: string, value: string, last_updated_by: string }] }
+ * Body: { settings: [{ key: string, value: string }] }
  */
 export async function PUT(request: NextRequest) {
   const endpoint = '/api/admin/settings'
@@ -121,7 +129,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    if (user.role !== 'owner') {
+    if (user.role !== 'owner' && user.role !== 'OWNER') {
       return buildApiError(
         'Only store owners can modify settings.',
         'FORBIDDEN_ROLE',
@@ -145,7 +153,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const { settings } = body as {
-      settings: Array<{ key: string; value: string; last_updated_by: string }>
+      settings: Array<{ key: string; value: string }>
     }
 
     if (!settings || !Array.isArray(settings) || settings.length === 0) {
@@ -171,31 +179,51 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Try to update settings in Supabase
-    const serviceClient = createServiceClient()
-    if (serviceClient) {
+    // Update settings in Prisma using upsert
+    try {
+      const prisma = await getPrisma()
       const results: Array<{ key: string; success: boolean }> = []
 
       for (const item of settings) {
         try {
-          const { error } = await serviceClient
-            .from('store_settings')
-            .update({
-              value: item.value,
-              last_updated_by: user.id,
-            })
-            .eq('store_id', STORE_ID)
-            .eq('key', item.key)
+          // Determine category and is_secret from the SETTING_DEFINITIONS
+          const categoryMap: Record<string, string> = {
+            stripe_publishable_key: 'integrations',
+            stripe_secret_key: 'integrations',
+            stripe_webhook_secret: 'integrations',
+            google_oauth_client_id: 'integrations',
+            google_oauth_client_secret: 'integrations',
+            sendgrid_api_key: 'notifications',
+            taxjar_api_key: 'integrations',
+          }
+          const secretKeys = new Set([
+            'stripe_secret_key',
+            'stripe_webhook_secret',
+            'google_oauth_client_secret',
+            'sendgrid_api_key',
+            'taxjar_api_key',
+          ])
 
-          results.push({
-            key: item.key,
-            success: !error,
+          const category = (categoryMap[item.key] || 'general') as 'integrations' | 'delivery' | 'notifications' | 'general'
+          const isSecret = secretKeys.has(item.key)
+
+          await prisma.storeSetting.upsert({
+            where: {
+              storeId_key: { storeId: STORE_ID, key: item.key },
+            },
+            update: { value: item.value },
+            create: {
+              storeId: STORE_ID,
+              key: item.key,
+              value: item.value,
+              isSecret,
+              category,
+            },
           })
 
-          if (error) {
-            console.error(`Failed to update setting ${item.key}:`, error.message)
-          }
-        } catch {
+          results.push({ key: item.key, success: true })
+        } catch (err) {
+          console.error(`Failed to update setting ${item.key}:`, err)
           results.push({ key: item.key, success: false })
         }
       }
@@ -211,9 +239,11 @@ export async function PUT(request: NextRequest) {
           ? `Updated ${results.length} setting(s) successfully`
           : 'Some settings failed to update',
       })
+    } catch (err) {
+      console.error('[Admin Settings PUT] Prisma error:', err)
     }
 
-    // No Supabase available - settings cannot be persisted
+    // No database available - settings cannot be persisted
     return NextResponse.json({
       success: false,
       results: settings.map((s) => ({ key: s.key, success: false })),

@@ -1,7 +1,7 @@
 // ============================================================
 // Auth Store - Zustand
 // Manages user authentication state + profile data
-// Hydrated from Supabase Auth session
+// Works with both local auth and Supabase Auth
 // ============================================================
 
 import { create } from 'zustand';
@@ -19,6 +19,14 @@ interface AuthState {
   signOut: () => void;
   hasRole: (role: UserRole | UserRole[]) => boolean;
   isStaff: () => boolean;
+}
+
+/**
+ * Normalize a role value to uppercase for comparison.
+ * Handles both old lowercase tokens and new uppercase Prisma enum values.
+ */
+function normalizeRole(role: string): string {
+  return role.toUpperCase()
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -47,14 +55,16 @@ export const useAuthStore = create<AuthState>()(
       hasRole: (role) => {
         const { user } = get();
         if (!user) return false;
-        if (Array.isArray(role)) return role.includes(user.role);
-        return user.role === role;
+        const userRole = normalizeRole(user.role);
+        if (Array.isArray(role)) return role.some(r => normalizeRole(r) === userRole);
+        return normalizeRole(role) === userRole;
       },
 
       isStaff: () => {
         const { user } = get();
         if (!user) return false;
-        return ['owner', 'manager', 'picker', 'rider'].includes(user.role);
+        // 'picker' and 'rider' are legacy roles that are now merged into 'DRIVER'
+        return ['OWNER', 'MANAGER', 'DRIVER', 'PICKER', 'RIDER'].includes(normalizeRole(user.role));
       },
     }),
     {

@@ -47,9 +47,25 @@ export function isValidRole(role: string): role is UserRole {
 }
 
 export function isAdminRole(role: string): boolean {
-  return ['owner', 'manager'].includes(role)
+  return ['owner', 'manager'].includes(role.toLowerCase())
 }
 
 export function isDriverRole(role: string): boolean {
-  return role === 'driver'
+  return role.toLowerCase() === 'driver'
+}
+
+/**
+ * Determine where a user should be redirected based on their role.
+ * - owner/manager → /admin
+ * - driver → /driver
+ * - customer → fallback (usually /)
+ *
+ * Role comparison is case-insensitive to handle both
+ * uppercase (Prisma enum) and lowercase (legacy tokens).
+ */
+export function getRoleBasedRedirect(role: string, fallback = '/'): string {
+  const normalized = role.toUpperCase()
+  if (normalized === 'OWNER' || normalized === 'MANAGER') return '/admin'
+  if (normalized === 'DRIVER') return '/driver'
+  return fallback
 }

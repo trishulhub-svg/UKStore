@@ -25,3 +25,28 @@ Stage Summary:
   2. Create missing tables
   3. Then seed admin accounts
 - Login credentials will be: admin@freshmart.co.uk / Admin@2026
+
+---
+Task ID: 7
+Agent: Super Z (main)
+Task: Fix admin dashboard routing - admin users redirected to customer homepage after login
+
+Work Log:
+- Analyzed uploaded screenshot: admin user lands on customer-facing homepage with "Welcome back, Admin!" instead of admin dashboard
+- Identified root cause: no role-based redirect logic after login in any auth component
+- Added getRoleBasedRedirect() utility function to /src/lib/auth/index.ts
+- Fixed LoginClient (/src/components/auth/login-client.tsx): uses returned user role to redirect admin→/admin, driver→/driver, customer→redirectTo
+- Fixed HomeAuthForm (/src/components/auth/home-auth-form.tsx): same role-based redirect after login
+- Fixed AuthModal (/src/components/auth/auth-modal.tsx): same role-based redirect after login
+- Fixed HomeClient (/src/components/customer/home-client.tsx): auto-redirects admin/driver users away from customer homepage
+- Updated CustomerLayout (/src/components/layout/customer-layout.tsx): added Admin Panel / Driver Panel links in navbar for staff users (desktop + mobile)
+- Fixed middleware role checks to be case-insensitive (handles both uppercase OWNER and lowercase owner)
+- Fixed isAdminRole() and isDriverRole() helper functions to be case-insensitive
+- Build succeeded with zero compilation errors
+
+Stage Summary:
+- Admin users now automatically redirect to /admin after login
+- Driver users now automatically redirect to /driver after login
+- If admin/driver visits / (homepage), they get auto-redirected to their dashboard
+- Navbar shows "Admin Panel" / "Driver Panel" links for staff users
+- All role comparisons are now case-insensitive for consistency

@@ -1,12 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Store, User, LogOut, Menu, X, LogIn, UserPlus } from 'lucide-react'
+import { ShoppingCart, Store, User, LogOut, Menu, X, LogIn, UserPlus, Shield, Truck as TruckIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore } from '@/store/cart'
 import { useEffect, useState } from 'react'
 import { authGetSession, authLogout, type AuthUser } from '@/lib/auth-client'
 import { AuthModal } from '@/components/auth/auth-modal'
+import { isAdminRole, isDriverRole } from '@/lib/auth'
 
 interface CustomerLayoutProps {
   children: React.ReactNode
@@ -61,6 +62,9 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
 
   const userFirstName = user?.name?.split(' ')[0] || null
 
+  const isStaffAdmin = user ? isAdminRole(user.role) : false
+  const isStaffDriver = user ? isDriverRole(user.role) : false
+
   return (
     <div className="min-h-screen flex flex-col bg-white">
       {/* Header */}
@@ -87,12 +91,30 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
               >
                 Shop All
               </Link>
-              {user && (
+              {user && !isStaffAdmin && !isStaffDriver && (
                 <Link
                   href="/account"
                   className="text-sm font-medium text-gray-600 hover:text-[#16a34a] transition-colors"
                 >
                   Account
+                </Link>
+              )}
+              {isStaffAdmin && (
+                <Link
+                  href="/admin"
+                  className="text-sm font-medium text-[#16a34a] hover:text-[#15803d] transition-colors flex items-center gap-1.5"
+                >
+                  <Shield className="h-4 w-4" />
+                  Admin Panel
+                </Link>
+              )}
+              {isStaffDriver && (
+                <Link
+                  href="/driver"
+                  className="text-sm font-medium text-[#16a34a] hover:text-[#15803d] transition-colors flex items-center gap-1.5"
+                >
+                  <TruckIcon className="h-4 w-4" />
+                  Driver Panel
                 </Link>
               )}
             </nav>
@@ -101,10 +123,22 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
             <div className="hidden md:flex items-center gap-2">
               {user ? (
                 <>
-                  <Link href="/account" className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-[#16a34a] transition-colors px-3 py-1.5 rounded-lg hover:bg-green-50">
-                    <User className="h-4 w-4" />
-                    <span>{userFirstName || 'Account'}</span>
-                  </Link>
+                  {isStaffAdmin ? (
+                    <Link href="/admin" className="flex items-center gap-2 text-sm font-medium text-[#16a34a] hover:text-[#15803d] transition-colors px-3 py-1.5 rounded-lg hover:bg-green-50">
+                      <Shield className="h-4 w-4" />
+                      <span>Admin Panel</span>
+                    </Link>
+                  ) : isStaffDriver ? (
+                    <Link href="/driver" className="flex items-center gap-2 text-sm font-medium text-[#16a34a] hover:text-[#15803d] transition-colors px-3 py-1.5 rounded-lg hover:bg-green-50">
+                      <TruckIcon className="h-4 w-4" />
+                      <span>Driver Panel</span>
+                    </Link>
+                  ) : (
+                    <Link href="/account" className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-[#16a34a] transition-colors px-3 py-1.5 rounded-lg hover:bg-green-50">
+                      <User className="h-4 w-4" />
+                      <span>{userFirstName || 'Account'}</span>
+                    </Link>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -191,13 +225,33 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
               >
                 Shop All
               </Link>
-              {user && (
+              {user && !isStaffAdmin && !isStaffDriver && (
                 <Link
                   href="/account"
                   onClick={() => setMobileMenuOpen(false)}
                   className="block px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors"
                 >
                   My Account
+                </Link>
+              )}
+              {isStaffAdmin && (
+                <Link
+                  href="/admin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2.5 text-sm font-medium text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <Shield className="h-4 w-4" />
+                  Admin Panel
+                </Link>
+              )}
+              {isStaffDriver && (
+                <Link
+                  href="/driver"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2.5 text-sm font-medium text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <TruckIcon className="h-4 w-4" />
+                  Driver Panel
                 </Link>
               )}
 
@@ -216,6 +270,26 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
                       <p className="text-xs text-gray-500">{user.email}</p>
                     </div>
                   </div>
+                  {isStaffAdmin && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="w-full text-left px-3 py-2.5 text-sm font-medium text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors flex items-center gap-2"
+                    >
+                      <Shield className="h-4 w-4" />
+                      Admin Panel
+                    </Link>
+                  )}
+                  {isStaffDriver && (
+                    <Link
+                      href="/driver"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="w-full text-left px-3 py-2.5 text-sm font-medium text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors flex items-center gap-2"
+                    >
+                      <TruckIcon className="h-4 w-4" />
+                      Driver Panel
+                    </Link>
+                  )}
                   <button
                     onClick={handleLogout}
                     className="w-full text-left px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2"

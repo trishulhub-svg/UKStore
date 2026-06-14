@@ -33,7 +33,8 @@ export async function middleware(request: NextRequest) {
     }
 
     // Role check — only owner and manager can access admin
-    if (!['owner', 'manager'].includes(user.role)) {
+    // Case-insensitive comparison to handle both uppercase (Prisma enum) and lowercase (legacy)
+    if (!['owner', 'manager'].includes(user.role.toLowerCase())) {
       const redirectUrl = request.nextUrl.clone()
       redirectUrl.pathname = '/'
       return NextResponse.redirect(redirectUrl)
@@ -50,7 +51,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // Role check — only driver can access driver app
-    if (user.role !== 'driver') {
+    if (user.role.toLowerCase() !== 'driver') {
       const redirectUrl = request.nextUrl.clone()
       redirectUrl.pathname = '/'
       return NextResponse.redirect(redirectUrl)

@@ -9,6 +9,8 @@ import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
 import { formatPrice } from '@/lib/vat'
 import { authGetSession, type AuthUser } from '@/lib/auth-client'
+import { getRoleBasedRedirect } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import type { Store, Category, ProductWithCategory } from '@/types'
 
@@ -32,12 +34,20 @@ const categoryIcons: Record<string, string> = {
 export function HomeClient({ store, categories, featuredProducts }: HomeClientProps) {
   const addItem = useCartStore((state) => state.addItem)
   const [user, setUser] = useState<AuthUser | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     authGetSession().then(({ user }) => {
       setUser(user)
+      // Auto-redirect admin/driver users to their dashboards
+      if (user) {
+        const destination = getRoleBasedRedirect(user.role, '/')
+        if (destination !== '/') {
+          router.replace(destination)
+        }
+      }
     })
-  }, [])
+  }, [router])
 
   const userFirstName = user?.name?.split(' ')[0] || null
 

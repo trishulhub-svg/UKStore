@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
 import { authLogin } from '@/lib/auth-client'
+import { getRoleBasedRedirect } from '@/lib/auth'
 
 export function LoginClient() {
   const router = useRouter()
@@ -30,14 +31,17 @@ export function LoginClient() {
     setLoading(true)
 
     try {
-      const { error: authError } = await authLogin(email, password)
+      const { user: authUser, error: authError } = await authLogin(email, password)
 
       if (authError) {
         setError(authError)
         return
       }
 
-      router.push(redirectTo)
+      // Role-based redirect: admin users go to /admin, drivers to /driver, customers to the original redirect
+      const role = authUser?.role || 'customer'
+      const destination = getRoleBasedRedirect(role, redirectTo)
+      router.push(destination)
       router.refresh()
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)

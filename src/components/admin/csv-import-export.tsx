@@ -34,12 +34,14 @@ interface CSVRow {
   minStockThreshold: string
   stockQuantity: string
   isHfss: string
+  isAgeRestricted: string
+  minimumAge: string
   isAvailable: string
 }
 
 const REQUIRED_HEADERS = [
   'name', 'description', 'price', 'vatRate', 'category', 'barcode', 'unit',
-  'weightKg', 'aisle', 'minStockThreshold', 'stockQuantity', 'isHfss', 'isAvailable',
+  'weightKg', 'aisle', 'minStockThreshold', 'stockQuantity', 'isHfss', 'isAgeRestricted', 'minimumAge', 'isAvailable',
 ]
 
 export function CsvImportExport() {
@@ -222,7 +224,7 @@ export function CsvImportExport() {
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            CSV format: name, description, price, vatRate, category, barcode, unit, weightKg, aisle, minStockThreshold, stockQuantity, isHfss, isAvailable
+            CSV format: name, description, price, vatRate, category, barcode, unit, weightKg, aisle, minStockThreshold, stockQuantity, isHfss, isAgeRestricted, minimumAge, isAvailable
           </p>
         </CardContent>
       </Card>

@@ -53,6 +53,8 @@ function mapPrismaProductToProductWithCategory(p: any): ProductWithCategory {
     price: p.price,
     vat_rate: p.vatRate,
     is_hfss: p.isHfss,
+    is_age_restricted: p.isAgeRestricted,
+    minimum_age: p.minimumAge,
     image_url: p.imageUrl,
     barcode: p.barcode,
     unit: p.unit,

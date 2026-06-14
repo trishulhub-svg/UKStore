@@ -51,6 +51,8 @@ interface Product {
   price: number
   vatRate: number
   isHfss: boolean
+  isAgeRestricted: boolean
+  minimumAge: number
   imageUrl: string | null
   barcode: string | null
   unit: string
@@ -73,6 +75,8 @@ const emptyProduct = {
   price: '',
   vatRate: '0',
   isHfss: false,
+  isAgeRestricted: false,
+  minimumAge: '0',
   imageUrl: '',
   barcode: '',
   unit: 'each',
@@ -159,6 +163,8 @@ export default function AdminProductsPage() {
       price: String(p.price),
       vatRate: String(p.vatRate),
       isHfss: p.isHfss,
+      isAgeRestricted: p.isAgeRestricted,
+      minimumAge: String(p.minimumAge || 0),
       imageUrl: p.imageUrl || '',
       barcode: p.barcode || '',
       unit: p.unit,
@@ -221,7 +227,7 @@ export default function AdminProductsPage() {
     }
   }
 
-  const handleToggle = async (id: string, field: 'isAvailable' | 'isHfss', value: boolean) => {
+  const handleToggle = async (id: string, field: 'isAvailable' | 'isHfss' | 'isAgeRestricted', value: boolean) => {
     try {
       const res = await fetch(`/api/admin/products/${id}`, {
         method: 'PATCH',
@@ -343,13 +349,22 @@ export default function AdminProductsPage() {
                         <td className="py-3 px-4">{formatPrice(p.price)}</td>
                         <td className="py-3 px-4 text-gray-500 text-xs">{getVatRateLabel(p.vatRate)}</td>
                         <td className="py-3 px-4">
-                          <button onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}>
-                            {p.isHfss ? (
-                              <ToggleRight className="h-5 w-5 text-amber-500" />
-                            ) : (
-                              <ToggleLeft className="h-5 w-5 text-gray-300" />
-                            )}
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}>
+                              {p.isHfss ? (
+                                <ToggleRight className="h-5 w-5 text-amber-500" />
+                              ) : (
+                                <ToggleLeft className="h-5 w-5 text-gray-300" />
+                              )}
+                            </button>
+                            <button onClick={() => handleToggle(p.id, 'isAgeRestricted', !p.isAgeRestricted)}>
+                              {p.isAgeRestricted ? (
+                                <ToggleRight className="h-5 w-5 text-red-500" />
+                              ) : (
+                                <ToggleLeft className="h-5 w-5 text-gray-300" />
+                              )}
+                            </button>
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           <span className={p.stockQuantity <= 5 ? 'text-red-600 font-medium' : ''}>
@@ -433,6 +448,17 @@ export default function AdminProductsPage() {
                               <ToggleLeft className="h-5 w-5 text-gray-300" />
                             )}
                             <span className="text-sm">HFSS</span>
+                          </button>
+                          <button
+                            onClick={() => handleToggle(p.id, 'isAgeRestricted', !p.isAgeRestricted)}
+                            className="flex items-center gap-1.5 min-h-[44px]"
+                          >
+                            {p.isAgeRestricted ? (
+                              <ToggleRight className="h-5 w-5 text-red-500" />
+                            ) : (
+                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+                            )}
+                            <span className="text-sm">Age 18+</span>
                           </button>
                         </div>
                       </div>
@@ -610,8 +636,27 @@ export default function AdminProductsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={form.isHfss} onCheckedChange={(v) => setForm({ ...form, isHfss: v })} />
-                <Label>HFSS</Label>
+                <Label>HFSS (High in Fat, Salt, Sugar)</Label>
               </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={form.isAgeRestricted} onCheckedChange={(v) => setForm({ ...form, isAgeRestricted: v, minimumAge: v ? '18' : '0' })} />
+                <Label>Age Restricted (Challenge 25)</Label>
+              </div>
+              {form.isAgeRestricted && (
+                <div className="space-y-1">
+                  <Label htmlFor="minimumAge">Minimum Age</Label>
+                  <Select value={form.minimumAge} onValueChange={(v) => setForm({ ...form, minimumAge: v })}>
+                    <SelectTrigger id="minimumAge">
+                      <SelectValue placeholder="Select minimum age" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="16">16+ (Energy drinks)</SelectItem>
+                      <SelectItem value="18">18+ (Alcohol, Tobacco, Knives, Solvents)</SelectItem>
+                      <SelectItem value="21">21+ (US-restricted items)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
                 <Label>Featured</Label>

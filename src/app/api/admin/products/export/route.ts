@@ -31,6 +31,8 @@ export async function GET() {
       'minStockThreshold',
       'stockQuantity',
       'isHfss',
+      'isAgeRestricted',
+      'minimumAge',
       'isAvailable',
     ]
 
@@ -50,6 +52,8 @@ export async function GET() {
         String(p.minStockThreshold),
         String(p.stockQuantity),
         p.isHfss ? 'true' : 'false',
+        p.isAgeRestricted ? 'true' : 'false',
+        String(p.minimumAge || 0),
         p.isAvailable ? 'true' : 'false',
       ]
       csvRows.push(row.join(','))

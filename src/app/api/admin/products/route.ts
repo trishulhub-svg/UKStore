@@ -70,6 +70,8 @@ export async function POST(request: NextRequest) {
         price: parseFloat(body.price),
         vatRate: parseFloat(body.vatRate || '0'),
         isHfss: body.isHfss || false,
+        isAgeRestricted: body.isAgeRestricted || false,
+        minimumAge: parseInt(body.minimumAge || '0'),
         imageUrl: body.imageUrl || null,
         barcode: body.barcode || null,
         unit: body.unit || 'each',

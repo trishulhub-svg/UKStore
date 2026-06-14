@@ -59,6 +59,8 @@ export async function PATCH(
     if (body.price !== undefined) data.price = parseFloat(body.price)
     if (body.vatRate !== undefined) data.vatRate = parseFloat(body.vatRate)
     if (body.isHfss !== undefined) data.isHfss = body.isHfss
+    if (body.isAgeRestricted !== undefined) data.isAgeRestricted = body.isAgeRestricted
+    if (body.minimumAge !== undefined) data.minimumAge = parseInt(body.minimumAge)
     if (body.imageUrl !== undefined) data.imageUrl = body.imageUrl || null
     if (body.barcode !== undefined) data.barcode = body.barcode || null
     if (body.unit !== undefined) data.unit = body.unit

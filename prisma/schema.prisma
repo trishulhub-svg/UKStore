@@ -151,6 +151,8 @@ model Product {
   price                 Float
   vatRate               Float    @default(0.0)
   isHfss                Boolean  @default(false)
+  isAgeRestricted       Boolean  @default(false)  // UK Challenge 25 — alcohol, tobacco, knives, solvents, etc.
+  minimumAge            Int      @default(0)      // 0 = no restriction, 16 = energy drinks, 18 = alcohol/tobacco/knives, 21 = some US items
   imageUrl              String?
   barcode               String?
   unit                  String   @default("each")

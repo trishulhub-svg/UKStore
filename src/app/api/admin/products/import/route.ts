@@ -17,6 +17,8 @@ interface CSVRow {
   minStockThreshold: string
   stockQuantity: string
   isHfss: string
+  isAgeRestricted: string
+  minimumAge: string
   isAvailable: string
 }
 
@@ -78,6 +80,8 @@ export async function POST(request: NextRequest) {
           price: parseFloat(row.price) || 0,
           vatRate: parseFloat(row.vatRate || '0'),
           isHfss: row.isHfss === 'true',
+          isAgeRestricted: row.isAgeRestricted === 'true',
+          minimumAge: parseInt(row.minimumAge || '0'),
           barcode: row.barcode || null,
           unit: row.unit || 'each',
           weightKg: row.weightKg ? parseFloat(row.weightKg) : null,

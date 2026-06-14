@@ -133,7 +133,7 @@ function KanbanCard({
   const [refundReason, setRefundReason] = useState('')
   const [refunding, setRefunding] = useState(false)
   const shortId = `#${order.id.substring(0, 8).toUpperCase()}`
-  const hasAlcohol = order.items?.some(item => item.vatRate === 0.2) || order.hasChallenge25
+  const hasAgeRestricted = order.hasChallenge25 || order.items?.some(item => item.vatRate === 0.2 || item.product?.isAgeRestricted)
 
   // Generate a consistent colour for batch groups
   const batchColours = ['bg-teal-100 text-teal-700 border-teal-300', 'bg-violet-100 text-violet-700 border-violet-300', 'bg-rose-100 text-rose-700 border-rose-300', 'bg-sky-100 text-sky-700 border-sky-300', 'bg-amber-100 text-amber-700 border-amber-300']
@@ -174,7 +174,7 @@ function KanbanCard({
           <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${paymentBadgeColor[order.paymentStatus] || ''}`}>
             {order.paymentStatus}
           </Badge>
-          {hasAlcohol && (
+          {hasAgeRestricted && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-50 text-red-700 border-red-200">
               <Wine className="h-2.5 w-2.5 mr-0.5" />
               Challenge 25

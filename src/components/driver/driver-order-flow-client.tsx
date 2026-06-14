@@ -295,8 +295,12 @@ export function DriverOrderFlowClient() {
     }
 
     const age = currentYear - year
-    if (age < 18) {
-      setChallenge25Error('Customer must be 18 or older to receive this order. Sale refused.')
+    // Determine the minimum age required (default 18 for age-restricted items)
+    const minAge = ageRestrictedItems.reduce((max, item) => {
+      return Math.max(max, item.product?.minimumAge || 18)
+    }, 18)
+    if (age < minAge) {
+      setChallenge25Error(`Customer must be ${minAge} or older to receive this order. Sale refused.`)
       return
     }
 
@@ -347,9 +351,10 @@ export function DriverOrderFlowClient() {
   const pickedCount = order.items.filter((item) => item.picked).length
   const currentStepIndex = statusSteps.findIndex((s) => s.key === order.status)
 
-  // Identify HFSS items in the order for Challenge 25 display
-  const hfssItems = order.items.filter(
-    (item) => item.product?.isHfss
+  // Identify age-restricted items in the order for Challenge 25 display
+  // This includes both isAgeRestricted (alcohol, tobacco, etc.) and HFSS items with minimumAge >= 16
+  const ageRestrictedItems = order.items.filter(
+    (item) => item.product?.isAgeRestricted || (item.product?.isHfss && (item.product?.minimumAge || 0) >= 16)
   )
 
   // Determine if Challenge 25 needs to be shown
@@ -618,14 +623,14 @@ export function DriverOrderFlowClient() {
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-3">
               <p className="text-sm text-amber-700">
-                This order contains age-restricted items (HFSS). You must verify the customer&apos;s age before completing delivery.
+                This order contains age-restricted items. You must verify the customer&apos;s age before completing delivery.
               </p>
-              {hfssItems.length > 0 && (
+              {ageRestrictedItems.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-amber-800">Age-restricted items:</p>
                   <ul className="list-disc list-inside text-xs text-amber-700">
-                    {hfssItems.map((item) => (
-                      <li key={item.id}>{item.productName} × {item.quantity}</li>
+                    {ageRestrictedItems.map((item) => (
+                      <li key={item.id}>{item.productName} x {item.quantity}{item.product?.minimumAge ? ` (Age ${item.product.minimumAge}+)` : ''}</li>
                     ))}
                   </ul>
                 </div>

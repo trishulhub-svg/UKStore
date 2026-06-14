@@ -98,12 +98,12 @@ export async function POST(request: NextRequest) {
     const prisma = await getPrisma()
 
     // Validate items against database (check prices and stock) via Prisma
-    let dbProducts: Map<string, { id: string; name: string; price: number; vatRate: number; isAvailable: boolean; stockQuantity: number; isHfss: boolean }> = new Map()
+    let dbProducts: Map<string, { id: string; name: string; price: number; vatRate: number; isAvailable: boolean; stockQuantity: number; isHfss: boolean; isAgeRestricted: boolean; minimumAge: number }> = new Map()
     try {
       const productIds = items.map((item: { product_id: string }) => item.product_id)
       const dbProductRows = await prisma.product.findMany({
         where: { id: { in: productIds } },
-        select: { id: true, name: true, price: true, vatRate: true, isAvailable: true, stockQuantity: true, isHfss: true },
+        select: { id: true, name: true, price: true, vatRate: true, isAvailable: true, stockQuantity: true, isHfss: true, isAgeRestricted: true, minimumAge: true },
       })
       for (const p of dbProductRows) {
         dbProducts.set(p.id, p)
@@ -143,21 +143,32 @@ export async function POST(request: NextRequest) {
     }
 
     // ─── Challenge 25 Detection ─────────────────────────────────
-    // Check if any items are HFSS (High in Fat, Salt, Sugar) — requires age verification
-    const hasHfssItems =
+    // Check if any items require age verification:
+    //   - isAgeRestricted = true (alcohol, tobacco, knives, solvents, etc.)
+    //   - isHfss = true with minimumAge >= 16 (energy drinks, some HFSS items)
+    const requiresChallenge25 =
       items.some((item: { product_id: string }) => {
         const dbProduct = dbProducts.get(item.product_id)
-        return dbProduct?.isHfss === true
+        return dbProduct?.isAgeRestricted === true || (dbProduct?.isHfss === true && (dbProduct?.minimumAge || 0) >= 16)
       }) ||
-      items.some((item: { is_hfss?: boolean }) => item.is_hfss === true)
+      items.some((item: { is_age_restricted?: boolean; is_hfss?: boolean }) =>
+        item.is_age_restricted === true
+      )
 
-    // Collect HFSS item names for the driver's verification screen
-    const hfssItemNames: string[] = []
+    // Determine the minimum age required for this order (highest across all items)
+    let orderMinAge = 0
+    const ageRestrictedItemNames: string[] = []
     for (const item of items) {
       const dbProduct = dbProducts.get(item.product_id)
-      if (dbProduct?.isHfss || item.is_hfss) {
-        hfssItemNames.push(item.product_name || dbProduct?.name || 'Unknown product')
+      const itemMinAge = dbProduct?.minimumAge || 0
+      if (dbProduct?.isAgeRestricted || itemMinAge >= 16) {
+        orderMinAge = Math.max(orderMinAge, itemMinAge || 18)
+        ageRestrictedItemNames.push(item.product_name || dbProduct?.name || 'Unknown product')
       }
+    }
+    // Default to 18 if we have age-restricted items but no specific age
+    if (orderMinAge === 0 && requiresChallenge25) {
+      orderMinAge = 18
     }
 
     // Recalculate totals from validated items
@@ -243,7 +254,7 @@ export async function POST(request: NextRequest) {
             stripeSessionId: `cash-${Date.now()}`,
             paymentStatus: 'pending',
             paymentMethod: 'cash',
-            hasChallenge25: hasHfssItems,
+            hasChallenge25: requiresChallenge25,
             deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
             items: {
               create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
@@ -300,7 +311,7 @@ export async function POST(request: NextRequest) {
             paymentMethod: 'bank_transfer',
             bankTransferRef: bankTransferRef || null,
             bankTransferVerified: false,
-            hasChallenge25: hasHfssItems,
+            hasChallenge25: requiresChallenge25,
             deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
             items: {
               create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
@@ -410,7 +421,7 @@ export async function POST(request: NextRequest) {
             stripeSessionId: 'pending', // Will update after session is created
             paymentStatus: 'pending',
             paymentMethod: 'stripe',
-            hasChallenge25: hasHfssItems,
+            hasChallenge25: requiresChallenge25,
             deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
             items: {
               create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
@@ -485,7 +496,7 @@ export async function POST(request: NextRequest) {
           stripeSessionId: `demo-session-${Date.now()}`,
           paymentStatus: 'paid',
           paymentMethod: 'stripe',
-          hasChallenge25: hasHfssItems,
+          hasChallenge25: requiresChallenge25,
           deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
           items: {
             create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {

@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS "products" (
   "price" REAL NOT NULL,
   "vatRate" REAL NOT NULL DEFAULT 0.0,
   "isHfss" BOOLEAN NOT NULL DEFAULT 0,
+  "isAgeRestricted" BOOLEAN NOT NULL DEFAULT 0,
+  "minimumAge" INTEGER NOT NULL DEFAULT 0,
   "imageUrl" TEXT,
   "barcode" TEXT,
   "unit" TEXT NOT NULL DEFAULT 'each',

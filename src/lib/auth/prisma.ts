@@ -3,6 +3,7 @@
 // Works with the expanded grocery store schema.
 // Auto-creates the DB file AND schema if they don't exist.
 // Auto-seeds the admin user on fresh database creation.
+// Robust for Vercel serverless (ephemeral /tmp filesystem).
 // ============================================================
 
 import { PrismaClient } from '@prisma/client'
@@ -15,11 +16,41 @@ const globalForPrisma = globalThis as unknown as {
   dbReady: boolean | undefined
 }
 
+// ─── Database Path Resolution ──────────────────────────────────
+
 /**
- * SQL statements to create the FULL schema from scratch.
- * These mirror the Prisma schema in prisma/schema.prisma.
- * Uses CREATE TABLE IF NOT EXISTS for safe re-execution.
+ * Detect if we're running on Vercel serverless.
  */
+function isVercel(): boolean {
+  return !!(process.env.VERCEL || process.env.VERCEL_ENV || process.env.AWS_LAMBDA_FUNCTION_NAME)
+}
+
+/**
+ * Find a working database path.
+ * On Vercel: always use /tmp (writable, ephemeral).
+ * Locally: use the configured DATABASE_URL path.
+ */
+function resolveDatabasePath(): { dbPath: string; dbUrl: string; writable: boolean } {
+  const configuredUrl = process.env.DATABASE_URL || 'file:./db/custom.db'
+  let configuredPath = configuredUrl.replace(/^file:/, '')
+
+  // Resolve relative paths against CWD
+  if (configuredPath && !path.isAbsolute(configuredPath)) {
+    configuredPath = path.resolve(process.cwd(), configuredPath)
+  }
+
+  // On Vercel, always prefer /tmp for the database
+  if (isVercel()) {
+    const tmpPath = '/tmp/freshmart/custom.db'
+    return { dbPath: tmpPath, dbUrl: `file:${tmpPath}`, writable: true }
+  }
+
+  // Locally, use the configured path
+  return { dbPath: configuredPath, dbUrl: `file:${configuredPath}`, writable: true }
+}
+
+// ─── SQL Schema ────────────────────────────────────────────────
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS "users" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -311,114 +342,223 @@ CREATE TABLE IF NOT EXISTS "bank_holidays" (
 );
 `
 
+// ─── Schema Creation ────────────────────────────────────────────
+
 /**
- * Resolve the database URL at runtime.
- *
- * Production runs from /var/task/ (serverless). The .env
- * DATABASE_URL=file:./db/custom.db is relative to CWD.
- * We need to:
- * 1. Resolve the relative path to absolute
- * 2. If the file doesn't exist, create it with schema
- * 3. Fall back to /tmp if needed
+ * Execute the schema SQL against a PrismaClient.
+ * Returns true if all statements succeeded.
  */
-async function resolveAndEnsureDatabase(): Promise<string> {
-  const configuredUrl = process.env.DATABASE_URL || ''
+async function executeSchemaSql(client: PrismaClient): Promise<boolean> {
+  const statements = SCHEMA_SQL
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
 
-  // Extract the file path from the SQLite URL
-  let configuredPath = configuredUrl.replace(/^file:/, '')
-
-  // Resolve relative paths against CWD
-  if (configuredPath && !path.isAbsolute(configuredPath)) {
-    configuredPath = path.resolve(process.cwd(), configuredPath)
-  }
-
-  // Candidate paths to try, in order of preference
-  const candidates: string[] = []
-
-  if (configuredPath) {
-    candidates.push(configuredPath)
-  }
-
-  // Fallback: relative to current working directory
-  candidates.push(path.resolve(process.cwd(), 'db', 'custom.db'))
-
-  // Fallback: /tmp (always writable in serverless containers)
-  candidates.push(path.resolve('/tmp', 'freshmart', 'custom.db'))
-
-  for (const dbPath of candidates) {
-    const dir = path.dirname(dbPath)
-
+  let failed = 0
+  for (const stmt of statements) {
     try {
-      // Ensure the directory exists
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true })
-      }
-
-      // Check if directory is writable
-      const testFile = path.join(dir, `.write_test_${Date.now()}`)
-      fs.writeFileSync(testFile, '')
-      fs.unlinkSync(testFile)
-
-      const dbUrl = `file:${dbPath}`
-
-      // If the DB file already exists and has content, use it
-      if (fs.existsSync(dbPath) && fs.statSync(dbPath).size > 0) {
-        process.env.DATABASE_URL = dbUrl
-        console.log(`[Prisma] Using existing database at: ${dbPath}`)
-        return dbUrl
-      }
-
-      // DB file doesn't exist or is empty — create it with schema
-      console.log(`[Prisma] Database not found at ${dbPath}, creating with full schema...`)
-
-      // Create empty SQLite file
-      fs.writeFileSync(dbPath, '')
-      process.env.DATABASE_URL = dbUrl
-
-      // Create a temporary client to push the schema
-      const tempClient = new PrismaClient({
-        datasources: { db: { url: dbUrl } },
-      })
-
-      try {
-        // Execute each statement separately for reliability
-        const statements = SCHEMA_SQL
-          .split(';')
-          .map(s => s.trim())
-          .filter(s => s.length > 0)
-
-        for (const stmt of statements) {
-          await tempClient.$executeRawUnsafe(stmt)
-        }
-
-        console.log('[Prisma] Database schema created successfully at:', dbPath)
-      } catch (schemaErr) {
-        console.error('[Prisma] Schema creation error:', schemaErr)
-      } finally {
-        await tempClient.$disconnect()
-      }
-
-      return dbUrl
-    } catch {
-      // This path isn't writable, try the next one
-      continue
+      await client.$executeRawUnsafe(stmt)
+    } catch (err) {
+      failed++
+      console.error('[Prisma] Schema statement failed:', stmt.substring(0, 80), err)
     }
   }
 
-  // Last resort: use the original configured path
-  console.error('[Prisma] No writable directory found for database!')
-  return configuredUrl
+  if (failed > 0) {
+    console.error(`[Prisma] ${failed}/${statements.length} schema statements failed`)
+  }
+
+  return failed === 0
 }
 
 /**
- * Seed the database with essential data (admin user, store, etc.)
- * Only runs on fresh databases that have no users.
+ * Verify that the database has the essential tables.
  */
+async function verifyDatabaseSchema(client: PrismaClient): Promise<boolean> {
+  try {
+    const tables = await client.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma_%'
+    `
+    const tableNames = tables.map(t => t.name)
+    const requiredTables = ['users', 'stores', 'categories', 'products', 'orders', 'order_items']
+    const missing = requiredTables.filter(t => !tableNames.includes(t))
+
+    if (missing.length > 0) {
+      console.error('[Prisma] Missing required tables:', missing)
+      return false
+    }
+
+    console.log('[Prisma] Database schema verified. Tables:', tableNames.join(', '))
+    return true
+  } catch (err) {
+    console.error('[Prisma] Schema verification failed:', err)
+    return false
+  }
+}
+
+// ─── Database Initialization ─────────────────────────────────────
+
+/**
+ * Try to copy the bundled database file from the deployment
+ * directory to the target path. Returns true if copy succeeded.
+ */
+function tryCopyBundledDatabase(targetPath: string): boolean {
+  try {
+    // Possible locations of the bundled database in the deployment
+    const bundledPaths = [
+      path.resolve(process.cwd(), 'db', 'custom.db'),
+      path.resolve(process.cwd(), '.next', 'server', 'db', 'custom.db'),
+    ]
+
+    for (const bundled of bundledPaths) {
+      if (fs.existsSync(bundled) && fs.statSync(bundled).size > 0) {
+        const dir = path.dirname(targetPath)
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true })
+        }
+        fs.copyFileSync(bundled, targetPath)
+        console.log(`[Prisma] Copied bundled database from ${bundled} to ${targetPath}`)
+        return true
+      }
+    }
+  } catch (err) {
+    console.warn('[Prisma] Could not copy bundled database:', err)
+  }
+  return false
+}
+
+/**
+ * Initialize the database:
+ * 1. Resolve the correct path (Vercel → /tmp, local → configured path)
+ * 2. If DB exists and is valid, use it
+ * 3. Try to copy bundled DB from deployment
+ * 4. Otherwise, create from scratch with full schema
+ * 5. Verify the schema is correct
+ * 6. Seed essential data if empty
+ */
+async function initializeDatabase(): Promise<string> {
+  const { dbPath, dbUrl } = resolveDatabasePath()
+  const dir = path.dirname(dbPath)
+
+  // Ensure directory exists
+  if (!fs.existsSync(dir)) {
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+    } catch (mkdirErr) {
+      console.error(`[Prisma] Cannot create directory ${dir}:`, mkdirErr)
+      // Fallback to /tmp
+      const fallbackPath = '/tmp/freshmart/custom.db'
+      const fallbackDir = '/tmp/freshmart'
+      if (!fs.existsSync(fallbackDir)) {
+        fs.mkdirSync(fallbackDir, { recursive: true })
+      }
+      return await initializeDatabaseAtPath(fallbackPath, `file:${fallbackPath}`)
+    }
+  }
+
+  return await initializeDatabaseAtPath(dbPath, dbUrl)
+}
+
+async function initializeDatabaseAtPath(dbPath: string, dbUrl: string): Promise<string> {
+  // ─── Check if existing database is valid ─────────────────────
+  if (fs.existsSync(dbPath) && fs.statSync(dbPath).size > 100) {
+    // File exists and has content — verify it works
+    const testClient = new PrismaClient({
+      datasources: { db: { url: dbUrl } },
+    })
+    try {
+      await testClient.$connect()
+      const isValid = await verifyDatabaseSchema(testClient)
+      if (isValid) {
+        process.env.DATABASE_URL = dbUrl
+        console.log(`[Prisma] Using existing database at: ${dbPath}`)
+        await testClient.$disconnect()
+        return dbUrl
+      }
+      // Schema is invalid — we need to recreate
+      console.warn('[Prisma] Existing database has invalid schema, recreating...')
+      await testClient.$disconnect()
+    } catch (err) {
+      console.warn('[Prisma] Existing database failed verification:', err)
+      try { await testClient.$disconnect() } catch { /* ignore */ }
+    }
+
+    // Delete the corrupted database
+    try {
+      fs.unlinkSync(dbPath)
+    } catch { /* ignore */ }
+  }
+
+  // ─── Try to copy bundled database ────────────────────────────
+  if (tryCopyBundledDatabase(dbPath)) {
+    const testClient = new PrismaClient({
+      datasources: { db: { url: dbUrl } },
+    })
+    try {
+      await testClient.$connect()
+      const isValid = await verifyDatabaseSchema(testClient)
+      if (isValid) {
+        process.env.DATABASE_URL = dbUrl
+        console.log(`[Prisma] Using copied bundled database at: ${dbPath}`)
+        await testClient.$disconnect()
+        return dbUrl
+      }
+      await testClient.$disconnect()
+    } catch (err) {
+      console.warn('[Prisma] Bundled database verification failed:', err)
+      try { await testClient.$disconnect() } catch { /* ignore */ }
+    }
+  }
+
+  // ─── Create database from scratch ────────────────────────────
+  console.log(`[Prisma] Creating new database at: ${dbPath}`)
+  const dir = path.dirname(dbPath)
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+
+  // Create empty file
+  fs.writeFileSync(dbPath, '')
+  process.env.DATABASE_URL = dbUrl
+
+  const tempClient = new PrismaClient({
+    datasources: { db: { url: dbUrl } },
+  })
+
+  try {
+    await tempClient.$connect()
+    const schemaOk = await executeSchemaSql(tempClient)
+
+    if (!schemaOk) {
+      // Schema creation partially failed — try again
+      console.warn('[Prisma] Retrying schema creation...')
+      await executeSchemaSql(tempClient)
+    }
+
+    // Verify schema
+    const isValid = await verifyDatabaseSchema(tempClient)
+    if (!isValid) {
+      throw new Error('Database schema verification failed after creation')
+    }
+
+    console.log('[Prisma] Database created successfully at:', dbPath)
+    return dbUrl
+  } catch (err) {
+    console.error('[Prisma] Database creation failed:', err)
+    throw err
+  } finally {
+    try { await tempClient.$disconnect() } catch { /* ignore */ }
+  }
+}
+
+// ─── Seeding ────────────────────────────────────────────────────
+
 async function seedIfEmpty(prisma: PrismaClient): Promise<void> {
   try {
     const userCount = await prisma.user.count()
     if (userCount > 0) {
-      return // Database already has users, skip seeding
+      console.log(`[Prisma] Database has ${userCount} users, skipping seed`)
+      return
     }
 
     console.log('[Prisma] Fresh database detected, seeding essential data...')
@@ -505,7 +645,8 @@ async function seedIfEmpty(prisma: PrismaClient): Promise<void> {
   }
 }
 
-// Initialize Prisma client
+// ─── Prisma Client Singleton ─────────────────────────────────────
+
 let prismaInstance: PrismaClient | undefined
 let initPromise: Promise<void> | undefined
 
@@ -513,32 +654,44 @@ function getInitPromise(): Promise<void> {
   if (initPromise) return initPromise
 
   initPromise = (async () => {
+    // In development, reuse the cached instance
     if (globalForPrisma.prisma) {
       prismaInstance = globalForPrisma.prisma
       return
     }
 
-    await resolveAndEnsureDatabase()
+    // Initialize database (resolve path, create schema if needed)
+    const dbUrl = await initializeDatabase()
+    process.env.DATABASE_URL = dbUrl
 
+    // Create the Prisma client with the resolved URL
     prismaInstance = new PrismaClient({
+      datasources: { db: { url: dbUrl } },
       log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
     })
 
-    // Auto-seed if the database is empty
+    // Connect and verify
+    await prismaInstance.$connect()
+
+    // Seed if empty
     await seedIfEmpty(prismaInstance)
 
+    // Cache in development
     if (process.env.NODE_ENV !== 'production') {
       globalForPrisma.prisma = prismaInstance
     }
 
     globalForPrisma.dbReady = true
+    console.log('[Prisma] Client initialized and ready')
   })()
 
   return initPromise
 }
 
-// Eagerly start initialization
-getInitPromise()
+// Eagerly start initialization (fire and forget — getPrisma() will await it)
+getInitPromise().catch(err => {
+  console.error('[Prisma] Initialization failed:', err)
+})
 
 /**
  * Get the Prisma client, ensuring initialization is complete.
@@ -546,7 +699,10 @@ getInitPromise()
  */
 export async function getPrisma(): Promise<PrismaClient> {
   await getInitPromise()
-  return prismaInstance!
+  if (!prismaInstance) {
+    throw new Error('[Prisma] Client not initialized after awaiting init promise')
+  }
+  return prismaInstance
 }
 
 // For backward compatibility: export a PrismaClient directly.

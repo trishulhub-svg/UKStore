@@ -36,7 +36,10 @@ function parseSupabaseToken(token: string): { uid: string; email: string; role: 
     return {
       uid: payload.sub,
       email: payload.email || '',
-      role: payload.role || payload.app_metadata?.role || 'customer',
+      // Supabase sets payload.role to "authenticated" by default.
+      // The actual application role is stored in app_metadata.role or user_metadata.role.
+      // Check those first, then fall back to payload.role (but skip "authenticated").
+      role: payload.app_metadata?.role || payload.user_metadata?.role || (payload.role !== 'authenticated' ? payload.role : null) || 'customer',
       name: payload.user_metadata?.full_name || payload.user_metadata?.name || '',
     }
   } catch {

@@ -43,7 +43,7 @@ export function isSupabaseAuthConfigured(): boolean {
 export type UserRole = 'customer' | 'driver' | 'owner' | 'manager'
 
 export function isValidRole(role: string): role is UserRole {
-  return ['customer', 'driver', 'owner', 'manager'].includes(role)
+  return ['customer', 'driver', 'owner', 'manager'].includes(role.toLowerCase())
 }
 
 export function isAdminRole(role: string): boolean {

@@ -40,7 +40,9 @@ export async function getServerUser(): Promise<ServerUser | null> {
     const userId = payload.sub
     const email = payload.email || ''
     const name = payload.user_metadata?.full_name || payload.user_metadata?.name || ''
-    const role = payload.app_metadata?.role || 'customer'
+    // Supabase sets payload.role to "authenticated" by default.
+    // The actual application role is stored in app_metadata.role or user_metadata.role.
+    const role = payload.app_metadata?.role || payload.user_metadata?.role || (payload.role !== 'authenticated' ? payload.role : null) || 'customer'
 
     if (!userId) return null
 

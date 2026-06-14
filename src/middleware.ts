@@ -1,13 +1,25 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { getUserFromCookies, SESSION_COOKIE_NAME } from '@/lib/auth/edge'
+import { getUserFromCookies } from '@/lib/auth/edge'
+import { getRoleBasedRedirect } from '@/lib/auth/roles'
 
 export async function middleware(request: NextRequest) {
-  let user: { uid: string; email: string; role: string; name: string; authProvider: 'local' | 'supabase' } | null = null
+  let user: { uid: string; email: string; role: string; name: string; authProvider: 'local' } | null = null
 
   try {
     user = await getUserFromCookies(request.cookies)
   } catch (error) {
     console.error('[Middleware] Session verification error:', error instanceof Error ? error.message : error)
+  }
+
+  // ─── Role-based redirect on home page ─────────────────────────
+  // If an admin or driver user lands on `/`, redirect them to their dashboard
+  if (user && request.nextUrl.pathname === '/') {
+    const redirectPath = getRoleBasedRedirect(user.role)
+    if (redirectPath !== '/') {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = redirectPath
+      return NextResponse.redirect(redirectUrl)
+    }
   }
 
   // Protect authenticated routes (customer)
@@ -24,8 +36,6 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protect admin routes — must be authenticated
-  // Role check happens inside the admin layout (needs DB access for profile)
-  // Middleware only ensures user is logged in; layout verifies owner role
   if (request.nextUrl.pathname.startsWith('/admin') && !user) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'
@@ -34,7 +44,6 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protect picker routes — must be authenticated
-  // Role check happens inside the picker layout (needs DB access)
   if (request.nextUrl.pathname.startsWith('/picker') && !user) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'
@@ -43,7 +52,6 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protect driver routes — must be authenticated
-  // Role check happens inside the driver layout (needs DB access)
   if (request.nextUrl.pathname.startsWith('/driver') && !user) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'

@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
-import { authLogin, authRegister } from '@/lib/auth-client'
+import { authLogin, authRegister, getRoleBasedRedirect } from '@/lib/auth-client'
+import { useStoreInfo } from '@/lib/store-info'
 
 type AuthView = 'login' | 'register' | 'forgot-password' | 'success'
 
@@ -23,6 +24,8 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo = '/' }: AuthModalProps) {
+  const { store: storeInfo } = useStoreInfo()
+  const storeName = storeInfo?.name || 'Fresh Mart'
   const [view, setView] = useState<AuthView>(initialView)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -60,15 +63,18 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
     setLoading(true)
 
     try {
-      const { error: authError } = await authLogin(email, password)
+      const { error: authError, user } = await authLogin(email, password)
 
       if (authError) {
         setError(authError)
         return
       }
 
+      // Redirect based on role (ignore the passed redirectTo for admin/driver)
+      const role = user?.role || 'customer'
+      const redirectPath = getRoleBasedRedirect(role)
       handleClose()
-      window.location.href = redirectTo
+      window.location.href = redirectPath
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       setError({
@@ -163,7 +169,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
               <CardHeader className="text-center pb-2">
                 <Link href="/" className="flex items-center justify-center gap-2 mb-3 hover:opacity-80 transition-opacity" onClick={handleClose}>
                   <Store className="h-7 w-7 text-[#16a34a]" />
-                  <span className="font-bold text-xl text-gray-900">Fresh Mart</span>
+                  <span className="font-bold text-xl text-gray-900">{storeName}</span>
                 </Link>
                 <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
                 <CardDescription>Sign in to your account to continue shopping</CardDescription>
@@ -234,7 +240,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
               <CardHeader className="text-center pb-2">
                 <Link href="/" className="flex items-center justify-center gap-2 mb-3 hover:opacity-80 transition-opacity" onClick={handleClose}>
                   <Store className="h-7 w-7 text-[#16a34a]" />
-                  <span className="font-bold text-xl text-gray-900">Fresh Mart</span>
+                  <span className="font-bold text-xl text-gray-900">{storeName}</span>
                 </Link>
                 <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
                 <CardDescription>Register to start ordering fresh groceries</CardDescription>

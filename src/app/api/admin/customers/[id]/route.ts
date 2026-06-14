@@ -39,3 +39,36 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to fetch customer' }, { status: 500 })
   }
 }
+
+// PATCH /api/admin/customers/[id] — update customer (ban/unban)
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { error } = await requireAdmin()
+  if (error) return error
+
+  try {
+    const prisma = await getPrisma()
+    const { id } = await params
+    const body = await request.json()
+
+    const existing = await prisma.user.findFirst({ where: { id, role: 'CUSTOMER' } })
+    if (!existing) {
+      return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+    }
+
+    const data: Record<string, unknown> = {}
+    if (body.isActive !== undefined) data.isActive = body.isActive
+
+    const customer = await prisma.user.update({
+      where: { id },
+      data,
+    })
+
+    return NextResponse.json({ customer })
+  } catch (err) {
+    console.error('[Admin Customer PATCH]', err)
+    return NextResponse.json({ error: 'Failed to update customer' }, { status: 500 })
+  }
+}

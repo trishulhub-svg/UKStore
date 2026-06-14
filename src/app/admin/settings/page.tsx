@@ -5,11 +5,12 @@ import { AdminSettingsClient } from '@/components/admin/admin-settings-client'
 import { StoreStatusManager } from '@/components/admin/store-status-manager'
 import { BankHolidayManager } from '@/components/admin/bank-holiday-manager'
 import { NotificationEditor } from '@/components/admin/notification-editor'
+import { StoreProfileEditor } from '@/components/admin/store-profile-editor'
 import type { StoreSetting } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 export default async function AdminSettingsPage() {
   const user = await getServerUser()
@@ -43,6 +44,12 @@ export default async function AdminSettingsPage() {
 
   return (
     <div>
+      {/* Store Profile — Name, Address, Contact Details */}
+      <StoreProfileEditor />
+
+      {/* Separator */}
+      <div className="my-8 border-t border-gray-200" />
+
       {/* Store Status & Delivery — Always visible at top */}
       <StoreStatusManager />
 

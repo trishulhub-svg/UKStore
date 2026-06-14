@@ -1,24 +1,20 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Truck, Clock, Leaf, ChevronRight, User, Store as StoreIcon } from 'lucide-react'
+import { Truck, Leaf, Clock, ChevronRight, User, Store as StoreIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
-import { formatPrice, formatUnitPrice } from '@/lib/vat'
-import { authGetSession, type AuthUser } from '@/lib/auth-client'
+import { formatPrice } from '@/lib/vat'
+import { authGetSession, getRoleBasedRedirect, type AuthUser } from '@/lib/auth-client'
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Store, Category, ProductWithCategory } from '@/types'
 import { PostcodeGate, getSavedPostcode, clearSavedPostcode } from '@/components/customer/postcode-gate'
+import { BannerCarousel } from '@/components/customer/banner-carousel'
+import { CategoryProductSlider } from '@/components/customer/category-product-slider'
 
-interface HomeClientProps {
-  store: Store
-  categories: Category[]
-  featuredProducts: ProductWithCategory[]
-}
-
+// Category icons for the sub-category slider
 const categoryIcons: Record<string, string> = {
   'fruits-vegetables': '🥬',
   'dairy-eggs': '🥛',
@@ -28,21 +24,62 @@ const categoryIcons: Record<string, string> = {
   'drinks': '🧃',
   'frozen': '🧊',
   'snacks-sweets': '🍫',
+  'household': '🧹',
+  'baby-child': '🍼',
+  'health-beauty': '💊',
+  'pet-supplies': '🐾',
+}
+
+// Essential categories shown first in the slider
+const essentialCategoryOrder = [
+  'fruits-vegetables',
+  'dairy-eggs',
+  'pantry',
+  'meat-fish',
+  'bakery',
+  'drinks',
+  'frozen',
+  'snacks-sweets',
+]
+
+interface CategoryWithProducts {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  image_url?: string | null
+  sort_order: number
+  products: ProductWithCategory[]
+}
+
+interface HomeClientProps {
+  store: Store
+  categories: Category[]
+  featuredProducts: ProductWithCategory[]
 }
 
 export function HomeClient({ store, categories, featuredProducts }: HomeClientProps) {
+  const router = useRouter()
   const addItem = useCartStore((state) => state.addItem)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [deliveryPostcode, setDeliveryPostcode] = useState<string | null>(() => getSavedPostcode())
   const [postcodeVerified, setPostcodeVerified] = useState(() => !!getSavedPostcode())
   const [storeOpen, setStoreOpen] = useState<boolean | null>(null)
   const [openingHours, setOpeningHours] = useState<Record<string, { open: string; close: string; closed: boolean }> | null>(null)
+  const [categoriesWithProducts, setCategoriesWithProducts] = useState<CategoryWithProducts[]>([])
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
 
   useEffect(() => {
     authGetSession().then(({ user }) => {
       setUser(user)
+      if (user?.role) {
+        const redirectPath = getRoleBasedRedirect(user.role)
+        if (redirectPath !== '/') {
+          router.replace(redirectPath)
+        }
+      }
     })
-  }, [])
+  }, [router])
 
   // Check store status
   useEffect(() => {
@@ -53,7 +90,20 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
         setOpeningHours(data.openingHours)
       })
       .catch(() => {
-        setStoreOpen(true) // Default to open if fetch fails
+        setStoreOpen(true)
+      })
+  }, [])
+
+  // Fetch products grouped by category
+  useEffect(() => {
+    fetch('/api/products/by-category')
+      .then((r) => r.json())
+      .then((data) => {
+        setCategoriesWithProducts(data.categories || [])
+        setIsLoadingCategories(false)
+      })
+      .catch(() => {
+        setIsLoadingCategories(false)
       })
   }, [])
 
@@ -76,12 +126,21 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
     thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
   }
 
-  // Get today's opening hours
   const todayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()]
   const todayHours = openingHours?.[todayKey]
 
+  // Sort categories: essential ones first, then by sort_order
+  const sortedCategories = [...categories].sort((a, b) => {
+    const aIndex = essentialCategoryOrder.indexOf(a.slug)
+    const bIndex = essentialCategoryOrder.indexOf(b.slug)
+    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+    if (aIndex !== -1) return -1
+    if (bIndex !== -1) return 1
+    return a.sort_order - b.sort_order
+  })
+
   return (
-    <CustomerLayout storeName={store.name}>
+    <CustomerLayout storeName={store.name} store={store}>
       {/* Store Closed Overlay */}
       {storeOpen === false && (
         <div className="fixed inset-0 z-[60] bg-gray-900/80 flex items-center justify-center p-4">
@@ -114,241 +173,138 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
           </div>
         </div>
       )}
-      {/* Postcode Gate — full-screen overlay, hidden once verified */}
+
+      {/* Postcode Gate */}
       <PostcodeGate
         onVerified={handlePostcodeVerified}
         savedPostcode={deliveryPostcode}
       />
-      {/* ═══════════════════════════════════════════════════════════
-          HERO SECTION
-          Logged out: Full-width marketing with CTAs pointing to navbar auth
-          Logged in:  Personalized welcome with Shop Now
-      ═══════════════════════════════════════════════════════════ */}
-      <section className="relative bg-gradient-to-br from-[#16a34a] to-[#15803d] text-white overflow-hidden">
-        <div className="absolute inset-0 bg-center bg-no-repeat opacity-5" style={{ backgroundImage: "url('/logo.svg')" }} />
 
-        {user ? (
-          /* ── LOGGED IN HERO ── */
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20 relative z-10">
-            <div className="max-w-2xl">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
-                Welcome back, {userFirstName || 'Shopper'}!
-              </h1>
-              <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg">
-                Ready to order from {store.name}? Same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
-              </p>
-              {deliveryPostcode && (
-                <p className="mt-2 text-sm text-green-200">
-                  Delivering to <strong>{deliveryPostcode}</strong>{' '}
-                  <button
-                    onClick={handleChangePostcode}
-                    className="underline hover:text-white transition-colors"
-                  >
-                    Change
-                  </button>
-                </p>
-              )}
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link href="/catalog">
-                  <Button size="lg" className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold px-8">
-                    Shop Now
-                    <ChevronRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href="/account">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
-                    <User className="mr-1.5 h-4 w-4" /> My Account
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* ── LOGGED OUT HERO — Marketing with CTAs ── */
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 lg:py-24 relative z-10">
-            <div className="max-w-2xl mx-auto text-center">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
-                Fresh Groceries,<br />Delivered to Your Door
-              </h1>
-              <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg mx-auto">
-                Order from {store.name} and get same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
-              </p>
-              {deliveryPostcode && (
-                <p className="mt-2 text-sm text-green-200">
-                  Delivering to <strong>{deliveryPostcode}</strong>{' '}
-                  <button
-                    onClick={handleChangePostcode}
-                    className="underline hover:text-white transition-colors"
-                  >
-                    Change
-                  </button>
-                </p>
-              )}
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm sm:gap-4 text-green-200">
-                <span className="flex items-center gap-1.5"><Truck className="h-4 w-4" /> Same-Day Delivery</span>
-                <span className="flex items-center gap-1.5"><Leaf className="h-4 w-4" /> Fresh & Local</span>
-                <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> Order by 2pm</span>
-              </div>
-              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-                <Link href="/catalog">
-                  <Button size="lg" className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold px-8">
-                    Browse Products
-                    <ChevronRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-              <p className="mt-4 text-sm text-green-200">
-                Use <strong>Sign In</strong> or <strong>Register</strong> in the navigation bar above to create an account and start ordering.
-              </p>
-            </div>
-          </div>
-        )}
+      {/* ═══════════════════════════════════════════════════════════
+          BANNER CAROUSEL
+      ═══════════════════════════════════════════════════════════ */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+        <BannerCarousel />
       </section>
 
-      {/* Delivery Info Banner */}
-      <section className="bg-gray-50 border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
-                <Truck className="h-5 w-5 text-[#16a34a]" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Same-Day Delivery</p>
-                <p className="text-xs text-gray-500">Order before 2pm for same-day</p>
-              </div>
+      {/* ═══════════════════════════════════════════════════════════
+          DELIVERY INFO BAR
+      ═══════════════════════════════════════════════════════════ */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+              <Truck className="h-5 w-5 text-[#16a34a]" />
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
-                <Leaf className="h-5 w-5 text-[#16a34a]" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Free Delivery Over {formatPrice(store.free_delivery_threshold)}</p>
-                <p className="text-xs text-gray-500">Save on bigger orders</p>
-              </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Same-Day Delivery</p>
+              <p className="text-xs text-gray-500">Order before 2pm for same-day</p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-[#16a34a]" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">{store.delivery_radius_km}km Delivery Radius</p>
-                <p className="text-xs text-gray-500">From {formatPrice(store.base_delivery_fee)} delivery fee</p>
-              </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+              <Leaf className="h-5 w-5 text-[#16a34a]" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Free Delivery Over {formatPrice(store.free_delivery_threshold)}</p>
+              <p className="text-xs text-gray-500">Save on bigger orders</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+              <Clock className="h-5 w-5 text-[#16a34a]" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">{store.delivery_radius_km}km Delivery Radius</p>
+              <p className="text-xs text-gray-500">From {formatPrice(store.base_delivery_fee)} delivery fee</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Live Categories Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Shop by Category</h2>
+      {/* ═══════════════════════════════════════════════════════════
+          SUB-CATEGORY SLIDER (Horizontal Scroll)
+      ═══════════════════════════════════════════════════════════ */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-2">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900">Shop by Category</h2>
           <Link href="/catalog" className="text-sm font-medium text-[#16a34a] hover:underline">
             View All <ChevronRight className="inline h-3 w-3" />
           </Link>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
-          {categories.map((category) => (
-            <Link key={category.id} href={`/catalog?category=${category.slug}`}>
-              <Card className="group hover:shadow-md transition-all duration-200 hover:border-[#16a34a]/30 cursor-pointer">
-                <CardContent className="p-4 sm:p-5 text-center">
-                  <div className="text-3xl sm:text-4xl mb-2">
-                    {categoryIcons[category.slug] || '🛒'}
-                  </div>
-                  <h3 className="font-medium text-sm sm:text-base text-gray-900 group-hover:text-[#16a34a] transition-colors">
-                    {category.name}
-                  </h3>
-                  {category.description && (
-                    <p className="text-xs text-gray-500 mt-1 hidden sm:block line-clamp-1">
-                      {category.description}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+        <div
+          className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {sortedCategories.map((category) => (
+            <Link
+              key={category.id}
+              href={`/catalog?category=${category.slug}`}
+              className="flex-shrink-0 flex flex-col items-center gap-1.5 group"
+            >
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center group-hover:border-[#16a34a]/30 group-hover:bg-green-50 transition-all duration-200">
+                <span className="text-2xl sm:text-3xl">
+                  {categoryIcons[category.slug] || '🛒'}
+                </span>
+              </div>
+              <span className="text-[10px] sm:text-xs font-medium text-gray-600 group-hover:text-[#16a34a] transition-colors text-center leading-tight max-w-[60px] sm:max-w-[72px] truncate">
+                {category.name}
+              </span>
             </Link>
           ))}
         </div>
       </section>
 
-      {/* Featured Products Section */}
-      <section className="bg-gray-50 py-10 sm:py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Featured Products</h2>
-            <Link href="/catalog" className="text-sm font-medium text-[#16a34a] hover:underline">
-              View All <ChevronRight className="inline h-3 w-3" />
-            </Link>
-          </div>
-          {featuredProducts.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <p>No featured products available at the moment.</p>
-              <p className="text-sm mt-1">Check back soon!</p>
+      {/* ═══════════════════════════════════════════════════════════
+          CATEGORY PRODUCT SLIDERS
+      ═══════════════════════════════════════════════════════════ */}
+      {isLoadingCategories ? (
+        // Loading skeleton
+        <div className="py-8 space-y-8">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="h-6 bg-gray-200 rounded w-40 animate-pulse mb-4" />
+              <div className="flex gap-3 overflow-hidden">
+                {Array.from({ length: 5 }).map((_, j) => (
+                  <div key={j} className="flex-shrink-0 w-[165px]">
+                    <div className="aspect-square bg-gray-200 rounded-lg animate-pulse mb-2" />
+                    <div className="h-3 bg-gray-200 rounded w-3/4 animate-pulse mb-1" />
+                    <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse" />
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-              {featuredProducts.map((product) => (
-                <Card key={product.id} className="group hover:shadow-md transition-all duration-200 overflow-hidden">
-                  <Link href={`/product/${product.slug}`}>
-                    <div className="aspect-square bg-gray-200 relative flex items-center justify-center">
-                      {product.image_url ? (
-                        <img
-                          src={product.image_url}
-                          alt={product.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-4xl text-gray-400">
-                          {categoryIcons[product.category?.slug || ''] || '🛒'}
-                        </span>
-                      )}
-                      {product.is_hfss && (
-                        <Badge className="absolute top-2 left-2 bg-amber-500 text-white text-[10px] px-1.5 py-0.5">
-                          HFSS
-                        </Badge>
-                      )}
-                    </div>
-                  </Link>
-                  <CardContent className="p-3 sm:p-4">
-                    <Link href={`/product/${product.slug}`}>
-                      <h3 className="font-medium text-sm text-gray-900 line-clamp-2 group-hover:text-[#16a34a] transition-colors">
-                        {product.name}
-                      </h3>
-                    </Link>
-                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
-                      {product.category?.name}
-                    </p>
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="min-w-0">
-                        <span className="font-bold text-base text-gray-900">
-                          {formatPrice(product.price)}
-                        </span>
-                        {/* Unit price for UK Trading Standards */}
-                        {formatUnitPrice(product.price, product.weight_kg, null, product.unit) && (
-                          <span className="text-xs text-gray-500 block">
-                            {formatUnitPrice(product.price, product.weight_kg, null, product.unit)}
-                          </span>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        className="bg-[#f97316] hover:bg-[#ea580c] text-white h-10 px-3 text-xs flex-shrink-0"
-                        onClick={() => addItem(product)}
-                      >
-                        <ShoppingCart className="h-3 w-3 mr-1" />
-                        Add
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+          ))}
         </div>
-      </section>
+      ) : (
+        categoriesWithProducts.map((category) => (
+          <CategoryProductSlider
+            key={category.id}
+            category={category}
+            products={category.products}
+          />
+        ))
+      )}
 
-      {/* Bottom CTA Section — Auth-aware */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
+      {/* Fallback: If no categories with products from API, use the old featured products */}
+      {!isLoadingCategories && categoriesWithProducts.length === 0 && featuredProducts.length > 0 && (
+        <section className="bg-gray-50 py-10 sm:py-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Featured Products</h2>
+              <Link href="/catalog" className="text-sm font-medium text-[#16a34a] hover:underline">
+                View All <ChevronRight className="inline h-3 w-3" />
+              </Link>
+            </div>
+            <p className="text-sm text-gray-500">More products coming soon!</p>
+          </div>
+        </section>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          BOTTOM CTA SECTION
+      ═══════════════════════════════════════════════════════════ */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         {user ? (
           <div className="bg-gradient-to-r from-[#16a34a] to-[#15803d] rounded-xl p-6 sm:p-8 text-white text-center">
             <h2 className="text-xl sm:text-2xl font-bold">Ready to Order?</h2>
@@ -371,9 +327,9 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
         ) : (
           <div className="bg-gradient-to-r from-[#16a34a] to-[#15803d] rounded-xl p-6 sm:p-8 text-white">
             <div className="max-w-2xl mx-auto text-center">
-              <h2 className="text-xl sm:text-2xl font-bold">Join Fresh Mart Today</h2>
+              <h2 className="text-xl sm:text-2xl font-bold">Join {store.name} Today</h2>
               <p className="text-green-100 mt-2 max-w-md mx-auto">
-                Create an account to start ordering fresh groceries with same-day delivery. Use the Sign In or Register button in the navigation bar above.
+                Create an account to start ordering fresh groceries with same-day delivery.
               </p>
               <div className="mt-4">
                 <Link href="/catalog">

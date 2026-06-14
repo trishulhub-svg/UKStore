@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useStoreInfo } from '@/lib/store-info'
 import { Store, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { SiGoogle } from 'react-icons/si'
 import { Button } from '@/components/ui/button'
@@ -12,9 +13,11 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
-import { authLogin } from '@/lib/auth-client'
+import { authLogin, getRoleBasedRedirect } from '@/lib/auth-client'
 
 export function LoginClient() {
+  const { store: storeInfo } = useStoreInfo()
+  const storeName = storeInfo?.name || 'Fresh Mart'
   const router = useRouter()
   const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
@@ -31,14 +34,17 @@ export function LoginClient() {
     setLoading(true)
 
     try {
-      const { error: authError } = await authLogin(email, password)
+      const { error: authError, user } = await authLogin(email, password)
 
       if (authError) {
         setError(authError)
         return
       }
 
-      router.push(redirectTo)
+      // Redirect based on role
+      const role = user?.role || 'customer'
+      const redirectPath = getRoleBasedRedirect(role)
+      router.push(redirectPath)
       router.refresh()
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
@@ -60,7 +66,7 @@ export function LoginClient() {
         <CardHeader className="text-center">
           <Link href="/" className="flex items-center justify-center gap-2 mb-4 hover:opacity-80 transition-opacity">
             <Store className="h-7 w-7 text-[#16a34a]" />
-            <span className="font-bold text-xl text-gray-900">Fresh Mart</span>
+            <span className="font-bold text-xl text-gray-900">{storeName}</span>
           </Link>
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
           <CardDescription>Sign in to your account to continue shopping</CardDescription>

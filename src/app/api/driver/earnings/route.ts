@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { getServerUser } from '@/lib/auth/server'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/driver/earnings — earnings summary
 export async function GET() {

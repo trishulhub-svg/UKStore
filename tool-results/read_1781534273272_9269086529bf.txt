@@ -1,0 +1,863 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState } from 'react'
+     4→     4→import Link from 'next/link'
+     5→     5→import { useRouter } from 'next/navigation'
+     6→     6→import { Check, MapPin, Clock, ShoppingBag, CreditCard, ChevronRight, Loader2, Banknote, Building2, Info, Tag, X } from 'lucide-react'
+     7→     7→import { Button } from '@/components/ui/button'
+     8→     8→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     9→     9→import { Input } from '@/components/ui/input'
+    10→    10→import { Label } from '@/components/ui/label'
+    11→    11→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+    12→    12→import { Separator } from '@/components/ui/separator'
+    13→    13→import { Checkbox } from '@/components/ui/checkbox'
+    14→    14→import { CustomerLayout } from '@/components/layout/customer-layout'
+    15→    15→import { ErrorAlert } from '@/components/ui/error-alert'
+    16→    16→import type { TechnicalError } from '@/components/ui/error-alert'
+    17→    17→import { useCartStore } from '@/store/cart'
+    18→    18→import { formatPrice, getVatRateLabel, calculateVatFromGross } from '@/lib/vat'
+    19→    19→import type { Store, Address } from '@/types'
+    20→    20→import { toast } from 'sonner'
+    21→    21→
+    22→    22→interface CheckoutClientProps {
+    23→    23→  store: Store
+    24→    24→  user: { id: string; email: string; name: string }
+    25→    25→  addresses: Address[]
+    26→    26→}
+    27→    27→
+    28→    28→type PaymentMethod = 'card' | 'cash' | 'bank_transfer'
+    29→    29→
+    30→    30→const deliverySlots = [
+    31→    31→  { id: 'today-4-6', label: 'Today 4-6pm', description: 'Express delivery today' },
+    32→    32→  { id: 'today-6-8', label: 'Today 6-8pm', description: 'Evening delivery today' },
+    33→    33→  { id: 'tomorrow-10-12', label: 'Tomorrow 10am-12pm', description: 'Morning delivery tomorrow' },
+    34→    34→  { id: 'tomorrow-12-2', label: 'Tomorrow 12-2pm', description: 'Lunchtime delivery tomorrow' },
+    35→    35→]
+    36→    36→
+    37→    37→const categoryIcons: Record<string, string> = {
+    38→    38→  'fruits-vegetables': '🥬',
+    39→    39→  'dairy-eggs': '🥛',
+    40→    40→  'meat-fish': '🥩',
+    41→    41→  'bakery': '🍞',
+    42→    42→  'pantry': '🫙',
+    43→    43→  'drinks': '🧃',
+    44→    44→  'frozen': '🧊',
+    45→    45→  'snacks-sweets': '🍫',
+    46→    46→}
+    47→    47→
+    48→    48→type Step = 'address' | 'slot' | 'summary' | 'payment'
+    49→    49→
+    50→    50→const steps: { id: Step; label: string; icon: React.ElementType }[] = [
+    51→    51→  { id: 'address', label: 'Address', icon: MapPin },
+    52→    52→  { id: 'slot', label: 'Delivery Slot', icon: Clock },
+    53→    53→  { id: 'summary', label: 'Summary', icon: ShoppingBag },
+    54→    54→  { id: 'payment', label: 'Payment', icon: CreditCard },
+    55→    55→]
+    56→    56→
+    57→    57→export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) {
+    58→    58→  const router = useRouter()
+    59→    59→  const items = useCartStore((state) => state.items)
+    60→    60→  const clearCart = useCartStore((state) => state.clearCart)
+    61→    61→
+    62→    62→  const [currentStep, setCurrentStep] = useState<Step>('address')
+    63→    63→  const [loading, setLoading] = useState(false)
+    64→    64→  const [error, setError] = useState<string | TechnicalError | null>(null)
+    65→    65→
+    66→    66→  // Address form state
+    67→    67→  const defaultAddress = addresses.find((a) => a.is_default)
+    68→    68→  const [addressLine1, setAddressLine1] = useState(defaultAddress?.address_line_1 || '')
+    69→    69→  const [addressLine2, setAddressLine2] = useState(defaultAddress?.address_line_2 || '')
+    70→    70→  const [city, setCity] = useState(defaultAddress?.city || '')
+    71→    71→  const [postcode, setPostcode] = useState(defaultAddress?.postcode || '')
+    72→    72→  const [saveAddress, setSaveAddress] = useState(false)
+    73→    73→
+    74→    74→  // Delivery slot state
+    75→    75→  const [selectedSlot, setSelectedSlot] = useState(deliverySlots[0].id)
+    76→    76→
+    77→    77→  // Payment method state
+    78→    78→  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card')
+    79→    79→  const [bankTransferRef, setBankTransferRef] = useState('')
+    80→    80→
+    81→    81→  // Bank details (will be returned from the API after order creation)
+    82→    82→  const [bankDetails, setBankDetails] = useState<{ sortCode: string; accountNumber: string; accountName: string } | null>(null)
+    83→    83→
+    84→    84→  // Promo code state
+    85→    85→  const [promoCode, setPromoCode] = useState('')
+    86→    86→  const [promoLoading, setPromoLoading] = useState(false)
+    87→    87→  const [appliedPromo, setAppliedPromo] = useState<{
+    88→    88→    code: string
+    89→    89→    discount: number
+    90→    90→    promotionName: string
+    91→    91→    promotionId: string
+    92→    92→    discountType: string
+    93→    93→    discountValue: number
+    94→    94→  } | null>(null)
+    95→    95→
+    96→    96→  // Calculate totals
+    97→    97→  const subtotal = items.reduce((total, item) => total + item.product.price * item.quantity, 0)
+    98→    98→
+    99→    99→  const vatGroups: Record<number, { gross: number; vat: number; label: string }> = {}
+   100→   100→  items.forEach((item) => {
+   101→   101→    const rate = item.product.vat_rate
+   102→   102→    const itemGross = item.product.price * item.quantity
+   103→   103→    const itemVat = calculateVatFromGross(itemGross, rate)
+   104→   104→    if (!vatGroups[rate]) {
+   105→   105→      vatGroups[rate] = { gross: 0, vat: 0, label: getVatRateLabel(rate) }
+   106→   106→    }
+   107→   107→    vatGroups[rate].gross += itemGross
+   108→   108→    vatGroups[rate].vat += itemVat
+   109→   109→  })
+   110→   110→
+   111→   111→  const totalVat = Object.values(vatGroups).reduce((sum, group) => sum + group.vat, 0)
+   112→   112→  const distanceKm = 2
+   113→   113→  const isFreeDelivery = subtotal >= store.free_delivery_threshold
+   114→   114→  const deliveryFee = isFreeDelivery ? 0 : store.base_delivery_fee + store.per_km_charge * distanceKm
+   115→   115→  const promoDiscount = appliedPromo?.discount || 0
+   116→   116→  const total = subtotal + deliveryFee - promoDiscount
+   117→   117→
+   118→   118→  const currentStepIndex = steps.findIndex((s) => s.id === currentStep)
+   119→   119→
+   120→   120→  const validateAddress = (): boolean => {
+   121→   121→    if (!addressLine1.trim()) return false
+   122→   122→    if (!city.trim()) return false
+   123→   123→    if (!postcode.trim()) return false
+   124→   124→    // Basic UK postcode validation
+   125→   125→    const postcodeRegex = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i
+   126→   126→    if (!postcodeRegex.test(postcode.trim())) return false
+   127→   127→    return true
+   128→   128→  }
+   129→   129→
+   130→   130→  const handleNext = () => {
+   131→   131→    setError(null)
+   132→   132→    if (currentStep === 'address') {
+   133→   133→      if (!validateAddress()) {
+   134→   134→        setError({
+   135→   135→          message: 'Please fill in all address fields with a valid UK postcode.',
+   136→   136→          code: 'INVALID_ADDRESS',
+   137→   137→          details: `Address line 1: ${addressLine1 ? 'provided' : 'missing'}\nCity: ${city ? 'provided' : 'missing'}\nPostcode: ${postcode || 'missing'}\nUK postcode format: SW1A 1AA`,
+   138→   138→          timestamp: new Date().toISOString(),
+   139→   139→        })
+   140→   140→        return
+   141→   141→      }
+   142→   142→      setCurrentStep('slot')
+   143→   143→    } else if (currentStep === 'slot') {
+   144→   144→      setCurrentStep('summary')
+   145→   145→    } else if (currentStep === 'summary') {
+   146→   146→      setCurrentStep('payment')
+   147→   147→    }
+   148→   148→  }
+   149→   149→
+   150→   150→  const handleBack = () => {
+   151→   151→    setError(null)
+   152→   152→    if (currentStep === 'slot') setCurrentStep('address')
+   153→   153→    else if (currentStep === 'summary') setCurrentStep('slot')
+   154→   154→    else if (currentStep === 'payment') setCurrentStep('summary')
+   155→   155→  }
+   156→   156→
+   157→   157→  const handleApplyPromo = async () => {
+   158→   158→    if (!promoCode.trim()) return
+   159→   159→    setPromoLoading(true)
+   160→   160→    try {
+   161→   161→      const categoryIds = [...new Set(items.map((item) => item.product.category?.id).filter(Boolean))] as string[]
+   162→   162→      const res = await fetch('/api/promotions/validate', {
+   163→   163→        method: 'POST',
+   164→   164→        headers: { 'Content-Type': 'application/json' },
+   165→   165→        body: JSON.stringify({
+   166→   166→          code: promoCode.trim(),
+   167→   167→          subtotal,
+   168→   168→          categoryIds,
+   169→   169→        }),
+   170→   170→      })
+   171→   171→      const data = await res.json()
+   172→   172→
+   173→   173→      if (data.valid) {
+   174→   174→        setAppliedPromo({
+   175→   175→          code: promoCode.trim(),
+   176→   176→          discount: data.discount,
+   177→   177→          promotionName: data.promotionName,
+   178→   178→          promotionId: data.promotionId,
+   179→   179→          discountType: data.discountType,
+   180→   180→          discountValue: data.discountValue,
+   181→   181→        })
+   182→   182→        toast.success(`Promo code applied! You save ${formatPrice(data.discount)}`)
+   183→   183→      } else {
+   184→   184→        toast.error(data.message || 'Invalid promo code')
+   185→   185→        setAppliedPromo(null)
+   186→   186→      }
+   187→   187→    } catch {
+   188→   188→      toast.error('Failed to validate promo code. Please try again.')
+   189→   189→    } finally {
+   190→   190→      setPromoLoading(false)
+   191→   191→    }
+   192→   192→  }
+   193→   193→
+   194→   194→  const handleRemovePromo = () => {
+   195→   195→    setAppliedPromo(null)
+   196→   196→    setPromoCode('')
+   197→   197→    toast.info('Promo code removed')
+   198→   198→  }
+   199→   199→
+   200→   200→  const handlePlaceOrder = async () => {
+   201→   201→    setLoading(true)
+   202→   202→    setError(null)
+   203→   203→
+   204→   204→    try {
+   205→   205→      const response = await fetch('/api/checkout', {
+   206→   206→        method: 'POST',
+   207→   207→        headers: { 'Content-Type': 'application/json' },
+   208→   208→        body: JSON.stringify({
+   209→   209→          items: items.map((item) => ({
+   210→   210→            product_id: item.product.id,
+   211→   211→            product_name: item.product.name,
+   212→   212→            quantity: item.quantity,
+   213→   213→            unit_price: item.product.price,
+   214→   214→            vat_rate: item.product.vat_rate,
+   215→   215→            substitute_preference: item.substitute_preference,
+   216→   216→          })),
+   217→   217→          address: {
+   218→   218→            address_line_1: addressLine1,
+   219→   219→            address_line_2: addressLine2,
+   220→   220→            city,
+   221→   221→            postcode,
+   222→   222→          },
+   223→   223→          delivery_slot: selectedSlot,
+   224→   224→          subtotal,
+   225→   225→          vat_amount: totalVat,
+   226→   226→          delivery_fee: deliveryFee,
+   227→   227→          total,
+   228→   228→          save_address: saveAddress,
+   229→   229→          payment_method: paymentMethod,
+   230→   230→          bank_transfer_ref: bankTransferRef || undefined,
+   231→   231→          promo_code: appliedPromo?.code || undefined,
+   232→   232→          promotion_id: appliedPromo?.promotionId || undefined,
+   233→   233→          discount_amount: promoDiscount || undefined,
+   234→   234→        }),
+   235→   235→      })
+   236→   236→
+   237→   237→      const data = await response.json()
+   238→   238→
+   239→   239→      if (!response.ok) {
+   240→   240→        const timestamp = new Date().toISOString()
+   241→   241→        const techErr = data.technicalError
+   242→   242→        if (techErr) {
+   243→   243→          setError({ ...techErr, timestamp: techErr.timestamp || timestamp })
+   244→   244→        } else {
+   245→   245→          setError({
+   246→   246→            message: data.error || 'Failed to place order.',
+   247→   247→            code: `HTTP_${response.status}`,
+   248→   248→            status: response.status,
+   249→   249→            details: JSON.stringify(data, null, 2),
+   250→   250→            timestamp,
+   251→   251→            endpoint: '/api/checkout',
+   252→   252→          })
+   253→   253→        }
+   254→   254→        return
+   255→   255→      }
+   256→   256→
+   257→   257→      // Store bank details if returned
+   258→   258→      if (data.bankDetails) {
+   259→   259→        setBankDetails(data.bankDetails)
+   260→   260→      }
+   261→   261→
+   262→   262→      // For card payment with Stripe, redirect to checkout URL
+   263→   263→      if (paymentMethod === 'card' && data.checkoutUrl) {
+   264→   264→        window.location.href = data.checkoutUrl
+   265→   265→        return
+   266→   266→      }
+   267→   267→
+   268→   268→      // For cash and bank transfer, go directly to order confirmation
+   269→   269→      clearCart()
+   270→   270→      router.push(`/order/${data.orderId}`)
+   271→   271→    } catch (err) {
+   272→   272→      const errMsg = err instanceof Error ? err.message : String(err)
+   273→   273→      const isNetworkError = errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')
+   274→   274→      setError({
+   275→   275→        message: isNetworkError
+   276→   276→          ? 'Unable to connect to the server. Please check your internet connection.'
+   277→   277→          : `An unexpected error occurred while placing your order: ${errMsg}`,
+   278→   278→        code: isNetworkError ? 'NETWORK_ERROR' : 'CLIENT_ERROR',
+   279→   279→        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+   280→   280→        timestamp: new Date().toISOString(),
+   281→   281→        endpoint: '/api/checkout',
+   282→   282→      })
+   283→   283→    } finally {
+   284→   284→      setLoading(false)
+   285→   285→    }
+   286→   286→  }
+   287→   287→
+   288→   288→  // Redirect if cart is empty (except on payment step where order might have just been placed)
+   289→   289→  if (items.length === 0 && currentStep !== 'payment') {
+   290→   290→    return (
+   291→   291→      <CustomerLayout storeName={store.name} store={store}>
+   292→   292→        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+   293→   293→          <div className="text-center max-w-md mx-auto">
+   294→   294→            <h1 className="text-2xl font-bold text-gray-900 mb-2">Your Cart is Empty</h1>
+   295→   295→            <p className="text-gray-500 mb-6">Add some items to your cart before checking out.</p>
+   296→   296→            <Link href="/catalog">
+   297→   297→              <Button className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold">
+   298→   298→                Browse Products
+   299→   299→              </Button>
+   300→   300→            </Link>
+   301→   301→          </div>
+   302→   302→        </div>
+   303→   303→      </CustomerLayout>
+   304→   304→    )
+   305→   305→  }
+   306→   306→
+   307→   307→  return (
+   308→   308→    <CustomerLayout storeName={store.name} store={store}>
+   309→   309→      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+   310→   310→        {/* Page Header */}
+   311→   311→        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6">Checkout</h1>
+   312→   312→
+   313→   313→        {/* Progress Indicator */}
+   314→   314→        <div className="mb-8">
+   315→   315→          <div className="flex items-center justify-between">
+   316→   316→            {steps.map((step, index) => {
+   317→   317→              const Icon = step.icon
+   318→   318→              const isCompleted = currentStepIndex > index
+   319→   319→              const isCurrent = currentStep === step.id
+   320→   320→
+   321→   321→              return (
+   322→   322→                <div key={step.id} className="flex items-center flex-1 last:flex-none">
+   323→   323→                  <div className="flex flex-col items-center">
+   324→   324→                    <div
+   325→   325→                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
+   326→   326→                        isCompleted
+   327→   327→                          ? 'bg-[#16a34a] border-[#16a34a] text-white'
+   328→   328→                          : isCurrent
+   329→   329→                          ? 'bg-white border-[#16a34a] text-[#16a34a]'
+   330→   330→                          : 'bg-white border-gray-200 text-gray-400'
+   331→   331→                      }`}
+   332→   332→                    >
+   333→   333→                      {isCompleted ? <Check className="h-4 w-4 sm:h-5 sm:w-5" /> : <Icon className="h-4 w-4 sm:h-5 sm:w-5" />}
+   334→   334→                    </div>
+   335→   335→                    <span
+   336→   336→                      className={`hidden sm:block text-xs mt-1.5 font-medium ${
+   337→   337→                        isCurrent ? 'text-[#16a34a]' : isCompleted ? 'text-gray-700' : 'text-gray-400'
+   338→   338→                      }`}
+   339→   339→                    >
+   340→   340→                      {step.label}
+   341→   341→                    </span>
+   342→   342→                  </div>
+   343→   343→                  {index < steps.length - 1 && (
+   344→   344→                    <div
+   345→   345→                      className={`flex-1 h-0.5 mx-1 sm:mx-2 mt-[-0.75rem] sm:mt-[-1.25rem] ${
+   346→   346→                        isCompleted ? 'bg-[#16a34a]' : 'bg-gray-200'
+   347→   347→                      }`}
+   348→   348→                    />
+   349→   349→                  )}
+   350→   350→                </div>
+   351→   351→              )
+   352→   352→            })}
+   353→   353→          </div>
+   354→   354→        </div>
+   355→   355→
+   356→   356→        {/* Error Message */}
+   357→   357→        <ErrorAlert error={error} />
+   358→   358→
+   359→   359→        {/* Step Content */}
+   360→   360→        {currentStep === 'address' && (
+   361→   361→          <Card>
+   362→   362→            <CardHeader>
+   363→   363→              <CardTitle className="flex items-center gap-2">
+   364→   364→                <MapPin className="h-5 w-5 text-[#16a34a]" />
+   365→   365→                Delivery Address
+   366→   366→              </CardTitle>
+   367→   367→            </CardHeader>
+   368→   368→            <CardContent className="space-y-4">
+   369→   369→              {/* Saved Addresses */}
+   370→   370→              {addresses.length > 0 && (
+   371→   371→                <div>
+   372→   372→                  <Label className="text-sm font-medium text-gray-700 mb-2 block">Saved Addresses</Label>
+   373→   373→                  <RadioGroup
+   374→   374→                    value={defaultAddress?.id || ''}
+   375→   375→                    className="space-y-2 mb-4"
+   376→   376→                  >
+   377→   377→                    {addresses.map((addr) => (
+   378→   378→                      <div key={addr.id} className="flex items-center space-x-2">
+   379→   379→                        <RadioGroupItem value={addr.id} id={`addr-${addr.id}`} />
+   380→   380→                        <Label htmlFor={`addr-${addr.id}`} className="text-sm font-normal cursor-pointer">
+   381→   381→                          {addr.address_line_1}, {addr.city}, {addr.postcode}
+   382→   382→                          {addr.is_default && (
+   383→   383→                            <span className="ml-2 text-xs text-[#16a34a] font-medium">(Default)</span>
+   384→   384→                          )}
+   385→   385→                        </Label>
+   386→   386→                      </div>
+   387→   387→                    ))}
+   388→   388→                  </RadioGroup>
+   389→   389→                  <Separator className="my-4" />
+   390→   390→                </div>
+   391→   391→              )}
+   392→   392→
+   393→   393→              <div className="space-y-2">
+   394→   394→                <Label htmlFor="address_line_1">Address Line 1 *</Label>
+   395→   395→                <Input
+   396→   396→                  id="address_line_1"
+   397→   397→                  placeholder="e.g., 123 High Street"
+   398→   398→                  value={addressLine1}
+   399→   399→                  onChange={(e) => setAddressLine1(e.target.value)}
+   400→   400→                  required
+   401→   401→                />
+   402→   402→              </div>
+   403→   403→
+   404→   404→              <div className="space-y-2">
+   405→   405→                <Label htmlFor="address_line_2">Address Line 2</Label>
+   406→   406→                <Input
+   407→   407→                  id="address_line_2"
+   408→   408→                  placeholder="Flat, suite, unit etc. (optional)"
+   409→   409→                  value={addressLine2}
+   410→   410→                  onChange={(e) => setAddressLine2(e.target.value)}
+   411→   411→                />
+   412→   412→              </div>
+   413→   413→
+   414→   414→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   415→   415→                <div className="space-y-2">
+   416→   416→                  <Label htmlFor="city">City *</Label>
+   417→   417→                  <Input
+   418→   418→                    id="city"
+   419→   419→                    placeholder="e.g., London"
+   420→   420→                    value={city}
+   421→   421→                    onChange={(e) => setCity(e.target.value)}
+   422→   422→                    required
+   423→   423→                  />
+   424→   424→                </div>
+   425→   425→                <div className="space-y-2">
+   426→   426→                  <Label htmlFor="postcode">Postcode *</Label>
+   427→   427→                  <Input
+   428→   428→                    id="postcode"
+   429→   429→                    placeholder="e.g., SE13 6LG"
+   430→   430→                    value={postcode}
+   431→   431→                    onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+   432→   432→                    required
+   433→   433→                    className="uppercase"
+   434→   434→                  />
+   435→   435→                </div>
+   436→   436→              </div>
+   437→   437→
+   438→   438→              <div className="flex items-center space-x-2 pt-2">
+   439→   439→                <Checkbox
+   440→   440→                  id="save_address"
+   441→   441→                  checked={saveAddress}
+   442→   442→                  onCheckedChange={(checked) => setSaveAddress(checked === true)}
+   443→   443→                />
+   444→   444→                <Label htmlFor="save_address" className="text-sm font-normal cursor-pointer">
+   445→   445→                  Save this address for future orders
+   446→   446→                </Label>
+   447→   447→              </div>
+   448→   448→
+   449→   449→              <div className="flex justify-end pt-2">
+   450→   450→                <Button
+   451→   451→                  onClick={handleNext}
+   452→   452→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   453→   453→                >
+   454→   454→                  Continue to Delivery Slot
+   455→   455→                  <ChevronRight className="h-4 w-4 ml-1" />
+   456→   456→                </Button>
+   457→   457→              </div>
+   458→   458→            </CardContent>
+   459→   459→          </Card>
+   460→   460→        )}
+   461→   461→
+   462→   462→        {currentStep === 'slot' && (
+   463→   463→          <Card>
+   464→   464→            <CardHeader>
+   465→   465→              <CardTitle className="flex items-center gap-2">
+   466→   466→                <Clock className="h-5 w-5 text-[#16a34a]" />
+   467→   467→                Choose a Delivery Slot
+   468→   468→              </CardTitle>
+   469→   469→            </CardHeader>
+   470→   470→            <CardContent>
+   471→   471→              <RadioGroup
+   472→   472→                value={selectedSlot}
+   473→   473→                onValueChange={setSelectedSlot}
+   474→   474→                className="space-y-3"
+   475→   475→              >
+   476→   476→                {deliverySlots.map((slot) => (
+   477→   477→                  <div key={slot.id}>
+   478→   478→                    <Label
+   479→   479→                      htmlFor={`slot-${slot.id}`}
+   480→   480→                      className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+   481→   481→                        selectedSlot === slot.id
+   482→   482→                          ? 'border-[#16a34a] bg-[#16a34a]/5'
+   483→   483→                          : 'border-gray-200 hover:border-gray-300'
+   484→   484→                      }`}
+   485→   485→                    >
+   486→   486→                      <div className="flex items-center gap-3">
+   487→   487→                        <RadioGroupItem value={slot.id} id={`slot-${slot.id}`} />
+   488→   488→                        <div>
+   489→   489→                          <p className="font-medium text-sm">{slot.label}</p>
+   490→   490→                          <p className="text-xs text-gray-500">{slot.description}</p>
+   491→   491→                        </div>
+   492→   492→                      </div>
+   493→   493→                    </Label>
+   494→   494→                  </div>
+   495→   495→                ))}
+   496→   496→              </RadioGroup>
+   497→   497→
+   498→   498→              <div className="flex justify-between pt-6">
+   499→   499→                <Button variant="outline" onClick={handleBack}>
+   500→   500→                  Back
+   501→   501→                </Button>
+   502→   502→                <Button
+   503→   503→                  onClick={handleNext}
+   504→   504→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   505→   505→                >
+   506→   506→                  Review Order
+   507→   507→                  <ChevronRight className="h-4 w-4 ml-1" />
+   508→   508→                </Button>
+   509→   509→              </div>
+   510→   510→            </CardContent>
+   511→   511→          </Card>
+   512→   512→        )}
+   513→   513→
+   514→   514→        {currentStep === 'summary' && (
+   515→   515→          <Card>
+   516→   516→            <CardHeader>
+   517→   517→              <CardTitle className="flex items-center gap-2">
+   518→   518→                <ShoppingBag className="h-5 w-5 text-[#16a34a]" />
+   519→   519→                Order Summary
+   520→   520→              </CardTitle>
+   521→   521→            </CardHeader>
+   522→   522→            <CardContent className="space-y-6">
+   523→   523→              {/* Delivery Address */}
+   524→   524→              <div>
+   525→   525→                <h3 className="font-medium text-sm text-gray-700 mb-2">Delivery Address</h3>
+   526→   526→                <p className="text-sm text-gray-900">
+   527→   527→                  {addressLine1}
+   528→   528→                  {addressLine2 && `, ${addressLine2}`}
+   529→   529→                  <br />
+   530→   530→                  {city}, {postcode}
+   531→   531→                </p>
+   532→   532→              </div>
+   533→   533→
+   534→   534→              {/* Delivery Slot */}
+   535→   535→              <div>
+   536→   536→                <h3 className="font-medium text-sm text-gray-700 mb-2">Delivery Slot</h3>
+   537→   537→                <p className="text-sm text-gray-900">
+   538→   538→                  {deliverySlots.find((s) => s.id === selectedSlot)?.label}
+   539→   539→                </p>
+   540→   540→              </div>
+   541→   541→
+   542→   542→              <Separator />
+   543→   543→
+   544→   544→              {/* Promo Code Section */}
+   545→   545→              <div>
+   546→   546→                <h3 className="font-medium text-sm text-gray-700 mb-3 flex items-center gap-1.5">
+   547→   547→                  <Tag className="h-4 w-4 text-[#16a34a]" />
+   548→   548→                  Promo Code
+   549→   549→                </h3>
+   550→   550→                {appliedPromo ? (
+   551→   551→                  <div className="flex items-center justify-between bg-[#16a34a]/5 border border-[#16a34a]/20 rounded-lg p-3">
+   552→   552→                    <div>
+   553→   553→                      <p className="text-sm font-medium text-[#16a34a]">{appliedPromo.promotionName}</p>
+   554→   554→                      <p className="text-xs text-gray-500">
+   555→   555→                        Code: <span className="font-mono uppercase">{appliedPromo.code}</span> &middot; Save {formatPrice(appliedPromo.discount)}
+   556→   556→                      </p>
+   557→   557→                    </div>
+   558→   558→                    <Button
+   559→   559→                      variant="ghost"
+   560→   560→                      size="sm"
+   561→   561→                      onClick={handleRemovePromo}
+   562→   562→                      className="text-gray-400 hover:text-red-500 h-8 w-8 p-0"
+   563→   563→                    >
+   564→   564→                      <X className="h-4 w-4" />
+   565→   565→                    </Button>
+   566→   566→                  </div>
+   567→   567→                ) : (
+   568→   568→                  <div className="flex gap-2">
+   569→   569→                    <Input
+   570→   570→                      placeholder="Enter promo code"
+   571→   571→                      value={promoCode}
+   572→   572→                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+   573→   573→                      className="uppercase font-mono flex-1"
+   574→   574→                      onKeyDown={(e) => {
+   575→   575→                        if (e.key === 'Enter') handleApplyPromo()
+   576→   576→                      }}
+   577→   577→                    />
+   578→   578→                    <Button
+   579→   579→                      variant="outline"
+   580→   580→                      onClick={handleApplyPromo}
+   581→   581→                      disabled={promoLoading || !promoCode.trim()}
+   582→   582→                      className="shrink-0"
+   583→   583→                    >
+   584→   584→                      {promoLoading ? (
+   585→   585→                        <Loader2 className="h-4 w-4 animate-spin" />
+   586→   586→                      ) : (
+   587→   587→                        'Apply'
+   588→   588→                      )}
+   589→   589→                    </Button>
+   590→   590→                  </div>
+   591→   591→                )}
+   592→   592→              </div>
+   593→   593→
+   594→   594→              <Separator />
+   595→   595→
+   596→   596→              {/* Items */}
+   597→   597→              <div>
+   598→   598→                <h3 className="font-medium text-sm text-gray-700 mb-3">Items ({items.length})</h3>
+   599→   599→                <div className="space-y-3">
+   600→   600→                  {items.map((item) => (
+   601→   601→                    <div key={item.product.id} className="flex items-center justify-between text-sm">
+   602→   602→                      <div className="flex items-center gap-3">
+   603→   603→                        <span className="text-lg">
+   604→   604→                          {categoryIcons[item.product.category?.slug || ''] || '🛒'}
+   605→   605→                        </span>
+   606→   606→                        <div>
+   607→   607→                          <p className="font-medium">{item.product.name}</p>
+   608→   608→                          <p className="text-xs text-gray-500">
+   609→   609→                            {formatPrice(item.product.price)} × {item.quantity}
+   610→   610→                          </p>
+   611→   611→                        </div>
+   612→   612→                      </div>
+   613→   613→                      <span className="font-medium">{formatPrice(item.product.price * item.quantity)}</span>
+   614→   614→                    </div>
+   615→   615→                  ))}
+   616→   616→                </div>
+   617→   617→              </div>
+   618→   618→
+   619→   619→              <Separator />
+   620→   620→
+   621→   621→              {/* Totals */}
+   622→   622→              <div className="space-y-2">
+   623→   623→                <div className="flex justify-between text-sm">
+   624→   624→                  <span className="text-gray-600">Subtotal</span>
+   625→   625→                  <span className="font-medium">{formatPrice(subtotal)}</span>
+   626→   626→                </div>
+   627→   627→                {Object.entries(vatGroups).map(([rate, group]) => (
+   628→   628→                  <div key={rate} className="flex justify-between text-sm">
+   629→   629→                    <span className="text-gray-500">{group.label} VAT</span>
+   630→   630→                    <span className="text-gray-600">{formatPrice(group.vat)}</span>
+   631→   631→                  </div>
+   632→   632→                ))}
+   633→   633→                <div className="flex justify-between text-sm">
+   634→   634→                  <span className="text-gray-600">Delivery fee</span>
+   635→   635→                  <span className="font-medium">
+   636→   636→                    {isFreeDelivery ? (
+   637→   637→                      <span className="text-[#16a34a]">Free</span>
+   638→   638→                    ) : (
+   639→   639→                      formatPrice(deliveryFee)
+   640→   640→                    )}
+   641→   641→                  </span>
+   642→   642→                </div>
+   643→   643→                {appliedPromo && promoDiscount > 0 && (
+   644→   644→                  <div className="flex justify-between text-sm">
+   645→   645→                    <span className="text-[#16a34a] flex items-center gap-1">
+   646→   646→                      <Tag className="h-3.5 w-3.5" />
+   647→   647→                      {appliedPromo.promotionName}
+   648→   648→                    </span>
+   649→   649→                    <span className="text-[#16a34a] font-medium">-{formatPrice(promoDiscount)}</span>
+   650→   650→                  </div>
+   651→   651→                )}
+   652→   652→                <Separator />
+   653→   653→                <div className="flex justify-between text-base font-bold">
+   654→   654→                  <span>Total</span>
+   655→   655→                  <span>{formatPrice(total)}</span>
+   656→   656→                </div>
+   657→   657→              </div>
+   658→   658→
+   659→   659→              <div className="flex justify-between pt-2">
+   660→   660→                <Button variant="outline" onClick={handleBack}>
+   661→   661→                  Back
+   662→   662→                </Button>
+   663→   663→                <Button
+   664→   664→                  onClick={handleNext}
+   665→   665→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   666→   666→                >
+   667→   667→                  Proceed to Payment
+   668→   668→                  <ChevronRight className="h-4 w-4 ml-1" />
+   669→   669→                </Button>
+   670→   670→              </div>
+   671→   671→            </CardContent>
+   672→   672→          </Card>
+   673→   673→        )}
+   674→   674→
+   675→   675→        {currentStep === 'payment' && (
+   676→   676→          <Card>
+   677→   677→            <CardHeader>
+   678→   678→              <CardTitle className="flex items-center gap-2">
+   679→   679→                <CreditCard className="h-5 w-5 text-[#16a34a]" />
+   680→   680→                Payment
+   681→   681→              </CardTitle>
+   682→   682→            </CardHeader>
+   683→   683→            <CardContent className="space-y-6">
+   684→   684→              {/* Total amount */}
+   685→   685→              <div className="bg-gray-50 rounded-lg p-4 text-center">
+   686→   686→                <p className="text-sm text-gray-600 mb-3">
+   687→   687→                  Total amount to pay
+   688→   688→                </p>
+   689→   689→                <p className="text-3xl font-bold text-gray-900">{formatPrice(total)}</p>
+   690→   690→                {totalVat > 0 && (
+   691→   691→                  <p className="text-xs text-gray-400 mt-1">
+   692→   692→                    Includes {formatPrice(totalVat)} VAT
+   693→   693→                  </p>
+   694→   694→                )}
+   695→   695→              </div>
+   696→   696→
+   697→   697→              {/* Payment Method Selection */}
+   698→   698→              <div className="space-y-3">
+   699→   699→                <Label className="text-sm font-medium text-gray-700">Select Payment Method</Label>
+   700→   700→                <RadioGroup
+   701→   701→                  value={paymentMethod}
+   702→   702→                  onValueChange={(val) => setPaymentMethod(val as PaymentMethod)}
+   703→   703→                  className="space-y-3"
+   704→   704→                >
+   705→   705→                  {/* Card Payment (Stripe) */}
+   706→   706→                  <Label
+   707→   707→                    htmlFor="payment-card"
+   708→   708→                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+   709→   709→                      paymentMethod === 'card'
+   710→   710→                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+   711→   711→                        : 'border-gray-200 hover:border-gray-300'
+   712→   712→                    }`}
+   713→   713→                  >
+   714→   714→                    <RadioGroupItem value="card" id="payment-card" />
+   715→   715→                    <CreditCard className="h-5 w-5 text-gray-600 shrink-0" />
+   716→   716→                    <div className="flex-1">
+   717→   717→                      <p className="font-medium text-sm">Card Payment</p>
+   718→   718→                      <p className="text-xs text-gray-500">Pay securely with Stripe — Visa, Mastercard, Amex</p>
+   719→   719→                    </div>
+   720→   720→                    <span className="text-xs text-gray-400">Free</span>
+   721→   721→                  </Label>
+   722→   722→
+   723→   723→                  {/* Cash on Delivery */}
+   724→   724→                  <Label
+   725→   725→                    htmlFor="payment-cash"
+   726→   726→                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+   727→   727→                      paymentMethod === 'cash'
+   728→   728→                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+   729→   729→                        : 'border-gray-200 hover:border-gray-300'
+   730→   730→                    }`}
+   731→   731→                  >
+   732→   732→                    <RadioGroupItem value="cash" id="payment-cash" />
+   733→   733→                    <Banknote className="h-5 w-5 text-gray-600 shrink-0" />
+   734→   734→                    <div className="flex-1">
+   735→   735→                      <p className="font-medium text-sm">Cash on Delivery</p>
+   736→   736→                      <p className="text-xs text-gray-500">Pay with cash when your order arrives</p>
+   737→   737→                    </div>
+   738→   738→                    <span className="text-xs text-gray-400">Free</span>
+   739→   739→                  </Label>
+   740→   740→
+   741→   741→                  {/* Bank Transfer */}
+   742→   742→                  <Label
+   743→   743→                    htmlFor="payment-bank"
+   744→   744→                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+   745→   745→                      paymentMethod === 'bank_transfer'
+   746→   746→                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+   747→   747→                        : 'border-gray-200 hover:border-gray-300'
+   748→   748→                    }`}
+   749→   749→                  >
+   750→   750→                    <RadioGroupItem value="bank_transfer" id="payment-bank" />
+   751→   751→                    <Building2 className="h-5 w-5 text-gray-600 shrink-0" />
+   752→   752→                    <div className="flex-1">
+   753→   753→                      <p className="font-medium text-sm">Bank Transfer</p>
+   754→   754→                      <p className="text-xs text-gray-500">Transfer directly to our bank account</p>
+   755→   755→                    </div>
+   756→   756→                    <span className="text-xs text-gray-400">Free</span>
+   757→   757→                  </Label>
+   758→   758→                </RadioGroup>
+   759→   759→              </div>
+   760→   760→
+   761→   761→              {/* Card Payment Info */}
+   762→   762→              {paymentMethod === 'card' && (
+   763→   763→                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+   764→   764→                  <p className="text-sm text-amber-800">
+   765→   765→                    <strong>Note:</strong> You will be redirected to Stripe&apos;s secure checkout to complete payment.
+   766→   766→                    {!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY && (
+   767→   767→                      <><br /><strong>Demo Mode:</strong> Stripe is not configured. Payment will be simulated.</>
+   768→   768→                    )}
+   769→   769→                  </p>
+   770→   770→                </div>
+   771→   771→              )}
+   772→   772→
+   773→   773→              {/* Cash on Delivery Info */}
+   774→   774→              {paymentMethod === 'cash' && (
+   775→   775→                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+   776→   776→                  <div className="flex items-start gap-2">
+   777→   777→                    <Banknote className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+   778→   778→                    <div>
+   779→   779→                      <p className="text-sm font-medium text-blue-800">Cash on Delivery</p>
+   780→   780→                      <p className="text-xs text-blue-700 mt-1">
+   781→   781→                        Please have the exact amount ready: <strong>{formatPrice(total)}</strong>. 
+   782→   782→                        Our driver will collect payment upon delivery. No additional fees apply.
+   783→   783→                      </p>
+   784→   784→                    </div>
+   785→   785→                  </div>
+   786→   786→                </div>
+   787→   787→              )}
+   788→   788→
+   789→   789→              {/* Bank Transfer Info */}
+   790→   790→              {paymentMethod === 'bank_transfer' && (
+   791→   791→                <div className="space-y-4">
+   792→   792→                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+   793→   793→                    <div className="flex items-start gap-2">
+   794→   794→                      <Building2 className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+   795→   795→                      <div>
+   796→   796→                        <p className="text-sm font-medium text-purple-800">Bank Transfer</p>
+   797→   797→                        <p className="text-xs text-purple-700 mt-1">
+   798→   798→                          Your order will be placed and you&apos;ll receive bank details to complete the transfer.
+   799→   799→                          Payment must be received before delivery can be dispatched.
+   800→   800→                        </p>
+   801→   801→                      </div>
+   802→   802→                    </div>
+   803→   803→                  </div>
+   804→   804→
+   805→   805→                  {/* Reference number input */}
+   806→   806→                  <div className="space-y-2">
+   807→   807→                    <Label htmlFor="bankRef" className="text-sm font-medium text-gray-700">
+   808→   808→                      Payment Reference (Optional)
+   809→   809→                    </Label>
+   810→   810→                    <Input
+   811→   811→                      id="bankRef"
+   812→   812→                      placeholder="e.g., Your bank transfer reference"
+   813→   813→                      value={bankTransferRef}
+   814→   814→                      onChange={(e) => setBankTransferRef(e.target.value)}
+   815→   815→                    />
+   816→   816→                    <p className="text-xs text-gray-400 flex items-center gap-1">
+   817→   817→                      <Info className="h-3 w-3" />
+   818→   818→                      Add a reference to help us match your payment faster
+   819→   819→                    </p>
+   820→   820→                  </div>
+   821→   821→                </div>
+   822→   822→              )}
+   823→   823→
+   824→   824→              {/* Place Order Button */}
+   825→   825→              <Button
+   826→   826→                onClick={handlePlaceOrder}
+   827→   827→                className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold h-12 text-base"
+   828→   828→                disabled={loading}
+   829→   829→              >
+   830→   830→                {loading ? (
+   831→   831→                  <>
+   832→   832→                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+   833→   833→                    Placing Order...
+   834→   834→                  </>
+   835→   835→                ) : paymentMethod === 'card' ? (
+   836→   836→                  <>
+   837→   837→                    <CreditCard className="h-5 w-5 mr-2" />
+   838→   838→                    Pay with Card — {formatPrice(total)}
+   839→   839→                  </>
+   840→   840→                ) : paymentMethod === 'cash' ? (
+   841→   841→                  <>
+   842→   842→                    <Banknote className="h-5 w-5 mr-2" />
+   843→   843→                    Place Order (Cash on Delivery)
+   844→   844→                  </>
+   845→   845→                ) : (
+   846→   846→                  <>
+   847→   847→                    <Building2 className="h-5 w-5 mr-2" />
+   848→   848→                    Place Order (Bank Transfer)
+   849→   849→                  </>
+   850→   850→                )}
+   851→   851→              </Button>
+   852→   852→
+   853→   853→              <Button variant="ghost" onClick={handleBack} className="w-full" disabled={loading}>
+   854→   854→                Back to Summary
+   855→   855→              </Button>
+   856→   856→            </CardContent>
+   857→   857→          </Card>
+   858→   858→        )}
+   859→   859→      </div>
+   860→   860→    </CustomerLayout>
+   861→   861→  )
+   862→   862→}
+   863→   863→

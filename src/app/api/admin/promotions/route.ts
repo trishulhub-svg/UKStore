@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/promotions
 export async function GET() {
@@ -41,6 +41,8 @@ export async function POST(request: NextRequest) {
         discountValue: parseFloat(body.discountValue),
         startDate: new Date(body.startDate),
         endDate: new Date(body.endDate),
+        minimumOrderValue: body.minimumOrderValue ? parseFloat(body.minimumOrderValue) : 0,
+        usageLimit: body.usageLimit ? parseInt(body.usageLimit) : null,
         appliesToCategoryIds: body.appliesToCategoryIds || null,
         excludesHfss: body.excludesHfss || false,
         isActive: body.isActive !== false,

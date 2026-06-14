@@ -7,7 +7,7 @@ import type { Order } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 export default async function AccountPage() {
   const user = await getServerUser()
@@ -60,7 +60,7 @@ export default async function AccountPage() {
 
   return (
     <AccountClient
-      storeName={store?.name || 'Fresh Mart London'}
+      storeName={store?.name || 'Fresh Mart'}
       user={{
         id: user.id,
         email: user.email,

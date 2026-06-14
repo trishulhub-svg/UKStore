@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
-import { authLogin, authRegister } from '@/lib/auth-client'
+import { authLogin, authRegister, getRoleBasedRedirect } from '@/lib/auth-client'
 
 type AuthTab = 'login' | 'register' | 'forgot-password' | 'success'
 
@@ -48,15 +48,17 @@ export function HomeAuthForm({ onSuccess }: HomeAuthFormProps) {
     setLoading(true)
 
     try {
-      const { error: authError } = await authLogin(email, password)
+      const { error: authError, user } = await authLogin(email, password)
 
       if (authError) {
         setError(authError)
         return
       }
 
-      onSuccess?.()
-      window.location.reload()
+      // Redirect based on role
+      const role = user?.role || 'customer'
+      const redirectPath = getRoleBasedRedirect(role)
+      window.location.href = redirectPath
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       setError({

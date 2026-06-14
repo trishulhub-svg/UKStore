@@ -1,4 +1,4 @@
-import { getDefaultStore, getProductBySlug } from '@/lib/supabase/queries'
+import { getDefaultStore, getProductBySlug, getCategories } from '@/lib/supabase/queries'
 import { ProductDetailClient } from '@/components/customer/product-detail-client'
 import { notFound } from 'next/navigation'
 
@@ -8,11 +8,12 @@ interface ProductPageProps {
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params
-  const storeId = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+  const storeId = 'store-fresh-mart-001'
 
-  const [store, product] = await Promise.all([
+  const [store, product, categories] = await Promise.all([
     getDefaultStore(),
     getProductBySlug(storeId, slug),
+    getCategories(storeId),
   ])
 
   if (!store) {
@@ -30,5 +31,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
     notFound()
   }
 
-  return <ProductDetailClient store={store} product={product} />
+  const allCategories = categories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+  }))
+
+  return <ProductDetailClient store={store} product={product} allCategories={allCategories} />
 }

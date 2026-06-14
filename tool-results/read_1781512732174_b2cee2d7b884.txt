@@ -1,0 +1,699 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { Plus, Search, ArrowUpDown, Pencil, Trash2, ToggleLeft, ToggleRight, AlertTriangle } from 'lucide-react'
+     5→import { Button } from '@/components/ui/button'
+     6→import { Input } from '@/components/ui/input'
+     7→import { Badge } from '@/components/ui/badge'
+     8→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     9→import {
+    10→  Dialog,
+    11→  DialogContent,
+    12→  DialogHeader,
+    13→  DialogTitle,
+    14→  DialogFooter,
+    15→} from '@/components/ui/dialog'
+    16→import {
+    17→  AlertDialog,
+    18→  AlertDialogContent,
+    19→  AlertDialogHeader,
+    20→  AlertDialogTitle,
+    21→  AlertDialogDescription,
+    22→  AlertDialogFooter,
+    23→  AlertDialogCancel,
+    24→  AlertDialogAction,
+    25→} from '@/components/ui/alert-dialog'
+    26→import { Label } from '@/components/ui/label'
+    27→import { Textarea } from '@/components/ui/textarea'
+    28→import {
+    29→  Select,
+    30→  SelectContent,
+    31→  SelectItem,
+    32→  SelectTrigger,
+    33→  SelectValue,
+    34→} from '@/components/ui/select'
+    35→import { Switch } from '@/components/ui/switch'
+    36→import { Skeleton } from '@/components/ui/skeleton'
+    37→import { toast } from 'sonner'
+    38→import { formatPrice, getVatRateLabel } from '@/lib/vat'
+    39→import { CsvImportExport } from '@/components/admin/csv-import-export'
+    40→
+    41→interface Category {
+    42→  id: string
+    43→  name: string
+    44→}
+    45→
+    46→interface Product {
+    47→  id: string
+    48→  name: string
+    49→  slug: string
+    50→  description: string | null
+    51→  price: number
+    52→  vatRate: number
+    53→  isHfss: boolean
+    54→  isAgeRestricted: boolean
+    55→  minimumAge: number
+    56→  imageUrl: string | null
+    57→  barcode: string | null
+    58→  unit: string
+    59→  weightKg: number | null
+    60→  aisle: string | null
+    61→  minStockThreshold: number
+    62→  substituteProductId: string | null
+    63→  isAvailable: boolean
+    64→  stockQuantity: number
+    65→  isFeatured: boolean
+    66→  sortOrder: number
+    67→  category: { id: string; name: string }
+    68→  substituteProduct?: { id: string; name: string } | null
+    69→}
+    70→
+    71→const emptyProduct = {
+    72→  name: '',
+    73→  categoryId: '',
+    74→  description: '',
+    75→  price: '',
+    76→  vatRate: '0',
+    77→  isHfss: false,
+    78→  isAgeRestricted: false,
+    79→  minimumAge: '0',
+    80→  imageUrl: '',
+    81→  barcode: '',
+    82→  unit: 'each',
+    83→  weightKg: '',
+    84→  aisle: '',
+    85→  minStockThreshold: '5',
+    86→  substituteProductId: '',
+    87→  isAvailable: true,
+    88→  stockQuantity: '0',
+    89→  isFeatured: false,
+    90→  sortOrder: '0',
+    91→}
+    92→
+    93→export default function AdminProductsPage() {
+    94→  const [products, setProducts] = useState<Product[]>([])
+    95→  const [categories, setCategories] = useState<Category[]>([])
+    96→  const [loading, setLoading] = useState(true)
+    97→  const [search, setSearch] = useState('')
+    98→  const [filterCategory, setFilterCategory] = useState('all')
+    99→  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock'>('name')
+   100→  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+   101→  const [total, setTotal] = useState(0)
+   102→
+   103→  // Modal state
+   104→  const [dialogOpen, setDialogOpen] = useState(false)
+   105→  const [editingId, setEditingId] = useState<string | null>(null)
+   106→  const [form, setForm] = useState(emptyProduct)
+   107→  const [saving, setSaving] = useState(false)
+   108→
+   109→  // Delete state
+   110→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   111→  const [deleteName, setDeleteName] = useState('')
+   112→  const [deleting, setDeleting] = useState(false)
+   113→
+   114→  const fetchProducts = useCallback(async () => {
+   115→    try {
+   116→      const params = new URLSearchParams()
+   117→      if (search) params.set('search', search)
+   118→      if (filterCategory !== 'all') params.set('category', filterCategory)
+   119→      params.set('sortBy', sortBy)
+   120→      params.set('sortOrder', sortOrder)
+   121→
+   122→      const res = await fetch(`/api/admin/products?${params}`)
+   123→      if (!res.ok) throw new Error()
+   124→      const data = await res.json()
+   125→      setProducts(data.products)
+   126→      setTotal(data.total)
+   127→    } catch {
+   128→      toast.error('Failed to load products')
+   129→    } finally {
+   130→      setLoading(false)
+   131→    }
+   132→  }, [search, filterCategory, sortBy, sortOrder])
+   133→
+   134→  const fetchCategories = async () => {
+   135→    try {
+   136→      const res = await fetch('/api/admin/categories')
+   137→      if (!res.ok) return
+   138→      const data = await res.json()
+   139→      setCategories(data.categories.map((c: any) => ({ id: c.id, name: c.name })))
+   140→    } catch {}
+   141→  }
+   142→
+   143→  useEffect(() => {
+   144→    fetchCategories()
+   145→  }, [])
+   146→
+   147→  useEffect(() => {
+   148→    fetchProducts()
+   149→  }, [fetchProducts])
+   150→
+   151→  const handleOpenCreate = () => {
+   152→    setEditingId(null)
+   153→    setForm(emptyProduct)
+   154→    setDialogOpen(true)
+   155→  }
+   156→
+   157→  const handleOpenEdit = (p: Product) => {
+   158→    setEditingId(p.id)
+   159→    setForm({
+   160→      name: p.name,
+   161→      categoryId: p.category.id,
+   162→      description: p.description || '',
+   163→      price: String(p.price),
+   164→      vatRate: String(p.vatRate),
+   165→      isHfss: p.isHfss,
+   166→      isAgeRestricted: p.isAgeRestricted,
+   167→      minimumAge: String(p.minimumAge || 0),
+   168→      imageUrl: p.imageUrl || '',
+   169→      barcode: p.barcode || '',
+   170→      unit: p.unit,
+   171→      weightKg: p.weightKg ? String(p.weightKg) : '',
+   172→      aisle: p.aisle || '',
+   173→      minStockThreshold: String(p.minStockThreshold ?? 5),
+   174→      substituteProductId: p.substituteProductId || '',
+   175→      isAvailable: p.isAvailable,
+   176→      stockQuantity: String(p.stockQuantity),
+   177→      isFeatured: p.isFeatured,
+   178→      sortOrder: String(p.sortOrder),
+   179→    })
+   180→    setDialogOpen(true)
+   181→  }
+   182→
+   183→  const handleSave = async () => {
+   184→    if (!form.name || !form.categoryId || !form.price) {
+   185→      toast.error('Name, category, and price are required')
+   186→      return
+   187→    }
+   188→    setSaving(true)
+   189→    try {
+   190→      const url = editingId ? `/api/admin/products/${editingId}` : '/api/admin/products'
+   191→      const method = editingId ? 'PATCH' : 'POST'
+   192→      const res = await fetch(url, {
+   193→        method,
+   194→        headers: { 'Content-Type': 'application/json' },
+   195→        body: JSON.stringify(form),
+   196→      })
+   197→      if (!res.ok) {
+   198→        const data = await res.json()
+   199→        throw new Error(data.error || 'Failed')
+   200→      }
+   201→      toast.success(editingId ? 'Product updated' : 'Product created')
+   202→      setDialogOpen(false)
+   203→      fetchProducts()
+   204→    } catch (err: any) {
+   205→      toast.error(err.message || 'Failed to save product')
+   206→    } finally {
+   207→      setSaving(false)
+   208→    }
+   209→  }
+   210→
+   211→  const handleDelete = async () => {
+   212→    if (!deleteId) return
+   213→    setDeleting(true)
+   214→    try {
+   215→      const res = await fetch(`/api/admin/products/${deleteId}`, { method: 'DELETE' })
+   216→      if (!res.ok) {
+   217→        const data = await res.json()
+   218→        throw new Error(data.error || 'Failed')
+   219→      }
+   220→      toast.success('Product deleted')
+   221→      setDeleteId(null)
+   222→      fetchProducts()
+   223→    } catch (err: any) {
+   224→      toast.error(err.message || 'Failed to delete product')
+   225→    } finally {
+   226→      setDeleting(false)
+   227→    }
+   228→  }
+   229→
+   230→  const handleToggle = async (id: string, field: 'isAvailable' | 'isHfss' | 'isAgeRestricted', value: boolean) => {
+   231→    try {
+   232→      const res = await fetch(`/api/admin/products/${id}`, {
+   233→        method: 'PATCH',
+   234→        headers: { 'Content-Type': 'application/json' },
+   235→        body: JSON.stringify({ [field]: value }),
+   236→      })
+   237→      if (!res.ok) throw new Error()
+   238→      toast.success(`${field === 'isAvailable' ? 'Availability' : 'HFSS flag'} updated`)
+   239→      fetchProducts()
+   240→    } catch {
+   241→      toast.error('Failed to update')
+   242→    }
+   243→  }
+   244→
+   245→  const toggleSort = (field: 'name' | 'price' | 'stock') => {
+   246→    if (sortBy === field) {
+   247→      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+   248→    } else {
+   249→      setSortBy(field)
+   250→      setSortOrder('asc')
+   251→    }
+   252→  }
+   253→
+   254→  return (
+   255→    <div>
+   256→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+   257→        <div>
+   258→          <h1 className="text-2xl font-bold text-gray-900">Products</h1>
+   259→          <p className="text-gray-500 text-sm">{total} products total</p>
+   260→        </div>
+   261→        <Button onClick={handleOpenCreate} className="bg-[#16a34a] hover:bg-[#15803d]">
+   262→          <Plus className="h-4 w-4 mr-1" /> Add Product
+   263→        </Button>
+   264→      </div>
+   265→
+   266→      {/* CSV Import/Export */}
+   267→      <div className="mb-6">
+   268→        <CsvImportExport />
+   269→      </div>
+   270→
+   271→      {/* Filters */}
+   272→      <Card className="mb-6">
+   273→        <CardContent className="p-4">
+   274→          <div className="flex flex-col sm:flex-row gap-3">
+   275→            <div className="relative flex-1">
+   276→              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+   277→              <Input
+   278→                placeholder="Search products..."
+   279→                value={search}
+   280→                onChange={(e) => setSearch(e.target.value)}
+   281→                className="pl-9"
+   282→              />
+   283→            </div>
+   284→            <Select value={filterCategory} onValueChange={setFilterCategory}>
+   285→              <SelectTrigger className="w-full sm:w-48">
+   286→                <SelectValue placeholder="All Categories" />
+   287→              </SelectTrigger>
+   288→              <SelectContent>
+   289→                <SelectItem value="all">All Categories</SelectItem>
+   290→                {categories.map((c) => (
+   291→                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+   292→                ))}
+   293→              </SelectContent>
+   294→            </Select>
+   295→          </div>
+   296→        </CardContent>
+   297→      </Card>
+   298→
+   299→      {/* Table */}
+   300→      <Card>
+   301→        <CardContent className="p-0">
+   302→          {loading ? (
+   303→            <div className="p-6 space-y-4">
+   304→              {[1, 2, 3, 4, 5].map((i) => (
+   305→                <Skeleton key={i} className="h-12 w-full" />
+   306→              ))}
+   307→            </div>
+   308→          ) : products.length === 0 ? (
+   309→            <div className="text-center py-12">
+   310→              <AlertTriangle className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+   311→              <p className="text-gray-500">No products found</p>
+   312→            </div>
+   313→          ) : (
+   314→            <>
+   315→              {/* Desktop Table */}
+   316→              <div className="hidden md:block overflow-x-auto">
+   317→                <table className="w-full text-sm">
+   318→                  <thead>
+   319→                    <tr className="border-b border-gray-200 bg-gray-50">
+   320→                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+   321→                        <button onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-gray-700">
+   322→                          Name <ArrowUpDown className="h-3 w-3" />
+   323→                        </button>
+   324→                      </th>
+   325→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Category</th>
+   326→                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+   327→                        <button onClick={() => toggleSort('price')} className="flex items-center gap-1 hover:text-gray-700">
+   328→                          Price <ArrowUpDown className="h-3 w-3" />
+   329→                        </button>
+   330→                      </th>
+   331→                      <th className="text-left py-3 px-4 font-medium text-gray-500">VAT</th>
+   332→                      <th className="text-left py-3 px-4 font-medium text-gray-500">HFSS</th>
+   333→                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+   334→                        <button onClick={() => toggleSort('stock')} className="flex items-center gap-1 hover:text-gray-700">
+   335→                          Stock <ArrowUpDown className="h-3 w-3" />
+   336→                        </button>
+   337→                      </th>
+   338→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Available</th>
+   339→                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
+   340→                    </tr>
+   341→                  </thead>
+   342→                  <tbody>
+   343→                    {products.map((p) => (
+   344→                      <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50">
+   345→                        <td className="py-3 px-4 font-medium text-gray-900">{p.name}</td>
+   346→                        <td className="py-3 px-4">
+   347→                          <Badge variant="secondary" className="text-xs">{p.category.name}</Badge>
+   348→                        </td>
+   349→                        <td className="py-3 px-4">{formatPrice(p.price)}</td>
+   350→                        <td className="py-3 px-4 text-gray-500 text-xs">{getVatRateLabel(p.vatRate)}</td>
+   351→                        <td className="py-3 px-4">
+   352→                          <div className="flex items-center gap-1">
+   353→                            <button onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}>
+   354→                              {p.isHfss ? (
+   355→                                <ToggleRight className="h-5 w-5 text-amber-500" />
+   356→                              ) : (
+   357→                                <ToggleLeft className="h-5 w-5 text-gray-300" />
+   358→                              )}
+   359→                            </button>
+   360→                            <button onClick={() => handleToggle(p.id, 'isAgeRestricted', !p.isAgeRestricted)}>
+   361→                              {p.isAgeRestricted ? (
+   362→                                <ToggleRight className="h-5 w-5 text-red-500" />
+   363→                              ) : (
+   364→                                <ToggleLeft className="h-5 w-5 text-gray-300" />
+   365→                              )}
+   366→                            </button>
+   367→                          </div>
+   368→                        </td>
+   369→                        <td className="py-3 px-4">
+   370→                          <span className={p.stockQuantity <= 5 ? 'text-red-600 font-medium' : ''}>
+   371→                            {p.stockQuantity}
+   372→                          </span>
+   373→                        </td>
+   374→                        <td className="py-3 px-4">
+   375→                          <button onClick={() => handleToggle(p.id, 'isAvailable', !p.isAvailable)}>
+   376→                            {p.isAvailable ? (
+   377→                              <ToggleRight className="h-5 w-5 text-green-600" />
+   378→                            ) : (
+   379→                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+   380→                            )}
+   381→                          </button>
+   382→                        </td>
+   383→                        <td className="py-3 px-4 text-right">
+   384→                          <div className="flex items-center justify-end gap-1">
+   385→                            <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(p)}>
+   386→                              <Pencil className="h-4 w-4" />
+   387→                            </Button>
+   388→                            <Button
+   389→                              variant="ghost"
+   390→                              size="icon"
+   391→                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+   392→                              onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
+   393→                            >
+   394→                              <Trash2 className="h-4 w-4" />
+   395→                            </Button>
+   396→                          </div>
+   397→                        </td>
+   398→                      </tr>
+   399→                    ))}
+   400→                  </tbody>
+   401→                </table>
+   402→              </div>
+   403→
+   404→              {/* Mobile Cards */}
+   405→              <div className="md:hidden space-y-3 p-4">
+   406→                {products.map((p) => (
+   407→                  <Card key={p.id}>
+   408→                    <CardContent className="p-4">
+   409→                      <div className="flex items-start justify-between mb-3">
+   410→                        <div>
+   411→                          <p className="font-medium text-gray-900">{p.name}</p>
+   412→                          <Badge variant="secondary" className="text-xs mt-1">{p.category.name}</Badge>
+   413→                        </div>
+   414→                        <span className={`text-sm ${p.stockQuantity <= 5 ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+   415→                          Stock: {p.stockQuantity}
+   416→                        </span>
+   417→                      </div>
+   418→                      <div className="space-y-2 mb-3">
+   419→                        <div className="flex justify-between">
+   420→                          <span className="text-sm text-gray-500">Price</span>
+   421→                          <span className="font-medium">{formatPrice(p.price)}</span>
+   422→                        </div>
+   423→                        <div className="flex justify-between">
+   424→                          <span className="text-sm text-gray-500">VAT Rate</span>
+   425→                          <span className="font-medium">{getVatRateLabel(p.vatRate)}</span>
+   426→                        </div>
+   427→                      </div>
+   428→                      <div className="flex items-center justify-between mb-3">
+   429→                        <div className="flex items-center gap-3">
+   430→                          <button
+   431→                            onClick={() => handleToggle(p.id, 'isAvailable', !p.isAvailable)}
+   432→                            className="flex items-center gap-1.5 min-h-[44px]"
+   433→                          >
+   434→                            {p.isAvailable ? (
+   435→                              <ToggleRight className="h-5 w-5 text-green-600" />
+   436→                            ) : (
+   437→                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+   438→                            )}
+   439→                            <span className="text-sm">Available</span>
+   440→                          </button>
+   441→                          <button
+   442→                            onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}
+   443→                            className="flex items-center gap-1.5 min-h-[44px]"
+   444→                          >
+   445→                            {p.isHfss ? (
+   446→                              <ToggleRight className="h-5 w-5 text-amber-500" />
+   447→                            ) : (
+   448→                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+   449→                            )}
+   450→                            <span className="text-sm">HFSS</span>
+   451→                          </button>
+   452→                          <button
+   453→                            onClick={() => handleToggle(p.id, 'isAgeRestricted', !p.isAgeRestricted)}
+   454→                            className="flex items-center gap-1.5 min-h-[44px]"
+   455→                          >
+   456→                            {p.isAgeRestricted ? (
+   457→                              <ToggleRight className="h-5 w-5 text-red-500" />
+   458→                            ) : (
+   459→                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+   460→                            )}
+   461→                            <span className="text-sm">Age 18+</span>
+   462→                          </button>
+   463→                        </div>
+   464→                      </div>
+   465→                      <div className="flex items-center gap-2 pt-2 border-t">
+   466→                        <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleOpenEdit(p)}>
+   467→                          <Pencil className="h-4 w-4 mr-1" /> Edit
+   468→                        </Button>
+   469→                        <Button
+   470→                          variant="outline"
+   471→                          size="sm"
+   472→                          className="flex-1 min-h-10 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+   473→                          onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
+   474→                        >
+   475→                          <Trash2 className="h-4 w-4 mr-1" /> Delete
+   476→                        </Button>
+   477→                      </div>
+   478→                    </CardContent>
+   479→                  </Card>
+   480→                ))}
+   481→              </div>
+   482→            </>
+   483→          )}
+   484→        </CardContent>
+   485→      </Card>
+   486→
+   487→      {/* Create/Edit Dialog */}
+   488→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   489→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   490→          <DialogHeader>
+   491→            <DialogTitle>{editingId ? 'Edit Product' : 'Add Product'}</DialogTitle>
+   492→          </DialogHeader>
+   493→          <div className="grid gap-4 py-4">
+   494→            <div className="grid gap-2">
+   495→              <Label htmlFor="name">Name *</Label>
+   496→              <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+   497→            </div>
+   498→            <div className="grid gap-2">
+   499→              <Label htmlFor="categoryId">Category *</Label>
+   500→              <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
+   501→                <SelectTrigger>
+   502→                  <SelectValue placeholder="Select category" />
+   503→                </SelectTrigger>
+   504→                <SelectContent>
+   505→                  {categories.map((c) => (
+   506→                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+   507→                  ))}
+   508→                </SelectContent>
+   509→              </Select>
+   510→            </div>
+   511→            <div className="grid gap-2">
+   512→              <Label htmlFor="description">Description</Label>
+   513→              <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+   514→            </div>
+   515→            <div className="grid grid-cols-2 gap-4">
+   516→              <div className="grid gap-2">
+   517→                <Label htmlFor="price">Price (£) *</Label>
+   518→                <Input id="price" type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+   519→              </div>
+   520→              <div className="grid gap-2">
+   521→                <Label htmlFor="vatRate">VAT Rate</Label>
+   522→                <Select value={form.vatRate} onValueChange={(v) => setForm({ ...form, vatRate: v })}>
+   523→                  <SelectTrigger>
+   524→                    <SelectValue />
+   525→                  </SelectTrigger>
+   526→                  <SelectContent>
+   527→                    <SelectItem value="0">Zero-rated (0%)</SelectItem>
+   528→                    <SelectItem value="0.05">Reduced (5%)</SelectItem>
+   529→                    <SelectItem value="0.2">Standard (20%)</SelectItem>
+   530→                  </SelectContent>
+   531→                </Select>
+   532→              </div>
+   533→            </div>
+   534→            <div className="grid grid-cols-2 gap-4">
+   535→              <div className="grid gap-2">
+   536→                <Label htmlFor="stockQuantity">Stock Quantity</Label>
+   537→                <Input id="stockQuantity" type="number" value={form.stockQuantity} onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })} />
+   538→              </div>
+   539→              <div className="grid gap-2">
+   540→                <Label htmlFor="unit">Unit</Label>
+   541→                <Select value={form.unit} onValueChange={(v) => setForm({ ...form, unit: v })}>
+   542→                  <SelectTrigger>
+   543→                    <SelectValue />
+   544→                  </SelectTrigger>
+   545→                  <SelectContent>
+   546→                    <SelectItem value="each">Each</SelectItem>
+   547→                    <SelectItem value="kg">Kg</SelectItem>
+   548→                    <SelectItem value="litre">Litre</SelectItem>
+   549→                    <SelectItem value="pack">Pack</SelectItem>
+   550→                    <SelectItem value="bunch">Bunch</SelectItem>
+   551→                  </SelectContent>
+   552→                </Select>
+   553→              </div>
+   554→            </div>
+   555→            <div className="grid grid-cols-2 gap-4">
+   556→              <div className="grid gap-2">
+   557→                <Label htmlFor="weightKg">Weight (kg)</Label>
+   558→                <Input id="weightKg" type="number" step="0.01" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} />
+   559→              </div>
+   560→              <div className="grid gap-2">
+   561→                <Label htmlFor="barcode">Barcode</Label>
+   562→                <Input id="barcode" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
+   563→              </div>
+   564→            </div>
+   565→            <div className="grid grid-cols-2 gap-4">
+   566→              <div className="grid gap-2">
+   567→                <Label htmlFor="aisle">Aisle</Label>
+   568→                <Input id="aisle" placeholder="e.g., A1" value={form.aisle} onChange={(e) => setForm({ ...form, aisle: e.target.value })} />
+   569→              </div>
+   570→              <div className="grid gap-2">
+   571→                <Label htmlFor="minStockThreshold">Min Stock Threshold</Label>
+   572→                <Input id="minStockThreshold" type="number" min="0" value={form.minStockThreshold} onChange={(e) => setForm({ ...form, minStockThreshold: e.target.value })} />
+   573→              </div>
+   574→            </div>
+   575→            <div className="grid gap-2">
+   576→              <Label htmlFor="imageUrl">Product Image</Label>
+   577→              <div className="flex items-start gap-3">
+   578→                {(form.imageUrl && form.imageUrl.startsWith('data:')) && (
+   579→                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+   580→                    <img src={form.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+   581→                  </div>
+   582→                )}
+   583→                <div className="flex-1">
+   584→                  <Input id="imageUrl" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="Image URL or upload below" />
+   585→                  <div className="mt-2">
+   586→                    <label htmlFor="imageUpload" className="cursor-pointer">
+   587→                      <div className="inline-flex items-center gap-2 text-sm text-[#16a34a] hover:text-[#15803d] font-medium">
+   588→                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+   589→                        Upload Image (max 2MB)
+   590→                      </div>
+   591→                      <input
+   592→                        type="file"
+   593→                        id="imageUpload"
+   594→                        accept="image/jpeg,image/png,image/webp"
+   595→                        className="hidden"
+   596→                        onChange={async (e) => {
+   597→                          const file = e.target.files?.[0]
+   598→                          if (!file) return
+   599→                          const { validateImageFile, fileToDataUrl } = await import('@/lib/upload')
+   600→                          const err = validateImageFile(file)
+   601→                          if (err) { toast.error(err); return }
+   602→                          try {
+   603→                            const dataUrl = await fileToDataUrl(file)
+   604→                            setForm({ ...form, imageUrl: dataUrl })
+   605→                          } catch { toast.error('Failed to process image') }
+   606→                        }}
+   607→                      />
+   608→                    </label>
+   609→                  </div>
+   610→                </div>
+   611→              </div>
+   612→            </div>
+   613→            {editingId && (
+   614→              <div className="grid gap-2">
+   615→                <Label>Substitute Product</Label>
+   616→                <Select value={form.substituteProductId || '_none'} onValueChange={(v) => setForm({ ...form, substituteProductId: v === '_none' ? '' : v })}>
+   617→                  <SelectTrigger>
+   618→                    <SelectValue placeholder="No substitute" />
+   619→                  </SelectTrigger>
+   620→                  <SelectContent>
+   621→                    <SelectItem value="_none">No substitute</SelectItem>
+   622→                    {products
+   623→                      .filter((p) => p.id !== editingId && p.category.id === form.categoryId)
+   624→                      .map((p) => (
+   625→                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   626→                      ))}
+   627→                  </SelectContent>
+   628→                </Select>
+   629→                <p className="text-xs text-gray-500">Select an alternative product from the same category</p>
+   630→              </div>
+   631→            )}
+   632→            <div className="flex items-center gap-6">
+   633→              <div className="flex items-center gap-2">
+   634→                <Switch checked={form.isAvailable} onCheckedChange={(v) => setForm({ ...form, isAvailable: v })} />
+   635→                <Label>Available</Label>
+   636→              </div>
+   637→              <div className="flex items-center gap-2">
+   638→                <Switch checked={form.isHfss} onCheckedChange={(v) => setForm({ ...form, isHfss: v })} />
+   639→                <Label>HFSS (High in Fat, Salt, Sugar)</Label>
+   640→              </div>
+   641→              <div className="flex items-center gap-2">
+   642→                <Switch checked={form.isAgeRestricted} onCheckedChange={(v) => setForm({ ...form, isAgeRestricted: v, minimumAge: v ? '18' : '0' })} />
+   643→                <Label>Age Restricted (Challenge 25)</Label>
+   644→              </div>
+   645→              {form.isAgeRestricted && (
+   646→                <div className="space-y-1">
+   647→                  <Label htmlFor="minimumAge">Minimum Age</Label>
+   648→                  <Select value={form.minimumAge} onValueChange={(v) => setForm({ ...form, minimumAge: v })}>
+   649→                    <SelectTrigger id="minimumAge">
+   650→                      <SelectValue placeholder="Select minimum age" />
+   651→                    </SelectTrigger>
+   652→                    <SelectContent>
+   653→                      <SelectItem value="16">16+ (Energy drinks)</SelectItem>
+   654→                      <SelectItem value="18">18+ (Alcohol, Tobacco, Knives, Solvents)</SelectItem>
+   655→                      <SelectItem value="21">21+ (US-restricted items)</SelectItem>
+   656→                    </SelectContent>
+   657→                  </Select>
+   658→                </div>
+   659→              )}
+   660→              <div className="flex items-center gap-2">
+   661→                <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
+   662→                <Label>Featured</Label>
+   663→              </div>
+   664→            </div>
+   665→          </div>
+   666→          <DialogFooter>
+   667→            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+   668→            <Button onClick={handleSave} disabled={saving} className="bg-[#16a34a] hover:bg-[#15803d]">
+   669→              {saving ? 'Saving...' : editingId ? 'Update' : 'Create'}
+   670→            </Button>
+   671→          </DialogFooter>
+   672→        </DialogContent>
+   673→      </Dialog>
+   674→
+   675→      {/* Delete Confirmation */}
+   676→      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+   677→        <AlertDialogContent>
+   678→          <AlertDialogHeader>
+   679→            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+   680→            <AlertDialogDescription>
+   681→              Are you sure you want to delete <strong>{deleteName}</strong>? This action cannot be undone.
+   682→            </AlertDialogDescription>
+   683→          </AlertDialogHeader>
+   684→          <AlertDialogFooter>
+   685→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   686→            <AlertDialogAction
+   687→              onClick={handleDelete}
+   688→              disabled={deleting}
+   689→              className="bg-red-600 hover:bg-red-700"
+   690→            >
+   691→              {deleting ? 'Deleting...' : 'Delete'}
+   692→            </AlertDialogAction>
+   693→          </AlertDialogFooter>
+   694→        </AlertDialogContent>
+   695→      </AlertDialog>
+   696→    </div>
+   697→  )
+   698→}
+   699→

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/products/[id]/substitute — get substitute product for a given product
 export async function GET(

@@ -3,7 +3,7 @@ import { getServerUser } from '@/lib/auth/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { invalidateSettingsCache } from '@/lib/settings'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 // Valid setting keys (whitelist — only these can be set)
 const VALID_KEYS = new Set([

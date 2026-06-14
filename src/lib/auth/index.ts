@@ -1,8 +1,11 @@
 // ============================================================
 // Auth Utilities
-// Supports both Supabase Auth (primary) and local auth (fallback)
 // Password hashing, session token creation & verification
-// Uses bcryptjs for passwords and HMAC-signed tokens for local sessions
+// Uses bcryptjs for passwords and HMAC-signed tokens for sessions
+// Single auth system: local Prisma database + HMAC session tokens
+//
+// NOTE: This file uses Node.js 'crypto' module — NOT Edge-compatible.
+// For Edge Runtime (middleware), use @/lib/auth/edge and @/lib/auth/roles
 // ============================================================
 
 import bcrypt from 'bcryptjs'
@@ -12,33 +15,7 @@ const SALT_ROUNDS = 12
 const SESSION_SECRET = process.env.AUTH_SECRET || 'fresh-mart-local-dev-secret-change-in-production'
 const TOKEN_VERSION = 1
 
-// ─── Supabase Auth Detection ───────────────────────────────
-
-let supabaseAuthAvailable: boolean | null = null
-
-/**
- * Check if Supabase Auth is configured and available.
- * Result is cached for 60 seconds to avoid repeated checks.
- */
-let lastAuthCheck = 0
-const AUTH_CHECK_INTERVAL = 60_000
-
-export function isSupabaseAuthConfigured(): boolean {
-  const now = Date.now()
-  if (supabaseAuthAvailable !== null && now - lastAuthCheck < AUTH_CHECK_INTERVAL) {
-    return supabaseAuthAvailable
-  }
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  supabaseAuthAvailable = !!(url && anonKey && url.startsWith('https://'))
-  lastAuthCheck = now
-
-  return supabaseAuthAvailable
-}
-
-// ─── Password Hashing (local auth) ────────────────────────
+// ─── Password Hashing ────────────────────────────────────
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS)
@@ -48,7 +25,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash)
 }
 
-// ─── Session Token (local auth) ───────────────────────────
+// ─── Session Token ───────────────────────────────────────
 // Format: base64(JSON({uid, email, role, name, iat, ver})).signature
 // The signature is HMAC-SHA256 of the payload with the server secret
 
@@ -59,15 +36,13 @@ export interface SessionPayload {
   name: string      // display name
   iat: number       // issued at (epoch seconds)
   ver: number       // token version
-  authProvider?: 'local' | 'supabase'  // which auth system issued this
 }
 
-export function createSessionToken(payload: Omit<SessionPayload, 'iat' | 'ver' | 'authProvider'> & { authProvider?: 'local' | 'supabase' }): string {
+export function createSessionToken(payload: Omit<SessionPayload, 'iat' | 'ver'>): string {
   const data: SessionPayload = {
     ...payload,
     iat: Math.floor(Date.now() / 1000),
     ver: TOKEN_VERSION,
-    authProvider: payload.authProvider || 'local',
   }
 
   const payloadStr = Buffer.from(JSON.stringify(data)).toString('base64url')
@@ -114,7 +89,6 @@ export function verifySessionToken(token: string): SessionPayload | null {
 // ─── Cookie Helpers ────────────────────────────────────────
 
 export const SESSION_COOKIE_NAME = 'fresh_mart_session'
-export const SUPABASE_AUTH_COOKIE_NAME = 'sb-access-token'
 
 export const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
@@ -124,15 +98,8 @@ export const SESSION_COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60, // 7 days
 }
 
-// ─── Auth Strategy ─────────────────────────────────────────
+// ─── Re-export role utilities (defined in roles.ts for Edge compatibility) ──
+// These are safe to import from here in Node.js contexts (API routes, server components).
+// For Edge Runtime contexts (middleware), import from @/lib/auth/roles instead.
 
-export type AuthStrategy = 'supabase' | 'local'
-
-/**
- * Determine which auth strategy to use.
- * When Supabase is configured, use Supabase Auth as primary.
- * Otherwise, fall back to local auth.
- */
-export function getAuthStrategy(): AuthStrategy {
-  return isSupabaseAuthConfigured() ? 'supabase' : 'local'
-}
+export { getRoleBasedRedirect, isAdminRole, isDriverRole, isValidRole } from './roles'

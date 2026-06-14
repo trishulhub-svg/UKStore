@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, Package, Clock, User, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
+import { useStoreInfo } from '@/lib/store-info'
 import { useEffect, useState } from 'react'
 import type { AuthUser } from '@/lib/auth-client'
 import { ClockInOutButton } from '@/components/shared/clock-in-out-button'
@@ -74,7 +75,7 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            <span className="font-bold text-base">Fresh Mart Picker</span>
+            <span className="font-bold text-base">{useStoreInfo().store?.name || 'Fresh Mart'} Picker</span>
           </div>
           <div className="flex items-center gap-2">
             <ClockInOutButton variant="compact" />

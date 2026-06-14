@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   Store, Settings, LayoutDashboard, ChevronRight, User as UserIcon, LogOut, ArrowLeft,
   Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3, Menu, PoundSterling,
-  Clock, CalendarDays, Trash2,
+  Clock, CalendarDays, Trash2, Image, UserCog,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -14,6 +14,7 @@ import { authLogout } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { Profile } from '@/types'
+import { useStoreInfo } from '@/lib/store-info'
 
 interface AdminShellProps {
   children: React.ReactNode
@@ -28,6 +29,8 @@ const navItems = [
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { href: '/admin/customers', label: 'Customers', icon: Users },
   { href: '/admin/drivers', label: 'Drivers', icon: Truck },
+  { href: '/admin/employees', label: 'Employees', icon: UserCog },
+  { href: '/admin/banners', label: 'Banners', icon: Image },
   { href: '/admin/attendance', label: 'Attendance', icon: Clock },
   { href: '/admin/shifts', label: 'Shifts', icon: CalendarDays },
   { href: '/admin/finance', label: 'Finance', icon: PoundSterling },
@@ -46,6 +49,8 @@ function getPageTitle(pathname: string): string {
 }
 
 export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
+  const { store: storeInfo } = useStoreInfo()
+  const storeName = storeInfo?.name || 'Fresh Mart'
   const pathname = usePathname()
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -64,7 +69,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
         <div className="flex items-center gap-2 px-6 h-16 border-b border-gray-200">
           <Store className="h-6 w-6 text-[#16a34a]" />
           <div>
-            <p className="font-bold text-gray-900 text-sm">Fresh Mart Admin</p>
+            <p className="font-bold text-gray-900 text-sm">{storeName} Admin</p>
             <p className="text-xs text-gray-500">Store Management</p>
           </div>
         </div>
@@ -147,7 +152,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
                   <div className="flex items-center gap-2 px-6 w-full h-16">
                     <Store className="h-6 w-6 text-[#16a34a]" />
                     <div>
-                      <SheetTitle className="font-bold text-gray-900 text-sm leading-tight">Fresh Mart Admin</SheetTitle>
+                      <SheetTitle className="font-bold text-gray-900 text-sm leading-tight">{storeName} Admin</SheetTitle>
                       <SheetDescription className="text-xs text-gray-500 leading-tight">Store Management</SheetDescription>
                     </div>
                   </div>

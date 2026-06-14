@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
 import { authRegister } from '@/lib/auth-client'
+import { useStoreInfo } from '@/lib/store-info'
 
 export function RegisterClient() {
   const router = useRouter()
@@ -111,7 +112,7 @@ export function RegisterClient() {
         <CardHeader className="text-center">
           <Link href="/" className="flex items-center justify-center gap-2 mb-4 hover:opacity-80 transition-opacity">
             <Store className="h-7 w-7 text-[#16a34a]" />
-            <span className="font-bold text-xl text-gray-900">Fresh Mart</span>
+            <span className="font-bold text-xl text-gray-900">{useStoreInfo().store?.name || 'Fresh Mart'}</span>
           </Link>
           <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
           <CardDescription>Register to start ordering fresh groceries</CardDescription>

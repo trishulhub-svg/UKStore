@@ -137,27 +137,21 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Create session token
+    // Create session token with the user's role from the database
     const token = createSessionToken({
       uid: user.id,
       email: user.email,
       role: user.role,
       name: user.name || '',
-      authProvider: 'local', // Using our local session system
     })
 
-    // Determine redirect destination
-    const storedRedirect = request.cookies.get('google_oauth_redirect')?.value
-    let redirectTo = storedRedirect || '/'
-
-    // Redirect based on role
+    // Determine redirect destination based on role
     const role = user.role.toUpperCase()
+    let redirectTo = '/'
     if (role === 'OWNER' || role === 'MANAGER') {
       redirectTo = '/admin'
-    } else if (role === 'DRIVER') {
+    } else if (role === 'DRIVER' || role === 'PICKER') {
       redirectTo = '/driver'
-    } else if (role === 'PICKER') {
-      redirectTo = '/picker'
     }
 
     // Build redirect response

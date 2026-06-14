@@ -1,0 +1,685 @@
+     1→'use client'
+     2→
+     3→import Link from 'next/link'
+     4→import {
+     5→  PoundSterling,
+     6→  ShoppingBag,
+     7→  Truck,
+     8→  Clock,
+     9→  PackagePlus,
+    10→  ClipboardList,
+    11→  Users,
+    12→  Tag,
+    13→  AlertTriangle,
+    14→  ChevronRight,
+    15→  Bike,
+    16→  Car,
+    17→  TruckIcon,
+    18→} from 'lucide-react'
+    19→import {
+    20→  BarChart,
+    21→  Bar,
+    22→  PieChart,
+    23→  Pie,
+    24→  Cell,
+    25→  XAxis,
+    26→  YAxis,
+    27→  CartesianGrid,
+    28→  Tooltip,
+    29→  ResponsiveContainer,
+    30→  Legend,
+    31→} from 'recharts'
+    32→import { Button } from '@/components/ui/button'
+    33→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    34→import { Badge } from '@/components/ui/badge'
+    35→import {
+    36→  Table,
+    37→  TableBody,
+    38→  TableCell,
+    39→  TableHead,
+    40→  TableHeader,
+    41→  TableRow,
+    42→} from '@/components/ui/table'
+    43→import { formatPrice } from '@/lib/vat'
+    44→
+    45→// ─── Types ──────────────────────────────────────────────
+    46→
+    47→interface DashboardData {
+    48→  todayRevenue: number
+    49→  ordersToday: number
+    50→  ordersTodayBreakdown: {
+    51→    placed: number
+    52→    confirmed: number
+    53→    picking: number
+    54→    ready: number
+    55→    out_for_delivery: number
+    56→    delivered: number
+    57→    cancelled: number
+    58→  }
+    59→  activeDeliveries: number
+    60→  pendingOrders: number
+    61→  revenueChart: { date: string; revenue: number }[]
+    62→  orderStatusBreakdown: { status: string; count: number }[]
+    63→  recentOrders: {
+    64→    id: string
+    65→    status: string
+    66→    total: number
+    67→    created_at: string
+    68→    customer: { name: string; email: string } | null
+    69→  }[]
+    70→  activeDrivers: {
+    71→    user_id: string
+    72→    vehicle_type: string | null
+    73→    full_name: string | null
+    74→  }[]
+    75→  lowStockProducts: {
+    76→    id: string
+    77→    name: string
+    78→    stock_quantity: number
+    79→    category: { name: string } | null
+    80→  }[]
+    81→}
+    82→
+    83→interface AdminDashboardClientProps {
+    84→  data: DashboardData
+    85→}
+    86→
+    87→// ─── Constants ──────────────────────────────────────────
+    88→
+    89→const STATUS_COLORS: Record<string, string> = {
+    90→  placed: '#3b82f6',           // blue
+    91→  confirmed: '#6366f1',       // indigo
+    92→  picking: '#f59e0b',         // amber
+    93→  ready: '#a855f7',           // purple
+    94→  out_for_delivery: '#f97316', // orange
+    95→  delivered: '#16a34a',       // green
+    96→  cancelled: '#ef4444',       // red
+    97→}
+    98→
+    99→const STATUS_BADGE_CLASSES: Record<string, string> = {
+   100→  placed: 'bg-blue-50 text-blue-700 border-blue-200',
+   101→  confirmed: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+   102→  picking: 'bg-amber-50 text-amber-700 border-amber-200',
+   103→  ready: 'bg-purple-50 text-purple-700 border-purple-200',
+   104→  out_for_delivery: 'bg-orange-50 text-orange-700 border-orange-200',
+   105→  delivered: 'bg-green-50 text-green-700 border-green-200',
+   106→  cancelled: 'bg-red-50 text-red-700 border-red-200',
+   107→}
+   108→
+   109→const STATUS_LABELS: Record<string, string> = {
+   110→  placed: 'Placed',
+   111→  confirmed: 'Confirmed',
+   112→  picking: 'Picking',
+   113→  ready: 'Ready',
+   114→  out_for_delivery: 'Out for Delivery',
+   115→  delivered: 'Delivered',
+   116→  cancelled: 'Cancelled',
+   117→}
+   118→
+   119→const BRAND_GREEN = '#16a34a'
+   120→
+   121→// ─── Helpers ────────────────────────────────────────────
+   122→
+   123→function formatChartDate(dateStr: string): string {
+   124→  const d = new Date(dateStr + 'T00:00:00')
+   125→  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
+   126→}
+   127→
+   128→function formatTimeAgo(dateStr: string): string {
+   129→  const now = new Date()
+   130→  const then = new Date(dateStr)
+   131→  const diffMs = now.getTime() - then.getTime()
+   132→  const diffMins = Math.floor(diffMs / 60000)
+   133→
+   134→  if (diffMins < 1) return 'Just now'
+   135→  if (diffMins < 60) return `${diffMins}m ago`
+   136→  const diffHours = Math.floor(diffMins / 60)
+   137→  if (diffHours < 24) return `${diffHours}h ago`
+   138→  const diffDays = Math.floor(diffHours / 24)
+   139→  return `${diffDays}d ago`
+   140→}
+   141→
+   142→function getVehicleIcon(vehicleType: string | null) {
+   143→  switch (vehicleType) {
+   144→    case 'bicycle':
+   145→      return Bike
+   146→    case 'motorcycle':
+   147→      return Bike
+   148→    case 'car':
+   149→      return Car
+   150→    case 'van':
+   151→      return TruckIcon
+   152→    default:
+   153→      return Truck
+   154→  }
+   155→}
+   156→
+   157→function getVehicleLabel(vehicleType: string | null): string {
+   158→  switch (vehicleType) {
+   159→    case 'bicycle': return 'Bicycle'
+   160→    case 'motorcycle': return 'Motorcycle'
+   161→    case 'car': return 'Car'
+   162→    case 'van': return 'Van'
+   163→    default: return 'Vehicle'
+   164→  }
+   165→}
+   166→
+   167→// ─── Custom Tooltip for Revenue Chart ───────────────────
+   168→
+   169→function RevenueTooltip({ active, payload, label }: any) {
+   170→  if (!active || !payload?.length) return null
+   171→  return (
+   172→    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg">
+   173→      <p className="text-xs font-medium text-gray-600">{label}</p>
+   174→      <p className="text-sm font-bold" style={{ color: BRAND_GREEN }}>
+   175→        {formatPrice(payload[0].value)}
+   176→      </p>
+   177→    </div>
+   178→  )
+   179→}
+   180→
+   181→// ─── Custom Tooltip for Pie Chart ───────────────────────
+   182→
+   183→function StatusTooltip({ active, payload }: any) {
+   184→  if (!active || !payload?.length) return null
+   185→  const { status, count } = payload[0].payload
+   186→  return (
+   187→    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg">
+   188→      <p className="text-xs font-medium" style={{ color: STATUS_COLORS[status] || '#666' }}>
+   189→        {STATUS_LABELS[status] || status}
+   190→      </p>
+   191→      <p className="text-sm font-bold text-gray-900">{count} orders</p>
+   192→    </div>
+   193→  )
+   194→}
+   195→
+   196→// ─── Custom Legend for Pie Chart ────────────────────────
+   197→
+   198→function StatusLegend({ payload }: any) {
+   199→  if (!payload?.length) return null
+   200→  return (
+   201→    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 pt-2">
+   202→      {payload.map((entry: any) => {
+   203→        const status = entry.value
+   204→        return (
+   205→          <div key={status} className="flex items-center gap-1.5 text-xs">
+   206→            <div
+   207→              className="h-2.5 w-2.5 rounded-sm"
+   208→              style={{ backgroundColor: STATUS_COLORS[status] || '#999' }}
+   209→            />
+   210→            <span className="text-gray-600">{STATUS_LABELS[status] || status}</span>
+   211→          </div>
+   212→        )
+   213→      })}
+   214→    </div>
+   215→  )
+   216→}
+   217→
+   218→// ─── Main Component ─────────────────────────────────────
+   219→
+   220→export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
+   221→  const {
+   222→    todayRevenue,
+   223→    ordersToday,
+   224→    ordersTodayBreakdown,
+   225→    activeDeliveries,
+   226→    pendingOrders,
+   227→    revenueChart,
+   228→    orderStatusBreakdown,
+   229→    recentOrders,
+   230→    activeDrivers,
+   231→    lowStockProducts,
+   232→  } = data
+   233→
+   234→  // Prepare chart data with formatted date labels
+   235→  const chartData = revenueChart.map((d) => ({
+   236→    ...d,
+   237→    label: formatChartDate(d.date),
+   238→  }))
+   239→
+   240→  // Pie chart data with status labels
+   241→  const pieData = orderStatusBreakdown.map((d) => ({
+   242→    ...d,
+   243→    label: STATUS_LABELS[d.status] || d.status,
+   244→  }))
+   245→
+   246→  return (
+   247→    <div>
+   248→      {/* Page Header */}
+   249→      <div className="mb-6">
+   250→        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Dashboard</h1>
+   251→        <p className="text-gray-500 mt-1">
+   252→          Welcome back — here&apos;s what&apos;s happening at Fresh Mart today
+   253→        </p>
+   254→      </div>
+   255→
+   256→      {/* ═══════════ ROW 1: Top Stats ═══════════ */}
+   257→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+   258→        {/* Today's Revenue */}
+   259→        <Card className="border-l-4 border-l-green-500">
+   260→          <CardContent className="p-5">
+   261→            <div className="flex items-center justify-between">
+   262→              <div>
+   263→                <p className="text-sm font-medium text-gray-500">Today&apos;s Revenue</p>
+   264→                <p className="text-2xl font-bold text-gray-900 mt-1">
+   265→                  {formatPrice(todayRevenue)}
+   266→                </p>
+   267→                {todayRevenue > 0 && (
+   268→                  <div className="flex items-center gap-1 mt-1">
+   269→                    <span className="text-xs font-medium text-green-600">↑ Revenue today</span>
+   270→                  </div>
+   271→                )}
+   272→              </div>
+   273→              <div className="w-11 h-11 rounded-full bg-green-50 flex items-center justify-center">
+   274→                <PoundSterling className="h-5 w-5 text-green-600" />
+   275→              </div>
+   276→            </div>
+   277→          </CardContent>
+   278→        </Card>
+   279→
+   280→        {/* Orders Today */}
+   281→        <Card className="border-l-4 border-l-blue-500">
+   282→          <CardContent className="p-5">
+   283→            <div className="flex items-center justify-between">
+   284→              <div>
+   285→                <p className="text-sm font-medium text-gray-500">Orders Today</p>
+   286→                <p className="text-2xl font-bold text-gray-900 mt-1">{ordersToday}</p>
+   287→                {ordersToday > 0 && (
+   288→                  <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+   289→                    <span>
+   290→                      {ordersTodayBreakdown.placed + ordersTodayBreakdown.confirmed} placed
+   291→                    </span>
+   292→                    <span className="text-gray-300">·</span>
+   293→                    <span>{ordersTodayBreakdown.picking} picking</span>
+   294→                    <span className="text-gray-300">·</span>
+   295→                    <span>{ordersTodayBreakdown.delivered} delivered</span>
+   296→                  </div>
+   297→                )}
+   298→              </div>
+   299→              <div className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center">
+   300→                <ShoppingBag className="h-5 w-5 text-blue-600" />
+   301→              </div>
+   302→            </div>
+   303→          </CardContent>
+   304→        </Card>
+   305→
+   306→        {/* Active Deliveries */}
+   307→        <Card className="border-l-4 border-l-orange-500">
+   308→          <CardContent className="p-5">
+   309→            <div className="flex items-center justify-between">
+   310→              <div>
+   311→                <p className="text-sm font-medium text-gray-500">Active Deliveries</p>
+   312→                <p className="text-2xl font-bold text-gray-900 mt-1">{activeDeliveries}</p>
+   313→                {activeDeliveries > 0 && (
+   314→                  <p className="text-xs text-orange-600 mt-1">
+   315→                    {ordersTodayBreakdown.out_for_delivery} out for delivery
+   316→                  </p>
+   317→                )}
+   318→              </div>
+   319→              <div className="w-11 h-11 rounded-full bg-orange-50 flex items-center justify-center">
+   320→                <Truck className="h-5 w-5 text-orange-600" />
+   321→              </div>
+   322→            </div>
+   323→          </CardContent>
+   324→        </Card>
+   325→
+   326→        {/* Pending Orders */}
+   327→        <Card className={`border-l-4 ${pendingOrders > 0 ? 'border-l-amber-500' : 'border-l-gray-300'}`}>
+   328→          <CardContent className="p-5">
+   329→            <div className="flex items-center justify-between">
+   330→              <div>
+   331→                <p className="text-sm font-medium text-gray-500">Pending Orders</p>
+   332→                <p className="text-2xl font-bold text-gray-900 mt-1">{pendingOrders}</p>
+   333→                {pendingOrders > 0 && (
+   334→                  <div className="flex items-center gap-1 mt-1">
+   335→                    <Clock className="h-3 w-3 text-amber-500" />
+   336→                    <span className="text-xs font-medium text-amber-600">Needs attention</span>
+   337→                  </div>
+   338→                )}
+   339→                {pendingOrders === 0 && (
+   340→                  <p className="text-xs text-gray-400 mt-1">All caught up</p>
+   341→                )}
+   342→              </div>
+   343→              <div className={`w-11 h-11 rounded-full flex items-center justify-center ${
+   344→                pendingOrders > 0 ? 'bg-amber-50' : 'bg-gray-50'
+   345→              }`}>
+   346→                <Clock className={`h-5 w-5 ${
+   347→                  pendingOrders > 0 ? 'text-amber-600' : 'text-gray-400'
+   348→                }`} />
+   349→              </div>
+   350→            </div>
+   351→          </CardContent>
+   352→        </Card>
+   353→      </div>
+   354→
+   355→      {/* ═══════════ ROW 2: Charts ═══════════ */}
+   356→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+   357→        {/* Revenue Chart */}
+   358→        <Card>
+   359→          <CardHeader className="pb-2">
+   360→            <CardTitle className="text-base font-semibold">Revenue — Last 7 Days</CardTitle>
+   361→          </CardHeader>
+   362→          <CardContent>
+   363→            {revenueChart.length === 0 || revenueChart.every((d) => d.revenue === 0) ? (
+   364→              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+   365→                <PoundSterling className="h-10 w-10 mb-3" />
+   366→                <p className="text-sm">No revenue data yet</p>
+   367→              </div>
+   368→            ) : (
+   369→              <ResponsiveContainer width="100%" height={260}>
+   370→                <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+   371→                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+   372→                  <XAxis
+   373→                    dataKey="label"
+   374→                    tick={{ fontSize: 12, fill: '#888' }}
+   375→                    axisLine={{ stroke: '#e5e7eb' }}
+   376→                    tickLine={false}
+   377→                  />
+   378→                  <YAxis
+   379→                    tick={{ fontSize: 12, fill: '#888' }}
+   380→                    axisLine={false}
+   381→                    tickLine={false}
+   382→                    tickFormatter={(v: number) => `£${v}`}
+   383→                  />
+   384→                  <Tooltip content={<RevenueTooltip />} />
+   385→                  <Bar
+   386→                    dataKey="revenue"
+   387→                    fill={BRAND_GREEN}
+   388→                    radius={[4, 4, 0, 0]}
+   389→                    maxBarSize={48}
+   390→                  />
+   391→                </BarChart>
+   392→              </ResponsiveContainer>
+   393→            )}
+   394→          </CardContent>
+   395→        </Card>
+   396→
+   397→        {/* Order Status Breakdown */}
+   398→        <Card>
+   399→          <CardHeader className="pb-2">
+   400→            <CardTitle className="text-base font-semibold">Order Status Breakdown</CardTitle>
+   401→          </CardHeader>
+   402→          <CardContent>
+   403→            {orderStatusBreakdown.length === 0 ? (
+   404→              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+   405→                <ShoppingBag className="h-10 w-10 mb-3" />
+   406→                <p className="text-sm">No orders yet</p>
+   407→              </div>
+   408→            ) : (
+   409→              <ResponsiveContainer width="100%" height={260}>
+   410→                <PieChart>
+   411→                  <Pie
+   412→                    data={pieData}
+   413→                    dataKey="count"
+   414→                    nameKey="status"
+   415→                    cx="50%"
+   416→                    cy="50%"
+   417→                    innerRadius={55}
+   418→                    outerRadius={90}
+   419→                    paddingAngle={3}
+   420→                    strokeWidth={0}
+   421→                  >
+   422→                    {pieData.map((entry) => (
+   423→                      <Cell
+   424→                        key={entry.status}
+   425→                        fill={STATUS_COLORS[entry.status] || '#999'}
+   426→                      />
+   427→                    ))}
+   428→                  </Pie>
+   429→                  <Tooltip content={<StatusTooltip />} />
+   430→                  <Legend content={<StatusLegend />} />
+   431→                </PieChart>
+   432→              </ResponsiveContainer>
+   433→            )}
+   434→          </CardContent>
+   435→        </Card>
+   436→      </div>
+   437→
+   438→      {/* ═══════════ ROW 3: Recent Orders + Quick Actions ═══════════ */}
+   439→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+   440→        {/* Recent Orders Table — spans 2 columns on lg */}
+   441→        <Card className="lg:col-span-2">
+   442→          <CardHeader className="flex flex-row items-center justify-between pb-3">
+   443→            <CardTitle className="text-base font-semibold">Recent Orders</CardTitle>
+   444→            <Link href="/admin/orders">
+   445→              <Button variant="ghost" size="sm" className="text-sm text-gray-500 hover:text-gray-900">
+   446→                View All
+   447→                <ChevronRight className="h-4 w-4 ml-1" />
+   448→              </Button>
+   449→            </Link>
+   450→          </CardHeader>
+   451→          <CardContent>
+   452→            {recentOrders.length === 0 ? (
+   453→              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+   454→                <ShoppingBag className="h-10 w-10 mb-3" />
+   455→                <p className="text-sm">No orders yet</p>
+   456→              </div>
+   457→            ) : (
+   458→              <Table>
+   459→                <TableHeader>
+   460→                  <TableRow>
+   461→                    <TableHead>Order ID</TableHead>
+   462→                    <TableHead>Customer</TableHead>
+   463→                    <TableHead>Status</TableHead>
+   464→                    <TableHead className="text-right">Total</TableHead>
+   465→                    <TableHead className="text-right">Time</TableHead>
+   466→                  </TableRow>
+   467→                </TableHeader>
+   468→                <TableBody>
+   469→                  {recentOrders.map((order) => (
+   470→                    <TableRow
+   471→                      key={order.id}
+   472→                      className="cursor-pointer"
+   473→                      onClick={() => {
+   474→                        window.location.href = '/admin/orders'
+   475→                      }}
+   476→                    >
+   477→                      <TableCell className="font-mono text-xs">
+   478→                        #{order.id.substring(0, 8).toUpperCase()}
+   479→                      </TableCell>
+   480→                      <TableCell className="text-sm">
+   481→                        {order.customer?.name || (
+   482→                          <span className="text-gray-400 italic">Unknown</span>
+   483→                        )}
+   484→                      </TableCell>
+   485→                      <TableCell>
+   486→                        <Badge
+   487→                          variant="secondary"
+   488→                          className={`text-xs border ${STATUS_BADGE_CLASSES[order.status] || ''}`}
+   489→                        >
+   490→                          {STATUS_LABELS[order.status] || order.status}
+   491→                        </Badge>
+   492→                      </TableCell>
+   493→                      <TableCell className="text-right font-medium text-sm">
+   494→                        {formatPrice(order.total)}
+   495→                      </TableCell>
+   496→                      <TableCell className="text-right text-xs text-gray-500">
+   497→                        {formatTimeAgo(order.created_at)}
+   498→                      </TableCell>
+   499→                    </TableRow>
+   500→                  ))}
+   501→                </TableBody>
+   502→              </Table>
+   503→            )}
+   504→          </CardContent>
+   505→        </Card>
+   506→
+   507→        {/* Quick Actions */}
+   508→        <Card>
+   509→          <CardHeader className="pb-3">
+   510→            <CardTitle className="text-base font-semibold">Quick Actions</CardTitle>
+   511→          </CardHeader>
+   512→          <CardContent className="space-y-3">
+   513→            <Link href="/admin/products/new" className="block">
+   514→              <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-3.5 hover:bg-green-50 hover:border-green-200 transition-colors group">
+   515→                <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+   516→                  <PackagePlus className="h-4 w-4 text-green-600" />
+   517→                </div>
+   518→                <div className="flex-1 min-w-0">
+   519→                  <p className="text-sm font-medium text-gray-900 group-hover:text-green-700">Add Product</p>
+   520→                  <p className="text-xs text-gray-500">Create a new product listing</p>
+   521→                </div>
+   522→                <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-green-500 flex-shrink-0" />
+   523→              </div>
+   524→            </Link>
+   525→
+   526→            <Link href="/admin/orders" className="block">
+   527→              <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-3.5 hover:bg-blue-50 hover:border-blue-200 transition-colors group">
+   528→                <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+   529→                  <ClipboardList className="h-4 w-4 text-blue-600" />
+   530→                </div>
+   531→                <div className="flex-1 min-w-0">
+   532→                  <p className="text-sm font-medium text-gray-900 group-hover:text-blue-700">View All Orders</p>
+   533→                  <p className="text-xs text-gray-500">Manage & process orders</p>
+   534→                </div>
+   535→                <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 flex-shrink-0" />
+   536→              </div>
+   537→            </Link>
+   538→
+   539→            <Link href="/admin/drivers" className="block">
+   540→              <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-3.5 hover:bg-orange-50 hover:border-orange-200 transition-colors group">
+   541→                <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+   542→                  <Users className="h-4 w-4 text-orange-600" />
+   543→                </div>
+   544→                <div className="flex-1 min-w-0">
+   545→                  <p className="text-sm font-medium text-gray-900 group-hover:text-orange-700">Manage Drivers</p>
+   546→                  <p className="text-xs text-gray-500">Driver roster & verification</p>
+   547→                </div>
+   548→                <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-orange-500 flex-shrink-0" />
+   549→              </div>
+   550→            </Link>
+   551→
+   552→            <Link href="/admin/promotions" className="block">
+   553→              <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-3.5 hover:bg-purple-50 hover:border-purple-200 transition-colors group">
+   554→                <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+   555→                  <Tag className="h-4 w-4 text-purple-600" />
+   556→                </div>
+   557→                <div className="flex-1 min-w-0">
+   558→                  <p className="text-sm font-medium text-gray-900 group-hover:text-purple-700">Create Promotion</p>
+   559→                  <p className="text-xs text-gray-500">Set up discounts & deals</p>
+   560→                </div>
+   561→                <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-purple-500 flex-shrink-0" />
+   562→              </div>
+   563→            </Link>
+   564→          </CardContent>
+   565→        </Card>
+   566→      </div>
+   567→
+   568→      {/* ═══════════ ROW 4: Active Drivers + Low Stock Alert ═══════════ */}
+   569→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+   570→        {/* Active Drivers */}
+   571→        <Card>
+   572→          <CardHeader className="flex flex-row items-center justify-between pb-3">
+   573→            <CardTitle className="text-base font-semibold">Active Drivers</CardTitle>
+   574→            <Link href="/admin/drivers">
+   575→              <Button variant="ghost" size="sm" className="text-sm text-gray-500 hover:text-gray-900">
+   576→                Manage
+   577→                <ChevronRight className="h-4 w-4 ml-1" />
+   578→              </Button>
+   579→            </Link>
+   580→          </CardHeader>
+   581→          <CardContent>
+   582→            {activeDrivers.length === 0 ? (
+   583→              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+   584→                <Truck className="h-10 w-10 mb-3" />
+   585→                <p className="text-sm">No drivers on duty</p>
+   586→              </div>
+   587→            ) : (
+   588→              <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+   589→                {activeDrivers.map((driver) => {
+   590→                  const VehicleIcon = getVehicleIcon(driver.vehicle_type)
+   591→                  return (
+   592→                    <div
+   593→                      key={driver.user_id}
+   594→                      className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50/50 p-3"
+   595→                    >
+   596→                      <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+   597→                        <VehicleIcon className="h-4 w-4 text-green-600" />
+   598→                      </div>
+   599→                      <div className="flex-1 min-w-0">
+   600→                        <p className="text-sm font-medium text-gray-900 truncate">
+   601→                          {driver.full_name || 'Unknown Driver'}
+   602→                        </p>
+   603→                        <p className="text-xs text-gray-500">
+   604→                          {getVehicleLabel(driver.vehicle_type)}
+   605→                        </p>
+   606→                      </div>
+   607→                      <Badge
+   608→                        variant="secondary"
+   609→                        className="text-xs bg-green-50 text-green-700 border border-green-200 flex-shrink-0"
+   610→                      >
+   611→                        On Duty
+   612→                      </Badge>
+   613→                    </div>
+   614→                  )
+   615→                })}
+   616→              </div>
+   617→            )}
+   618→          </CardContent>
+   619→        </Card>
+   620→
+   621→        {/* Low Stock Alert */}
+   622→        <Card className={lowStockProducts.length > 0 ? 'border-amber-200' : ''}>
+   623→          <CardHeader className="flex flex-row items-center justify-between pb-3">
+   624→            <div className="flex items-center gap-2">
+   625→              <CardTitle className="text-base font-semibold">Low Stock Alert</CardTitle>
+   626→              {lowStockProducts.length > 0 && (
+   627→                <Badge className="bg-amber-100 text-amber-700 border border-amber-300 text-xs">
+   628→                  {lowStockProducts.length}
+   629→                </Badge>
+   630→              )}
+   631→            </div>
+   632→            <Link href="/admin/products">
+   633→              <Button variant="ghost" size="sm" className="text-sm text-gray-500 hover:text-gray-900">
+   634→                View Products
+   635→                <ChevronRight className="h-4 w-4 ml-1" />
+   636→              </Button>
+   637→            </Link>
+   638→          </CardHeader>
+   639→          <CardContent>
+   640→            {lowStockProducts.length === 0 ? (
+   641→              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+   642→                <PackagePlus className="h-10 w-10 mb-3" />
+   643→                <p className="text-sm">All products well-stocked</p>
+   644→              </div>
+   645→            ) : (
+   646→              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+   647→                {lowStockProducts.map((product) => (
+   648→                  <div
+   649→                    key={product.id}
+   650→                    className="flex items-center gap-3 rounded-lg border border-amber-100 bg-amber-50/50 p-3"
+   651→                  >
+   652→                    <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+   653→                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+   654→                    </div>
+   655→                    <div className="flex-1 min-w-0">
+   656→                      <p className="text-sm font-medium text-gray-900 truncate">
+   657→                        {product.name}
+   658→                      </p>
+   659→                      <p className="text-xs text-gray-500">
+   660→                        {product.category?.name || 'Uncategorised'}
+   661→                      </p>
+   662→                    </div>
+   663→                    <div className="text-right flex-shrink-0">
+   664→                      <p className={`text-sm font-bold ${
+   665→                        product.stock_quantity === 0
+   666→                          ? 'text-red-600'
+   667→                          : 'text-amber-600'
+   668→                      }`}>
+   669→                        {product.stock_quantity} left
+   670→                      </p>
+   671→                      {product.stock_quantity === 0 && (
+   672→                        <p className="text-xs text-red-500">Out of stock</p>
+   673→                      )}
+   674→                    </div>
+   675→                  </div>
+   676→                ))}
+   677→              </div>
+   678→            )}
+   679→          </CardContent>
+   680→        </Card>
+   681→      </div>
+   682→    </div>
+   683→  )
+   684→}
+   685→

@@ -96,7 +96,7 @@ function NotificationPreview({ template, context }: { template: string; context:
           <Bell className="h-4 w-4 text-white" />
         </div>
         <div>
-          <p className="text-xs font-semibold text-gray-900">Fresh Mart</p>
+          <p className="text-xs font-semibold text-gray-900">Store</p>
           <p className="text-[10px] text-gray-400">just now</p>
         </div>
       </div>

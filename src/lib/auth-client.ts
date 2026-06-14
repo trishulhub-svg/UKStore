@@ -1,8 +1,8 @@
 // ============================================================
 // Client-side Auth Helper
-// Supports both Supabase Auth (primary) and local auth (fallback)
-// Uses fetch() to call local API routes
-// Returns TechnicalError objects for debuggable error display
+// Uses fetch() to call local API routes for authentication.
+// Returns TechnicalError objects for debuggable error display.
+// Single auth system: local Prisma database + HMAC session tokens.
 // ============================================================
 
 import type { TechnicalError } from '@/components/ui/error-alert'
@@ -13,7 +13,6 @@ export interface AuthUser {
   email: string
   name: string | null
   role: string
-  authProvider?: 'local' | 'supabase'
   createdAt?: string
 }
 
@@ -22,19 +21,7 @@ export interface AuthResponse {
   error: string | TechnicalError | null
 }
 
-// ─── Auth Strategy Detection ──────────────────────────────
-
-/**
- * Check if Supabase Auth is available on the client side.
- * This is a hint — the server makes the final decision.
- */
-export function isSupabaseAuthAvailable(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  return !!(url && key && url.startsWith('https://'))
-}
-
-// ─── Local Auth Methods ───────────────────────────────────
+// ─── Auth Methods ─────────────────────────────────────────
 
 /**
  * Register a new account
@@ -171,31 +158,31 @@ export async function authGetSession(): Promise<AuthResponse> {
   }
 }
 
-// ─── Supabase Auth Client Methods (when Supabase is connected) ──
+/**
+ * Get the correct redirect path based on user role.
+ * Owner/Manager → /admin
+ * Driver/Picker → /driver
+ * Customer → /
+ */
+export function getRoleBasedRedirect(role: string): string {
+  const r = (role || '').toLowerCase().trim()
+  if (r === 'owner' || r === 'manager') return '/admin'
+  if (r === 'driver' || r === 'picker') return '/driver'
+  return '/'
+}
 
 /**
- * Initialize Supabase Auth client for browser-side operations.
- * Returns null if Supabase is not configured.
+ * Check if a role is an admin role (owner or manager).
  */
-export function getSupabaseAuthClient() {
-  if (!isSupabaseAuthAvailable()) return null
+export function isAdminRole(role: string): boolean {
+  const r = (role || '').toLowerCase().trim()
+  return r === 'owner' || r === 'manager'
+}
 
-  // Dynamically import to avoid bundling when not needed
-  // The actual Supabase client is used via the /lib/supabase/client module
-  return {
-    isAvailable: true,
-    // Sign in with Supabase Auth - delegates to API route which handles Supabase
-    signInWithPassword: async (email: string, password: string): Promise<AuthResponse> => {
-      // Still go through our API route which will try Supabase first
-      return authLogin(email, password)
-    },
-    // Sign up with Supabase Auth
-    signUp: async (email: string, password: string, fullName: string): Promise<AuthResponse> => {
-      return authRegister(email, password, fullName)
-    },
-    // Sign out from Supabase
-    signOut: async (): Promise<{ error: string | TechnicalError | null }> => {
-      return authLogout()
-    },
-  }
+/**
+ * Check if a role is a driver/picker role.
+ */
+export function isDriverRole(role: string): boolean {
+  const r = (role || '').toLowerCase().trim()
+  return r === 'driver' || r === 'picker'
 }

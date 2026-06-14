@@ -73,15 +73,20 @@ export interface Product {
   slug: string;
   description: string | null;
   price: number;
+  original_price: number | null;
   vat_rate: number;
   is_hfss: boolean;
   image_url: string | null;
+  images: string[] | null;
   barcode: string | null;
+  brand: string | null;
   unit: string;
   weight_kg: number | null;
   is_available: boolean;
   stock_quantity: number;
   is_featured: boolean;
+  rating: number;
+  review_count: number;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -251,7 +256,7 @@ export interface AuthUser {
   email: string;
   name: string | null;
   role: string;
-  authProvider?: 'local' | 'supabase';
+  authProvider?: 'local';
   createdAt?: string;
 }
 
@@ -371,4 +376,30 @@ export interface BankHoliday {
   date: string;
   mode: 'auto_close' | 'reduced_hours' | 'normal';
   created_at: string;
+}
+
+export interface Banner {
+  id: string;
+  store_id: string;
+  title: string | null;
+  image_url: string;
+  link_url: string | null;
+  link_category: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmployeeProfile {
+  id: string;
+  user_id: string;
+  salary: number | null;
+  wage_rate: number | null;
+  wage_type: 'monthly' | 'hourly' | 'daily' | null;
+  bank_name: string | null;
+  bank_account_no: string | null;
+  bank_sort_code: string | null;
+  created_at: string;
+  updated_at: string;
 }

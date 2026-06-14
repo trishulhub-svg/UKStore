@@ -3,11 +3,13 @@ import { HomeClient } from '@/components/customer/home-client'
 
 export const dynamic = 'force-dynamic'
 
+const STORE_ID = 'store-fresh-mart-001'
+
 export default async function Home() {
   const [store, categories, featuredProducts] = await Promise.all([
     getDefaultStore(),
-    getCategories('a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'),
-    getFeaturedProducts('a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'),
+    getCategories(STORE_ID),
+    getFeaturedProducts(STORE_ID),
   ])
 
   if (!store) {

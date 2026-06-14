@@ -115,7 +115,7 @@ export function CustomerTrackingMap({
         <Marker position={[storeLat, storeLng]} icon={storeIcon}>
           <Popup>
             <div className="text-center">
-              <p className="font-bold text-sm">Fresh Mart Store</p>
+              <p className="font-bold text-sm">Store</p>
             </div>
           </Popup>
         </Marker>

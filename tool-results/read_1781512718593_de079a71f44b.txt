@@ -1,0 +1,646 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import {
+     5→  TrendingUp, TrendingDown, DollarSign, ShoppingCart, Receipt, Calculator,
+     6→  Download, Trash2, Plus, Loader2, PoundSterling, AlertTriangle, CheckCircle2,
+     7→} from 'lucide-react'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    10→import { Input } from '@/components/ui/input'
+    11→import { Label } from '@/components/ui/label'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Separator } from '@/components/ui/separator'
+    14→import {
+    15→  Select,
+    16→  SelectContent,
+    17→  SelectItem,
+    18→  SelectTrigger,
+    19→  SelectValue,
+    20→} from '@/components/ui/select'
+    21→import { Skeleton } from '@/components/ui/skeleton'
+    22→import { toast } from 'sonner'
+    23→import { formatPrice } from '@/lib/vat'
+    24→
+    25→// ─── Types ────────────────────────────────────────────────────
+    26→
+    27→interface RevenueData {
+    28→  grossSales: { today: number; week: number; month: number }
+    29→  expenses: { today: number; week: number; month: number }
+    30→  stripeFees: { today: number; week: number; month: number }
+    31→  netProfit: { today: number; week: number; month: number }
+    32→  aov: number
+    33→  completedOrders: number
+    34→}
+    35→
+    36→interface ExpenseRecord {
+    37→  id: string
+    38→  category: string
+    39→  description: string
+    40→  amount: number
+    41→  date: string
+    42→  createdAt: string
+    43→}
+    44→
+    45→interface VatBreakdown {
+    46→  [rate: number]: {
+    47→    netSales: number
+    48→    vatAmount: number
+    49→    grossSales: number
+    50→    itemCount: number
+    51→  }
+    52→}
+    53→
+    54→interface VatReport {
+    55→  period: string
+    56→  startDate: string
+    57→  vatBreakdown: VatBreakdown
+    58→  totals: {
+    59→    netSales: number
+    60→    vatAmount: number
+    61→    grossSales: number
+    62→  }
+    63→}
+    64→
+    65→interface BankTransferOrder {
+    66→  id: string
+    67→  total: number
+    68→  customer: { name: string; email: string }
+    69→  bankTransferRef: string | null
+    70→  bankTransferVerified: boolean
+    71→  createdAt: string
+    72→}
+    73→
+    74→const EXPENSE_CATEGORIES = [
+    75→  { value: 'electricity', label: 'Electricity' },
+    76→  { value: 'rent', label: 'Rent' },
+    77→  { value: 'packaging', label: 'Packaging' },
+    78→  { value: 'fuel', label: 'Fuel' },
+    79→  { value: 'other', label: 'Other' },
+    80→]
+    81→
+    82→const VAT_LABELS: Record<number, string> = {
+    83→  0: '0% (Zero-rated)',
+    84→  0.05: '5% (Reduced)',
+    85→  0.2: '20% (Standard)',
+    86→}
+    87→
+    88→// ─── Finance Client Component ─────────────────────────────────
+    89→
+    90→export function FinanceClient() {
+    91→  const [revenue, setRevenue] = useState<RevenueData | null>(null)
+    92→  const [revenueLoading, setRevenueLoading] = useState(true)
+    93→
+    94→  const [expenses, setExpenses] = useState<ExpenseRecord[]>([])
+    95→  const [expensesLoading, setExpensesLoading] = useState(true)
+    96→
+    97→  const [vatReport, setVatReport] = useState<VatReport | null>(null)
+    98→  const [vatLoading, setVatLoading] = useState(true)
+    99→  const [vatPeriod, setVatPeriod] = useState('month')
+   100→
+   101→  const [bankTransfers, setBankTransfers] = useState<BankTransferOrder[]>([])
+   102→  const [bankLoading, setBankLoading] = useState(true)
+   103→
+   104→  // Expense form state
+   105→  const [expCategory, setExpCategory] = useState('')
+   106→  const [expDescription, setExpDescription] = useState('')
+   107→  const [expAmount, setExpAmount] = useState('')
+   108→  const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0])
+   109→  const [expSubmitting, setExpSubmitting] = useState(false)
+   110→
+   111→  const fetchRevenue = useCallback(async () => {
+   112→    try {
+   113→      const res = await fetch('/api/admin/finance/revenue')
+   114→      if (!res.ok) throw new Error()
+   115→      const data = await res.json()
+   116→      setRevenue(data)
+   117→    } catch {
+   118→      toast.error('Failed to load revenue data')
+   119→    } finally {
+   120→      setRevenueLoading(false)
+   121→    }
+   122→  }, [])
+   123→
+   124→  const fetchExpenses = useCallback(async () => {
+   125→    try {
+   126→      const res = await fetch('/api/admin/expenses?limit=50')
+   127→      if (!res.ok) throw new Error()
+   128→      const data = await res.json()
+   129→      setExpenses(data.expenses || [])
+   130→    } catch {
+   131→      toast.error('Failed to load expenses')
+   132→    } finally {
+   133→      setExpensesLoading(false)
+   134→    }
+   135→  }, [])
+   136→
+   137→  const fetchVatReport = useCallback(async () => {
+   138→    setVatLoading(true)
+   139→    try {
+   140→      const res = await fetch(`/api/admin/finance/vat-report?period=${vatPeriod}`)
+   141→      if (!res.ok) throw new Error()
+   142→      const data = await res.json()
+   143→      setVatReport(data)
+   144→    } catch {
+   145→      toast.error('Failed to load VAT report')
+   146→    } finally {
+   147→      setVatLoading(false)
+   148→    }
+   149→  }, [vatPeriod])
+   150→
+   151→  const fetchBankTransfers = useCallback(async () => {
+   152→    try {
+   153→      const res = await fetch('/api/admin/orders?paymentMethod=bank_transfer&bankTransferVerified=false&limit=100')
+   154→      if (!res.ok) throw new Error()
+   155→      const data = await res.json()
+   156→      setBankTransfers(data.orders || [])
+   157→    } catch {
+   158→      toast.error('Failed to load bank transfers')
+   159→    } finally {
+   160→      setBankLoading(false)
+   161→    }
+   162→  }, [])
+   163→
+   164→  useEffect(() => {
+   165→    fetchRevenue()
+   166→    fetchExpenses()
+   167→    fetchBankTransfers()
+   168→  }, [fetchRevenue, fetchExpenses, fetchBankTransfers])
+   169→
+   170→  useEffect(() => {
+   171→    fetchVatReport()
+   172→  }, [fetchVatReport])
+   173→
+   174→  const handleAddExpense = async () => {
+   175→    if (!expCategory || !expDescription || !expAmount || !expDate) {
+   176→      toast.error('Please fill in all fields')
+   177→      return
+   178→    }
+   179→    setExpSubmitting(true)
+   180→    try {
+   181→      const res = await fetch('/api/admin/expenses', {
+   182→        method: 'POST',
+   183→        headers: { 'Content-Type': 'application/json' },
+   184→        body: JSON.stringify({
+   185→          category: expCategory,
+   186→          description: expDescription,
+   187→          amount: parseFloat(expAmount),
+   188→          date: expDate,
+   189→        }),
+   190→      })
+   191→      if (!res.ok) {
+   192→        const data = await res.json()
+   193→        throw new Error(data.error || 'Failed')
+   194→      }
+   195→      toast.success('Expense added')
+   196→      setExpCategory('')
+   197→      setExpDescription('')
+   198→      setExpAmount('')
+   199→      setExpDate(new Date().toISOString().split('T')[0])
+   200→      fetchExpenses()
+   201→      fetchRevenue()
+   202→    } catch (err: any) {
+   203→      toast.error(err.message || 'Failed to add expense')
+   204→    } finally {
+   205→      setExpSubmitting(false)
+   206→    }
+   207→  }
+   208→
+   209→  const handleDeleteExpense = async (id: string) => {
+   210→    try {
+   211→      const res = await fetch(`/api/admin/expenses/${id}`, { method: 'DELETE' })
+   212→      if (!res.ok) throw new Error()
+   213→      toast.success('Expense deleted')
+   214→      fetchExpenses()
+   215→      fetchRevenue()
+   216→    } catch {
+   217→      toast.error('Failed to delete expense')
+   218→    }
+   219→  }
+   220→
+   221→  const handleVerifyBankTransfer = async (orderId: string) => {
+   222→    try {
+   223→      const res = await fetch('/api/admin/orders', {
+   224→        method: 'PATCH',
+   225→        headers: { 'Content-Type': 'application/json' },
+   226→        body: JSON.stringify({ orderId, bankTransferVerified: true }),
+   227→      })
+   228→      if (!res.ok) throw new Error()
+   229→      toast.success('Bank transfer verified')
+   230→      fetchBankTransfers()
+   231→      fetchRevenue()
+   232→    } catch {
+   233→      toast.error('Failed to verify transfer')
+   234→    }
+   235→  }
+   236→
+   237→  const handleExportVatCsv = () => {
+   238→    if (!vatReport) return
+   239→
+   240→    const rows: string[][] = []
+   241→    rows.push(['VAT Rate', 'Net Sales', 'VAT Amount', 'Gross Sales', 'Item Count'])
+   242→
+   243→    for (const [rate, data] of Object.entries(vatReport.vatBreakdown)) {
+   244→      rows.push([
+   245→        VAT_LABELS[parseFloat(rate)] || `${rate}%`,
+   246→        data.netSales.toFixed(2),
+   247→        data.vatAmount.toFixed(2),
+   248→        data.grossSales.toFixed(2),
+   249→        String(data.itemCount),
+   250→      ])
+   251→    }
+   252→
+   253→    rows.push([])
+   254→    rows.push(['TOTALS', vatReport.totals.netSales.toFixed(2), vatReport.totals.vatAmount.toFixed(2), vatReport.totals.grossSales.toFixed(2), ''])
+   255→
+   256→    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
+   257→    const blob = new Blob([csv], { type: 'text/csv' })
+   258→    const url = URL.createObjectURL(blob)
+   259→    const a = document.createElement('a')
+   260→    a.href = url
+   261→    a.download = `vat-report-${vatReport.period}-${new Date().toISOString().split('T')[0]}.csv`
+   262→    a.click()
+   263→    URL.revokeObjectURL(url)
+   264→  }
+   265→
+   266→  return (
+   267→    <div>
+   268→      {/* Page Header */}
+   269→      <div className="mb-6">
+   270→        <div className="flex items-center gap-3 mb-2">
+   271→          <PoundSterling className="h-6 w-6 text-[#16a34a]" />
+   272→          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Finance & Ledger</h1>
+   273→        </div>
+   274→        <p className="text-gray-500">Revenue tracking, expense management, VAT reporting & bank transfer verification</p>
+   275→      </div>
+   276→
+   277→      {/* ─── Revenue Widgets ──────────────────────────────────── */}
+   278→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+   279→        {revenueLoading ? (
+   280→          Array.from({ length: 5 }).map((_, i) => (
+   281→            <Card key={i}><CardContent className="p-5"><Skeleton className="h-20 w-full" /></CardContent></Card>
+   282→          ))
+   283→        ) : revenue ? (
+   284→          <>
+   285→            <Card>
+   286→              <CardContent className="p-5">
+   287→                <div className="flex items-center justify-between">
+   288→                  <div>
+   289→                    <p className="text-sm text-gray-500">Sales Today</p>
+   290→                    <p className="text-xl font-bold text-gray-900 mt-1">{formatPrice(revenue.grossSales.today)}</p>
+   291→                  </div>
+   292→                  <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+   293→                    <DollarSign className="h-5 w-5 text-green-600" />
+   294→                  </div>
+   295→                </div>
+   296→              </CardContent>
+   297→            </Card>
+   298→            <Card>
+   299→              <CardContent className="p-5">
+   300→                <div className="flex items-center justify-between">
+   301→                  <div>
+   302→                    <p className="text-sm text-gray-500">Sales This Week</p>
+   303→                    <p className="text-xl font-bold text-gray-900 mt-1">{formatPrice(revenue.grossSales.week)}</p>
+   304→                  </div>
+   305→                  <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+   306→                    <TrendingUp className="h-5 w-5 text-green-600" />
+   307→                  </div>
+   308→                </div>
+   309→              </CardContent>
+   310→            </Card>
+   311→            <Card>
+   312→              <CardContent className="p-5">
+   313→                <div className="flex items-center justify-between">
+   314→                  <div>
+   315→                    <p className="text-sm text-gray-500">Sales This Month</p>
+   316→                    <p className="text-xl font-bold text-gray-900 mt-1">{formatPrice(revenue.grossSales.month)}</p>
+   317→                  </div>
+   318→                  <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+   319→                    <TrendingUp className="h-5 w-5 text-green-600" />
+   320→                  </div>
+   321→                </div>
+   322→              </CardContent>
+   323→            </Card>
+   324→            <Card>
+   325→              <CardContent className="p-5">
+   326→                <div className="flex items-center justify-between">
+   327→                  <div>
+   328→                    <p className="text-sm text-gray-500">Avg Order Value</p>
+   329→                    <p className="text-xl font-bold text-gray-900 mt-1">{formatPrice(revenue.aov)}</p>
+   330→                  </div>
+   331→                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+   332→                    <ShoppingCart className="h-5 w-5 text-blue-600" />
+   333→                  </div>
+   334→                </div>
+   335→              </CardContent>
+   336→            </Card>
+   337→            <Card>
+   338→              <CardContent className="p-5">
+   339→                <div className="flex items-center justify-between">
+   340→                  <div>
+   341→                    <p className="text-sm text-gray-500">Completed Orders</p>
+   342→                    <p className="text-xl font-bold text-gray-900 mt-1">{revenue.completedOrders}</p>
+   343→                  </div>
+   344→                  <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center">
+   345→                    <CheckCircle2 className="h-5 w-5 text-purple-600" />
+   346→                  </div>
+   347→                </div>
+   348→              </CardContent>
+   349→            </Card>
+   350→          </>
+   351→        ) : null}
+   352→      </div>
+   353→
+   354→      {/* ─── Net Profit Calculator ────────────────────────────── */}
+   355→      {revenue && (
+   356→        <Card className="mb-8">
+   357→          <CardHeader>
+   358→            <CardTitle className="flex items-center gap-2 text-lg">
+   359→              <Calculator className="h-5 w-5 text-gray-600" />
+   360→              Net Profit Calculator
+   361→            </CardTitle>
+   362→            <CardDescription>Revenue minus expenses minus Stripe fees</CardDescription>
+   363→          </CardHeader>
+   364→          <CardContent>
+   365→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   366→              {(['today', 'week', 'month'] as const).map((period) => {
+   367→                const label = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month'
+   368→                const profit = revenue.netProfit[period]
+   369→                const sales = revenue.grossSales[period]
+   370→                const exp = revenue.expenses[period]
+   371→                const stripe = revenue.stripeFees[period]
+   372→                const isPositive = profit >= 0
+   373→
+   374→                return (
+   375→                  <div key={period} className="border rounded-lg p-4 space-y-3">
+   376→                    <h4 className="font-medium text-gray-700">{label}</h4>
+   377→                    <div className="space-y-1.5 text-sm">
+   378→                      <div className="flex justify-between">
+   379→                        <span className="text-gray-500">Gross Sales</span>
+   380→                        <span className="font-medium">{formatPrice(sales)}</span>
+   381→                      </div>
+   382→                      <div className="flex justify-between">
+   383→                        <span className="text-gray-500">Expenses</span>
+   384→                        <span className="text-red-600">-{formatPrice(exp)}</span>
+   385→                      </div>
+   386→                      <div className="flex justify-between">
+   387→                        <span className="text-gray-500">Stripe Fees (est.)</span>
+   388→                        <span className="text-red-600">-{formatPrice(stripe)}</span>
+   389→                      </div>
+   390→                      <Separator />
+   391→                      <div className="flex justify-between font-bold">
+   392→                        <span>Net Profit</span>
+   393→                        <span className={isPositive ? 'text-green-600' : 'text-red-600'}>
+   394→                          {isPositive ? '+' : ''}{formatPrice(profit)}
+   395→                        </span>
+   396→                      </div>
+   397→                    </div>
+   398→                    <div className={`flex items-center gap-1.5 text-xs font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+   399→                      {isPositive ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+   400→                      {isPositive ? 'Profitable' : 'Loss'}
+   401→                    </div>
+   402→                  </div>
+   403→                )
+   404→              })}
+   405→            </div>
+   406→          </CardContent>
+   407→        </Card>
+   408→      )}
+   409→
+   410→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+   411→        {/* ─── Manual Expense Tracker ─────────────────────────── */}
+   412→        <Card>
+   413→          <CardHeader>
+   414→            <CardTitle className="flex items-center gap-2 text-lg">
+   415→              <Receipt className="h-5 w-5 text-gray-600" />
+   416→              Expense Tracker
+   417→            </CardTitle>
+   418→            <CardDescription>Add and manage business expenses</CardDescription>
+   419→          </CardHeader>
+   420→          <CardContent className="space-y-4">
+   421→            {/* Add Expense Form */}
+   422→            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+   423→              <h4 className="font-medium text-sm text-gray-700">Add New Expense</h4>
+   424→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   425→                <div className="space-y-1.5">
+   426→                  <Label className="text-xs">Category</Label>
+   427→                  <Select value={expCategory} onValueChange={setExpCategory}>
+   428→                    <SelectTrigger className="h-9 text-sm">
+   429→                      <SelectValue placeholder="Select category" />
+   430→                    </SelectTrigger>
+   431→                    <SelectContent>
+   432→                      {EXPENSE_CATEGORIES.map((c) => (
+   433→                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+   434→                      ))}
+   435→                    </SelectContent>
+   436→                  </Select>
+   437→                </div>
+   438→                <div className="space-y-1.5">
+   439→                  <Label className="text-xs">Amount</Label>
+   440→                  <Input
+   441→                    type="number"
+   442→                    step="0.01"
+   443→                    min="0"
+   444→                    placeholder="0.00"
+   445→                    value={expAmount}
+   446→                    onChange={(e) => setExpAmount(e.target.value)}
+   447→                    className="h-9 text-sm"
+   448→                  />
+   449→                </div>
+   450→                <div className="space-y-1.5">
+   451→                  <Label className="text-xs">Description</Label>
+   452→                  <Input
+   453→                    placeholder="What was this for..."
+   454→                    value={expDescription}
+   455→                    onChange={(e) => setExpDescription(e.target.value)}
+   456→                    className="h-9 text-sm"
+   457→                  />
+   458→                </div>
+   459→                <div className="space-y-1.5">
+   460→                  <Label className="text-xs">Date</Label>
+   461→                  <Input
+   462→                    type="date"
+   463→                    value={expDate}
+   464→                    onChange={(e) => setExpDate(e.target.value)}
+   465→                    className="h-9 text-sm"
+   466→                  />
+   467→                </div>
+   468→              </div>
+   469→              <Button
+   470→                onClick={handleAddExpense}
+   471→                disabled={expSubmitting}
+   472→                className="w-full h-9 bg-[#16a34a] hover:bg-[#15803d] text-white text-sm"
+   473→              >
+   474→                {expSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
+   475→                Add Expense
+   476→              </Button>
+   477→            </div>
+   478→
+   479→            {/* Expense List */}
+   480→            <div className="space-y-2 max-h-96 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+   481→              {expensesLoading ? (
+   482→                Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)
+   483→              ) : expenses.length === 0 ? (
+   484→                <p className="text-sm text-gray-500 text-center py-6">No expenses recorded yet</p>
+   485→              ) : (
+   486→                expenses.map((exp) => (
+   487→                  <div key={exp.id} className="flex items-center justify-between border rounded-lg p-3 hover:bg-gray-50">
+   488→                    <div className="flex-1 min-w-0">
+   489→                      <div className="flex items-center gap-2">
+   490→                        <Badge variant="outline" className="text-[10px] shrink-0">
+   491→                          {exp.category}
+   492→                        </Badge>
+   493→                        <span className="text-sm font-medium truncate">{exp.description}</span>
+   494→                      </div>
+   495→                      <p className="text-xs text-gray-500 mt-0.5">
+   496→                        {new Date(exp.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+   497→                      </p>
+   498→                    </div>
+   499→                    <div className="flex items-center gap-2 ml-2">
+   500→                      <span className="font-medium text-sm text-red-600">{formatPrice(exp.amount)}</span>
+   501→                      <Button
+   502→                        variant="ghost"
+   503→                        size="icon"
+   504→                        className="h-8 w-8 text-gray-400 hover:text-red-600 shrink-0"
+   505→                        onClick={() => handleDeleteExpense(exp.id)}
+   506→                      >
+   507→                        <Trash2 className="h-3.5 w-3.5" />
+   508→                      </Button>
+   509→                    </div>
+   510→                  </div>
+   511→                ))
+   512→              )}
+   513→            </div>
+   514→          </CardContent>
+   515→        </Card>
+   516→
+   517→        {/* ─── HMRC UK VAT Report ─────────────────────────────── */}
+   518→        <Card>
+   519→          <CardHeader>
+   520→            <div className="flex items-center justify-between">
+   521→              <div>
+   522→                <CardTitle className="flex items-center gap-2 text-lg">
+   523→                  <Calculator className="h-5 w-5 text-gray-600" />
+   524→                  HMRC UK VAT Report
+   525→                </CardTitle>
+   526→                <CardDescription>VAT breakdown by rate</CardDescription>
+   527→              </div>
+   528→              <div className="flex items-center gap-2">
+   529→                <Select value={vatPeriod} onValueChange={setVatPeriod}>
+   530→                  <SelectTrigger className="w-28 h-8 text-xs">
+   531→                    <SelectValue />
+   532→                  </SelectTrigger>
+   533→                  <SelectContent>
+   534→                    <SelectItem value="today">Today</SelectItem>
+   535→                    <SelectItem value="week">This Week</SelectItem>
+   536→                    <SelectItem value="month">This Month</SelectItem>
+   537→                    <SelectItem value="quarter">This Quarter</SelectItem>
+   538→                    <SelectItem value="year">This Year</SelectItem>
+   539→                  </SelectContent>
+   540→                </Select>
+   541→                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleExportVatCsv} disabled={!vatReport}>
+   542→                  <Download className="h-3.5 w-3.5 mr-1" />
+   543→                  CSV
+   544→                </Button>
+   545→              </div>
+   546→            </div>
+   547→          </CardHeader>
+   548→          <CardContent>
+   549→            {vatLoading ? (
+   550→              <div className="space-y-3">
+   551→                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+   552→              </div>
+   553→            ) : vatReport && Object.keys(vatReport.vatBreakdown).length > 0 ? (
+   554→              <div className="space-y-3">
+   555→                {/* Table Header */}
+   556→                <div className="grid grid-cols-5 gap-2 text-xs font-medium text-gray-500 pb-2 border-b">
+   557→                  <span>VAT Rate</span>
+   558→                  <span className="text-right">Net Sales</span>
+   559→                  <span className="text-right">VAT Amount</span>
+   560→                  <span className="text-right">Gross Sales</span>
+   561→                  <span className="text-right">Items</span>
+   562→                </div>
+   563→                {/* Rows */}
+   564→                {Object.entries(vatReport.vatBreakdown).map(([rate, data]) => (
+   565→                  <div key={rate} className="grid grid-cols-5 gap-2 text-sm py-2 border-b border-gray-100">
+   566→                    <span className="font-medium">{VAT_LABELS[parseFloat(rate)] || `${rate}%`}</span>
+   567→                    <span className="text-right">{formatPrice(data.netSales)}</span>
+   568→                    <span className="text-right font-medium text-amber-700">{formatPrice(data.vatAmount)}</span>
+   569→                    <span className="text-right">{formatPrice(data.grossSales)}</span>
+   570→                    <span className="text-right text-gray-500">{data.itemCount}</span>
+   571→                  </div>
+   572→                ))}
+   573→                {/* Totals */}
+   574→                <div className="grid grid-cols-5 gap-2 text-sm font-bold pt-2 bg-gray-50 rounded px-2 py-3">
+   575→                  <span>TOTAL</span>
+   576→                  <span className="text-right">{formatPrice(vatReport.totals.netSales)}</span>
+   577→                  <span className="text-right text-amber-700">{formatPrice(vatReport.totals.vatAmount)}</span>
+   578→                  <span className="text-right">{formatPrice(vatReport.totals.grossSales)}</span>
+   579→                  <span />
+   580→                </div>
+   581→              </div>
+   582→            ) : (
+   583→              <div className="text-center py-8 text-gray-500">
+   584→                <Receipt className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+   585→                <p className="text-sm">No VAT data for this period</p>
+   586→              </div>
+   587→            )}
+   588→          </CardContent>
+   589→        </Card>
+   590→      </div>
+   591→
+   592→      {/* ─── Bank Transfer Verification Queue ─────────────────── */}
+   593→      <Card>
+   594→        <CardHeader>
+   595→          <CardTitle className="flex items-center gap-2 text-lg">
+   596→            <AlertTriangle className="h-5 w-5 text-amber-600" />
+   597→            Bank Transfer Verification Queue
+   598→          </CardTitle>
+   599→          <CardDescription>Orders paid by bank transfer awaiting verification</CardDescription>
+   600→        </CardHeader>
+   601→        <CardContent>
+   602→          {bankLoading ? (
+   603→            <div className="space-y-3">
+   604→              {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
+   605→            </div>
+   606→          ) : bankTransfers.length === 0 ? (
+   607→            <div className="text-center py-8 text-gray-500">
+   608→              <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-400" />
+   609→              <p className="text-sm">No pending bank transfers to verify</p>
+   610→            </div>
+   611→          ) : (
+   612→            <div className="space-y-2">
+   613→              {/* Desktop Header */}
+   614→              <div className="hidden sm:grid grid-cols-5 gap-2 text-xs font-medium text-gray-500 pb-2 border-b">
+   615→                <span>Order ID</span>
+   616→                <span>Customer</span>
+   617→                <span>Amount</span>
+   618→                <span>Reference</span>
+   619→                <span className="text-right">Action</span>
+   620→              </div>
+   621→              {bankTransfers.map((order) => (
+   622→                <div key={order.id} className="grid grid-cols-1 sm:grid-cols-5 gap-2 sm:gap-2 items-center border rounded-lg p-3 hover:bg-gray-50">
+   623→                  <span className="font-mono text-xs">#{order.id.substring(0, 8).toUpperCase()}</span>
+   624→                  <span className="text-sm">{order.customer?.name || 'N/A'}</span>
+   625→                  <span className="font-medium text-sm">{formatPrice(order.total)}</span>
+   626→                  <span className="text-xs text-gray-500">{order.bankTransferRef || 'No ref'}</span>
+   627→                  <div className="sm:text-right">
+   628→                    <Button
+   629→                      size="sm"
+   630→                      className="h-8 text-xs bg-[#16a34a] hover:bg-[#15803d] text-white"
+   631→                      onClick={() => handleVerifyBankTransfer(order.id)}
+   632→                    >
+   633→                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+   634→                      Approve Payment
+   635→                    </Button>
+   636→                  </div>
+   637→                </div>
+   638→              ))}
+   639→            </div>
+   640→          )}
+   641→        </CardContent>
+   642→      </Card>
+   643→    </div>
+   644→  )
+   645→}
+   646→

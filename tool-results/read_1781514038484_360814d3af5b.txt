@@ -1,0 +1,742 @@
+     1→'use client'
+     2→
+     3→import { useState } from 'react'
+     4→import Link from 'next/link'
+     5→import { useRouter } from 'next/navigation'
+     6→import { Check, MapPin, Clock, ShoppingBag, CreditCard, ChevronRight, Loader2, Banknote, Building2, Info } from 'lucide-react'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Label } from '@/components/ui/label'
+    11→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+    12→import { Separator } from '@/components/ui/separator'
+    13→import { Checkbox } from '@/components/ui/checkbox'
+    14→import { CustomerLayout } from '@/components/layout/customer-layout'
+    15→import { ErrorAlert } from '@/components/ui/error-alert'
+    16→import type { TechnicalError } from '@/components/ui/error-alert'
+    17→import { useCartStore } from '@/store/cart'
+    18→import { formatPrice, getVatRateLabel, calculateVatFromGross } from '@/lib/vat'
+    19→import type { Store, Address } from '@/types'
+    20→
+    21→interface CheckoutClientProps {
+    22→  store: Store
+    23→  user: { id: string; email: string; name: string }
+    24→  addresses: Address[]
+    25→}
+    26→
+    27→type PaymentMethod = 'card' | 'cash' | 'bank_transfer'
+    28→
+    29→const deliverySlots = [
+    30→  { id: 'today-4-6', label: 'Today 4-6pm', description: 'Express delivery today' },
+    31→  { id: 'today-6-8', label: 'Today 6-8pm', description: 'Evening delivery today' },
+    32→  { id: 'tomorrow-10-12', label: 'Tomorrow 10am-12pm', description: 'Morning delivery tomorrow' },
+    33→  { id: 'tomorrow-12-2', label: 'Tomorrow 12-2pm', description: 'Lunchtime delivery tomorrow' },
+    34→]
+    35→
+    36→const categoryIcons: Record<string, string> = {
+    37→  'fruits-vegetables': '🥬',
+    38→  'dairy-eggs': '🥛',
+    39→  'meat-fish': '🥩',
+    40→  'bakery': '🍞',
+    41→  'pantry': '🫙',
+    42→  'drinks': '🧃',
+    43→  'frozen': '🧊',
+    44→  'snacks-sweets': '🍫',
+    45→}
+    46→
+    47→type Step = 'address' | 'slot' | 'summary' | 'payment'
+    48→
+    49→const steps: { id: Step; label: string; icon: React.ElementType }[] = [
+    50→  { id: 'address', label: 'Address', icon: MapPin },
+    51→  { id: 'slot', label: 'Delivery Slot', icon: Clock },
+    52→  { id: 'summary', label: 'Summary', icon: ShoppingBag },
+    53→  { id: 'payment', label: 'Payment', icon: CreditCard },
+    54→]
+    55→
+    56→export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) {
+    57→  const router = useRouter()
+    58→  const items = useCartStore((state) => state.items)
+    59→  const clearCart = useCartStore((state) => state.clearCart)
+    60→
+    61→  const [currentStep, setCurrentStep] = useState<Step>('address')
+    62→  const [loading, setLoading] = useState(false)
+    63→  const [error, setError] = useState<string | TechnicalError | null>(null)
+    64→
+    65→  // Address form state
+    66→  const defaultAddress = addresses.find((a) => a.is_default)
+    67→  const [addressLine1, setAddressLine1] = useState(defaultAddress?.address_line_1 || '')
+    68→  const [addressLine2, setAddressLine2] = useState(defaultAddress?.address_line_2 || '')
+    69→  const [city, setCity] = useState(defaultAddress?.city || '')
+    70→  const [postcode, setPostcode] = useState(defaultAddress?.postcode || '')
+    71→  const [saveAddress, setSaveAddress] = useState(false)
+    72→
+    73→  // Delivery slot state
+    74→  const [selectedSlot, setSelectedSlot] = useState(deliverySlots[0].id)
+    75→
+    76→  // Payment method state
+    77→  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card')
+    78→  const [bankTransferRef, setBankTransferRef] = useState('')
+    79→
+    80→  // Bank details (will be returned from the API after order creation)
+    81→  const [bankDetails, setBankDetails] = useState<{ sortCode: string; accountNumber: string; accountName: string } | null>(null)
+    82→
+    83→  // Calculate totals
+    84→  const subtotal = items.reduce((total, item) => total + item.product.price * item.quantity, 0)
+    85→
+    86→  const vatGroups: Record<number, { gross: number; vat: number; label: string }> = {}
+    87→  items.forEach((item) => {
+    88→    const rate = item.product.vat_rate
+    89→    const itemGross = item.product.price * item.quantity
+    90→    const itemVat = calculateVatFromGross(itemGross, rate)
+    91→    if (!vatGroups[rate]) {
+    92→      vatGroups[rate] = { gross: 0, vat: 0, label: getVatRateLabel(rate) }
+    93→    }
+    94→    vatGroups[rate].gross += itemGross
+    95→    vatGroups[rate].vat += itemVat
+    96→  })
+    97→
+    98→  const totalVat = Object.values(vatGroups).reduce((sum, group) => sum + group.vat, 0)
+    99→  const distanceKm = 2
+   100→  const isFreeDelivery = subtotal >= store.free_delivery_threshold
+   101→  const deliveryFee = isFreeDelivery ? 0 : store.base_delivery_fee + store.per_km_charge * distanceKm
+   102→  const total = subtotal + deliveryFee
+   103→
+   104→  const currentStepIndex = steps.findIndex((s) => s.id === currentStep)
+   105→
+   106→  const validateAddress = (): boolean => {
+   107→    if (!addressLine1.trim()) return false
+   108→    if (!city.trim()) return false
+   109→    if (!postcode.trim()) return false
+   110→    // Basic UK postcode validation
+   111→    const postcodeRegex = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i
+   112→    if (!postcodeRegex.test(postcode.trim())) return false
+   113→    return true
+   114→  }
+   115→
+   116→  const handleNext = () => {
+   117→    setError(null)
+   118→    if (currentStep === 'address') {
+   119→      if (!validateAddress()) {
+   120→        setError({
+   121→          message: 'Please fill in all address fields with a valid UK postcode.',
+   122→          code: 'INVALID_ADDRESS',
+   123→          details: `Address line 1: ${addressLine1 ? 'provided' : 'missing'}\nCity: ${city ? 'provided' : 'missing'}\nPostcode: ${postcode || 'missing'}\nUK postcode format: SW1A 1AA`,
+   124→          timestamp: new Date().toISOString(),
+   125→        })
+   126→        return
+   127→      }
+   128→      setCurrentStep('slot')
+   129→    } else if (currentStep === 'slot') {
+   130→      setCurrentStep('summary')
+   131→    } else if (currentStep === 'summary') {
+   132→      setCurrentStep('payment')
+   133→    }
+   134→  }
+   135→
+   136→  const handleBack = () => {
+   137→    setError(null)
+   138→    if (currentStep === 'slot') setCurrentStep('address')
+   139→    else if (currentStep === 'summary') setCurrentStep('slot')
+   140→    else if (currentStep === 'payment') setCurrentStep('summary')
+   141→  }
+   142→
+   143→  const handlePlaceOrder = async () => {
+   144→    setLoading(true)
+   145→    setError(null)
+   146→
+   147→    try {
+   148→      const response = await fetch('/api/checkout', {
+   149→        method: 'POST',
+   150→        headers: { 'Content-Type': 'application/json' },
+   151→        body: JSON.stringify({
+   152→          items: items.map((item) => ({
+   153→            product_id: item.product.id,
+   154→            product_name: item.product.name,
+   155→            quantity: item.quantity,
+   156→            unit_price: item.product.price,
+   157→            vat_rate: item.product.vat_rate,
+   158→            substitute_preference: item.substitute_preference,
+   159→          })),
+   160→          address: {
+   161→            address_line_1: addressLine1,
+   162→            address_line_2: addressLine2,
+   163→            city,
+   164→            postcode,
+   165→          },
+   166→          delivery_slot: selectedSlot,
+   167→          subtotal,
+   168→          vat_amount: totalVat,
+   169→          delivery_fee: deliveryFee,
+   170→          total,
+   171→          save_address: saveAddress,
+   172→          payment_method: paymentMethod,
+   173→          bank_transfer_ref: bankTransferRef || undefined,
+   174→        }),
+   175→      })
+   176→
+   177→      const data = await response.json()
+   178→
+   179→      if (!response.ok) {
+   180→        const timestamp = new Date().toISOString()
+   181→        const techErr = data.technicalError
+   182→        if (techErr) {
+   183→          setError({ ...techErr, timestamp: techErr.timestamp || timestamp })
+   184→        } else {
+   185→          setError({
+   186→            message: data.error || 'Failed to place order.',
+   187→            code: `HTTP_${response.status}`,
+   188→            status: response.status,
+   189→            details: JSON.stringify(data, null, 2),
+   190→            timestamp,
+   191→            endpoint: '/api/checkout',
+   192→          })
+   193→        }
+   194→        return
+   195→      }
+   196→
+   197→      // Store bank details if returned
+   198→      if (data.bankDetails) {
+   199→        setBankDetails(data.bankDetails)
+   200→      }
+   201→
+   202→      // For card payment with Stripe, redirect to checkout URL
+   203→      if (paymentMethod === 'card' && data.checkoutUrl) {
+   204→        window.location.href = data.checkoutUrl
+   205→        return
+   206→      }
+   207→
+   208→      // For cash and bank transfer, go directly to order confirmation
+   209→      clearCart()
+   210→      router.push(`/order/${data.orderId}`)
+   211→    } catch (err) {
+   212→      const errMsg = err instanceof Error ? err.message : String(err)
+   213→      const isNetworkError = errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')
+   214→      setError({
+   215→        message: isNetworkError
+   216→          ? 'Unable to connect to the server. Please check your internet connection.'
+   217→          : `An unexpected error occurred while placing your order: ${errMsg}`,
+   218→        code: isNetworkError ? 'NETWORK_ERROR' : 'CLIENT_ERROR',
+   219→        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+   220→        timestamp: new Date().toISOString(),
+   221→        endpoint: '/api/checkout',
+   222→      })
+   223→    } finally {
+   224→      setLoading(false)
+   225→    }
+   226→  }
+   227→
+   228→  // Redirect if cart is empty (except on payment step where order might have just been placed)
+   229→  if (items.length === 0 && currentStep !== 'payment') {
+   230→    return (
+   231→      <CustomerLayout storeName={store.name}>
+   232→        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+   233→          <div className="text-center max-w-md mx-auto">
+   234→            <h1 className="text-2xl font-bold text-gray-900 mb-2">Your Cart is Empty</h1>
+   235→            <p className="text-gray-500 mb-6">Add some items to your cart before checking out.</p>
+   236→            <Link href="/catalog">
+   237→              <Button className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold">
+   238→                Browse Products
+   239→              </Button>
+   240→            </Link>
+   241→          </div>
+   242→        </div>
+   243→      </CustomerLayout>
+   244→    )
+   245→  }
+   246→
+   247→  return (
+   248→    <CustomerLayout storeName={store.name}>
+   249→      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+   250→        {/* Page Header */}
+   251→        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6">Checkout</h1>
+   252→
+   253→        {/* Progress Indicator */}
+   254→        <div className="mb-8">
+   255→          <div className="flex items-center justify-between">
+   256→            {steps.map((step, index) => {
+   257→              const Icon = step.icon
+   258→              const isCompleted = currentStepIndex > index
+   259→              const isCurrent = currentStep === step.id
+   260→
+   261→              return (
+   262→                <div key={step.id} className="flex items-center flex-1 last:flex-none">
+   263→                  <div className="flex flex-col items-center">
+   264→                    <div
+   265→                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
+   266→                        isCompleted
+   267→                          ? 'bg-[#16a34a] border-[#16a34a] text-white'
+   268→                          : isCurrent
+   269→                          ? 'bg-white border-[#16a34a] text-[#16a34a]'
+   270→                          : 'bg-white border-gray-200 text-gray-400'
+   271→                      }`}
+   272→                    >
+   273→                      {isCompleted ? <Check className="h-4 w-4 sm:h-5 sm:w-5" /> : <Icon className="h-4 w-4 sm:h-5 sm:w-5" />}
+   274→                    </div>
+   275→                    <span
+   276→                      className={`hidden sm:block text-xs mt-1.5 font-medium ${
+   277→                        isCurrent ? 'text-[#16a34a]' : isCompleted ? 'text-gray-700' : 'text-gray-400'
+   278→                      }`}
+   279→                    >
+   280→                      {step.label}
+   281→                    </span>
+   282→                  </div>
+   283→                  {index < steps.length - 1 && (
+   284→                    <div
+   285→                      className={`flex-1 h-0.5 mx-1 sm:mx-2 mt-[-0.75rem] sm:mt-[-1.25rem] ${
+   286→                        isCompleted ? 'bg-[#16a34a]' : 'bg-gray-200'
+   287→                      }`}
+   288→                    />
+   289→                  )}
+   290→                </div>
+   291→              )
+   292→            })}
+   293→          </div>
+   294→        </div>
+   295→
+   296→        {/* Error Message */}
+   297→        <ErrorAlert error={error} />
+   298→
+   299→        {/* Step Content */}
+   300→        {currentStep === 'address' && (
+   301→          <Card>
+   302→            <CardHeader>
+   303→              <CardTitle className="flex items-center gap-2">
+   304→                <MapPin className="h-5 w-5 text-[#16a34a]" />
+   305→                Delivery Address
+   306→              </CardTitle>
+   307→            </CardHeader>
+   308→            <CardContent className="space-y-4">
+   309→              {/* Saved Addresses */}
+   310→              {addresses.length > 0 && (
+   311→                <div>
+   312→                  <Label className="text-sm font-medium text-gray-700 mb-2 block">Saved Addresses</Label>
+   313→                  <RadioGroup
+   314→                    value={defaultAddress?.id || ''}
+   315→                    className="space-y-2 mb-4"
+   316→                  >
+   317→                    {addresses.map((addr) => (
+   318→                      <div key={addr.id} className="flex items-center space-x-2">
+   319→                        <RadioGroupItem value={addr.id} id={`addr-${addr.id}`} />
+   320→                        <Label htmlFor={`addr-${addr.id}`} className="text-sm font-normal cursor-pointer">
+   321→                          {addr.address_line_1}, {addr.city}, {addr.postcode}
+   322→                          {addr.is_default && (
+   323→                            <span className="ml-2 text-xs text-[#16a34a] font-medium">(Default)</span>
+   324→                          )}
+   325→                        </Label>
+   326→                      </div>
+   327→                    ))}
+   328→                  </RadioGroup>
+   329→                  <Separator className="my-4" />
+   330→                </div>
+   331→              )}
+   332→
+   333→              <div className="space-y-2">
+   334→                <Label htmlFor="address_line_1">Address Line 1 *</Label>
+   335→                <Input
+   336→                  id="address_line_1"
+   337→                  placeholder="e.g., 123 High Street"
+   338→                  value={addressLine1}
+   339→                  onChange={(e) => setAddressLine1(e.target.value)}
+   340→                  required
+   341→                />
+   342→              </div>
+   343→
+   344→              <div className="space-y-2">
+   345→                <Label htmlFor="address_line_2">Address Line 2</Label>
+   346→                <Input
+   347→                  id="address_line_2"
+   348→                  placeholder="Flat, suite, unit etc. (optional)"
+   349→                  value={addressLine2}
+   350→                  onChange={(e) => setAddressLine2(e.target.value)}
+   351→                />
+   352→              </div>
+   353→
+   354→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   355→                <div className="space-y-2">
+   356→                  <Label htmlFor="city">City *</Label>
+   357→                  <Input
+   358→                    id="city"
+   359→                    placeholder="e.g., London"
+   360→                    value={city}
+   361→                    onChange={(e) => setCity(e.target.value)}
+   362→                    required
+   363→                  />
+   364→                </div>
+   365→                <div className="space-y-2">
+   366→                  <Label htmlFor="postcode">Postcode *</Label>
+   367→                  <Input
+   368→                    id="postcode"
+   369→                    placeholder="e.g., SE13 6LG"
+   370→                    value={postcode}
+   371→                    onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+   372→                    required
+   373→                    className="uppercase"
+   374→                  />
+   375→                </div>
+   376→              </div>
+   377→
+   378→              <div className="flex items-center space-x-2 pt-2">
+   379→                <Checkbox
+   380→                  id="save_address"
+   381→                  checked={saveAddress}
+   382→                  onCheckedChange={(checked) => setSaveAddress(checked === true)}
+   383→                />
+   384→                <Label htmlFor="save_address" className="text-sm font-normal cursor-pointer">
+   385→                  Save this address for future orders
+   386→                </Label>
+   387→              </div>
+   388→
+   389→              <div className="flex justify-end pt-2">
+   390→                <Button
+   391→                  onClick={handleNext}
+   392→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   393→                >
+   394→                  Continue to Delivery Slot
+   395→                  <ChevronRight className="h-4 w-4 ml-1" />
+   396→                </Button>
+   397→              </div>
+   398→            </CardContent>
+   399→          </Card>
+   400→        )}
+   401→
+   402→        {currentStep === 'slot' && (
+   403→          <Card>
+   404→            <CardHeader>
+   405→              <CardTitle className="flex items-center gap-2">
+   406→                <Clock className="h-5 w-5 text-[#16a34a]" />
+   407→                Choose a Delivery Slot
+   408→              </CardTitle>
+   409→            </CardHeader>
+   410→            <CardContent>
+   411→              <RadioGroup
+   412→                value={selectedSlot}
+   413→                onValueChange={setSelectedSlot}
+   414→                className="space-y-3"
+   415→              >
+   416→                {deliverySlots.map((slot) => (
+   417→                  <div key={slot.id}>
+   418→                    <Label
+   419→                      htmlFor={`slot-${slot.id}`}
+   420→                      className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+   421→                        selectedSlot === slot.id
+   422→                          ? 'border-[#16a34a] bg-[#16a34a]/5'
+   423→                          : 'border-gray-200 hover:border-gray-300'
+   424→                      }`}
+   425→                    >
+   426→                      <div className="flex items-center gap-3">
+   427→                        <RadioGroupItem value={slot.id} id={`slot-${slot.id}`} />
+   428→                        <div>
+   429→                          <p className="font-medium text-sm">{slot.label}</p>
+   430→                          <p className="text-xs text-gray-500">{slot.description}</p>
+   431→                        </div>
+   432→                      </div>
+   433→                    </Label>
+   434→                  </div>
+   435→                ))}
+   436→              </RadioGroup>
+   437→
+   438→              <div className="flex justify-between pt-6">
+   439→                <Button variant="outline" onClick={handleBack}>
+   440→                  Back
+   441→                </Button>
+   442→                <Button
+   443→                  onClick={handleNext}
+   444→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   445→                >
+   446→                  Review Order
+   447→                  <ChevronRight className="h-4 w-4 ml-1" />
+   448→                </Button>
+   449→              </div>
+   450→            </CardContent>
+   451→          </Card>
+   452→        )}
+   453→
+   454→        {currentStep === 'summary' && (
+   455→          <Card>
+   456→            <CardHeader>
+   457→              <CardTitle className="flex items-center gap-2">
+   458→                <ShoppingBag className="h-5 w-5 text-[#16a34a]" />
+   459→                Order Summary
+   460→              </CardTitle>
+   461→            </CardHeader>
+   462→            <CardContent className="space-y-6">
+   463→              {/* Delivery Address */}
+   464→              <div>
+   465→                <h3 className="font-medium text-sm text-gray-700 mb-2">Delivery Address</h3>
+   466→                <p className="text-sm text-gray-900">
+   467→                  {addressLine1}
+   468→                  {addressLine2 && `, ${addressLine2}`}
+   469→                  <br />
+   470→                  {city}, {postcode}
+   471→                </p>
+   472→              </div>
+   473→
+   474→              {/* Delivery Slot */}
+   475→              <div>
+   476→                <h3 className="font-medium text-sm text-gray-700 mb-2">Delivery Slot</h3>
+   477→                <p className="text-sm text-gray-900">
+   478→                  {deliverySlots.find((s) => s.id === selectedSlot)?.label}
+   479→                </p>
+   480→              </div>
+   481→
+   482→              <Separator />
+   483→
+   484→              {/* Items */}
+   485→              <div>
+   486→                <h3 className="font-medium text-sm text-gray-700 mb-3">Items ({items.length})</h3>
+   487→                <div className="space-y-3">
+   488→                  {items.map((item) => (
+   489→                    <div key={item.product.id} className="flex items-center justify-between text-sm">
+   490→                      <div className="flex items-center gap-3">
+   491→                        <span className="text-lg">
+   492→                          {categoryIcons[item.product.category?.slug || ''] || '🛒'}
+   493→                        </span>
+   494→                        <div>
+   495→                          <p className="font-medium">{item.product.name}</p>
+   496→                          <p className="text-xs text-gray-500">
+   497→                            {formatPrice(item.product.price)} × {item.quantity}
+   498→                          </p>
+   499→                        </div>
+   500→                      </div>
+   501→                      <span className="font-medium">{formatPrice(item.product.price * item.quantity)}</span>
+   502→                    </div>
+   503→                  ))}
+   504→                </div>
+   505→              </div>
+   506→
+   507→              <Separator />
+   508→
+   509→              {/* Totals */}
+   510→              <div className="space-y-2">
+   511→                <div className="flex justify-between text-sm">
+   512→                  <span className="text-gray-600">Subtotal</span>
+   513→                  <span className="font-medium">{formatPrice(subtotal)}</span>
+   514→                </div>
+   515→                {Object.entries(vatGroups).map(([rate, group]) => (
+   516→                  <div key={rate} className="flex justify-between text-sm">
+   517→                    <span className="text-gray-500">{group.label} VAT</span>
+   518→                    <span className="text-gray-600">{formatPrice(group.vat)}</span>
+   519→                  </div>
+   520→                ))}
+   521→                <div className="flex justify-between text-sm">
+   522→                  <span className="text-gray-600">Delivery fee</span>
+   523→                  <span className="font-medium">
+   524→                    {isFreeDelivery ? (
+   525→                      <span className="text-[#16a34a]">Free</span>
+   526→                    ) : (
+   527→                      formatPrice(deliveryFee)
+   528→                    )}
+   529→                  </span>
+   530→                </div>
+   531→                <Separator />
+   532→                <div className="flex justify-between text-base font-bold">
+   533→                  <span>Total</span>
+   534→                  <span>{formatPrice(total)}</span>
+   535→                </div>
+   536→              </div>
+   537→
+   538→              <div className="flex justify-between pt-2">
+   539→                <Button variant="outline" onClick={handleBack}>
+   540→                  Back
+   541→                </Button>
+   542→                <Button
+   543→                  onClick={handleNext}
+   544→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   545→                >
+   546→                  Proceed to Payment
+   547→                  <ChevronRight className="h-4 w-4 ml-1" />
+   548→                </Button>
+   549→              </div>
+   550→            </CardContent>
+   551→          </Card>
+   552→        )}
+   553→
+   554→        {currentStep === 'payment' && (
+   555→          <Card>
+   556→            <CardHeader>
+   557→              <CardTitle className="flex items-center gap-2">
+   558→                <CreditCard className="h-5 w-5 text-[#16a34a]" />
+   559→                Payment
+   560→              </CardTitle>
+   561→            </CardHeader>
+   562→            <CardContent className="space-y-6">
+   563→              {/* Total amount */}
+   564→              <div className="bg-gray-50 rounded-lg p-4 text-center">
+   565→                <p className="text-sm text-gray-600 mb-3">
+   566→                  Total amount to pay
+   567→                </p>
+   568→                <p className="text-3xl font-bold text-gray-900">{formatPrice(total)}</p>
+   569→                {totalVat > 0 && (
+   570→                  <p className="text-xs text-gray-400 mt-1">
+   571→                    Includes {formatPrice(totalVat)} VAT
+   572→                  </p>
+   573→                )}
+   574→              </div>
+   575→
+   576→              {/* Payment Method Selection */}
+   577→              <div className="space-y-3">
+   578→                <Label className="text-sm font-medium text-gray-700">Select Payment Method</Label>
+   579→                <RadioGroup
+   580→                  value={paymentMethod}
+   581→                  onValueChange={(val) => setPaymentMethod(val as PaymentMethod)}
+   582→                  className="space-y-3"
+   583→                >
+   584→                  {/* Card Payment (Stripe) */}
+   585→                  <Label
+   586→                    htmlFor="payment-card"
+   587→                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+   588→                      paymentMethod === 'card'
+   589→                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+   590→                        : 'border-gray-200 hover:border-gray-300'
+   591→                    }`}
+   592→                  >
+   593→                    <RadioGroupItem value="card" id="payment-card" />
+   594→                    <CreditCard className="h-5 w-5 text-gray-600 shrink-0" />
+   595→                    <div className="flex-1">
+   596→                      <p className="font-medium text-sm">Card Payment</p>
+   597→                      <p className="text-xs text-gray-500">Pay securely with Stripe — Visa, Mastercard, Amex</p>
+   598→                    </div>
+   599→                    <span className="text-xs text-gray-400">Free</span>
+   600→                  </Label>
+   601→
+   602→                  {/* Cash on Delivery */}
+   603→                  <Label
+   604→                    htmlFor="payment-cash"
+   605→                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+   606→                      paymentMethod === 'cash'
+   607→                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+   608→                        : 'border-gray-200 hover:border-gray-300'
+   609→                    }`}
+   610→                  >
+   611→                    <RadioGroupItem value="cash" id="payment-cash" />
+   612→                    <Banknote className="h-5 w-5 text-gray-600 shrink-0" />
+   613→                    <div className="flex-1">
+   614→                      <p className="font-medium text-sm">Cash on Delivery</p>
+   615→                      <p className="text-xs text-gray-500">Pay with cash when your order arrives</p>
+   616→                    </div>
+   617→                    <span className="text-xs text-gray-400">Free</span>
+   618→                  </Label>
+   619→
+   620→                  {/* Bank Transfer */}
+   621→                  <Label
+   622→                    htmlFor="payment-bank"
+   623→                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+   624→                      paymentMethod === 'bank_transfer'
+   625→                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+   626→                        : 'border-gray-200 hover:border-gray-300'
+   627→                    }`}
+   628→                  >
+   629→                    <RadioGroupItem value="bank_transfer" id="payment-bank" />
+   630→                    <Building2 className="h-5 w-5 text-gray-600 shrink-0" />
+   631→                    <div className="flex-1">
+   632→                      <p className="font-medium text-sm">Bank Transfer</p>
+   633→                      <p className="text-xs text-gray-500">Transfer directly to our bank account</p>
+   634→                    </div>
+   635→                    <span className="text-xs text-gray-400">Free</span>
+   636→                  </Label>
+   637→                </RadioGroup>
+   638→              </div>
+   639→
+   640→              {/* Card Payment Info */}
+   641→              {paymentMethod === 'card' && (
+   642→                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+   643→                  <p className="text-sm text-amber-800">
+   644→                    <strong>Note:</strong> You will be redirected to Stripe&apos;s secure checkout to complete payment.
+   645→                    {!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY && (
+   646→                      <><br /><strong>Demo Mode:</strong> Stripe is not configured. Payment will be simulated.</>
+   647→                    )}
+   648→                  </p>
+   649→                </div>
+   650→              )}
+   651→
+   652→              {/* Cash on Delivery Info */}
+   653→              {paymentMethod === 'cash' && (
+   654→                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+   655→                  <div className="flex items-start gap-2">
+   656→                    <Banknote className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+   657→                    <div>
+   658→                      <p className="text-sm font-medium text-blue-800">Cash on Delivery</p>
+   659→                      <p className="text-xs text-blue-700 mt-1">
+   660→                        Please have the exact amount ready: <strong>{formatPrice(total)}</strong>. 
+   661→                        Our driver will collect payment upon delivery. No additional fees apply.
+   662→                      </p>
+   663→                    </div>
+   664→                  </div>
+   665→                </div>
+   666→              )}
+   667→
+   668→              {/* Bank Transfer Info */}
+   669→              {paymentMethod === 'bank_transfer' && (
+   670→                <div className="space-y-4">
+   671→                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+   672→                    <div className="flex items-start gap-2">
+   673→                      <Building2 className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+   674→                      <div>
+   675→                        <p className="text-sm font-medium text-purple-800">Bank Transfer</p>
+   676→                        <p className="text-xs text-purple-700 mt-1">
+   677→                          Your order will be placed and you&apos;ll receive bank details to complete the transfer.
+   678→                          Payment must be received before delivery can be dispatched.
+   679→                        </p>
+   680→                      </div>
+   681→                    </div>
+   682→                  </div>
+   683→
+   684→                  {/* Reference number input */}
+   685→                  <div className="space-y-2">
+   686→                    <Label htmlFor="bankRef" className="text-sm font-medium text-gray-700">
+   687→                      Payment Reference (Optional)
+   688→                    </Label>
+   689→                    <Input
+   690→                      id="bankRef"
+   691→                      placeholder="e.g., Your bank transfer reference"
+   692→                      value={bankTransferRef}
+   693→                      onChange={(e) => setBankTransferRef(e.target.value)}
+   694→                    />
+   695→                    <p className="text-xs text-gray-400 flex items-center gap-1">
+   696→                      <Info className="h-3 w-3" />
+   697→                      Add a reference to help us match your payment faster
+   698→                    </p>
+   699→                  </div>
+   700→                </div>
+   701→              )}
+   702→
+   703→              {/* Place Order Button */}
+   704→              <Button
+   705→                onClick={handlePlaceOrder}
+   706→                className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold h-12 text-base"
+   707→                disabled={loading}
+   708→              >
+   709→                {loading ? (
+   710→                  <>
+   711→                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+   712→                    Placing Order...
+   713→                  </>
+   714→                ) : paymentMethod === 'card' ? (
+   715→                  <>
+   716→                    <CreditCard className="h-5 w-5 mr-2" />
+   717→                    Pay with Card — {formatPrice(total)}
+   718→                  </>
+   719→                ) : paymentMethod === 'cash' ? (
+   720→                  <>
+   721→                    <Banknote className="h-5 w-5 mr-2" />
+   722→                    Place Order (Cash on Delivery)
+   723→                  </>
+   724→                ) : (
+   725→                  <>
+   726→                    <Building2 className="h-5 w-5 mr-2" />
+   727→                    Place Order (Bank Transfer)
+   728→                  </>
+   729→                )}
+   730→              </Button>
+   731→
+   732→              <Button variant="ghost" onClick={handleBack} className="w-full" disabled={loading}>
+   733→                Back to Summary
+   734→              </Button>
+   735→            </CardContent>
+   736→          </Card>
+   737→        )}
+   738→      </div>
+   739→    </CustomerLayout>
+   740→  )
+   741→}
+   742→

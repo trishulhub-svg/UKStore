@@ -1,0 +1,1187 @@
+     1→'use client'
+     2→
+     3→import { useState, useCallback } from 'react'
+     4→import Link from 'next/link'
+     5→import {
+     6→  Key, Eye, EyeOff, Save, CheckCircle2, AlertTriangle, Loader2, Shield, RefreshCw,
+     7→  Store as StoreIcon, Truck, FileText, ExternalLink, MapPin, Info, PoundSterling,
+     8→} from 'lucide-react'
+     9→import { Button } from '@/components/ui/button'
+    10→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Label } from '@/components/ui/label'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import { Separator } from '@/components/ui/separator'
+    15→import { Switch } from '@/components/ui/switch'
+    16→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    17→import {
+    18→  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+    19→} from '@/components/ui/table'
+    20→import { ErrorAlert } from '@/components/ui/error-alert'
+    21→import type { TechnicalError } from '@/components/ui/error-alert'
+    22→import { SETTING_DEFINITIONS, type StoreSetting, type Store as StoreType, type DeliveryZone } from '@/types'
+    23→import { formatPrice } from '@/lib/vat'
+    24→
+    25→// ─── Types ────────────────────────────────────────────────────
+    26→
+    27→interface VatStats {
+    28→  standardCount: number
+    29→  reducedCount: number
+    30→  zeroCount: number
+    31→  hfssCount: number
+    32→}
+    33→
+    34→interface AdminSettingsClientProps {
+    35→  settings: StoreSetting[]
+    36→  store: StoreType | null
+    37→  deliveryZones: DeliveryZone[]
+    38→  vatStats: VatStats
+    39→  userId: string
+    40→}
+    41→
+    42→type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+    43→
+    44→// ─── Component ────────────────────────────────────────────────
+    45→
+    46→export function AdminSettingsClient({
+    47→  settings,
+    48→  store,
+    49→  deliveryZones,
+    50→  vatStats,
+    51→  userId,
+    52→}: AdminSettingsClientProps) {
+    53→  // ─── API Keys State (existing) ──────────────────────────────
+    54→  const [formValues, setFormValues] = useState<Record<string, string>>(() => {
+    55→    const vals: Record<string, string> = {}
+    56→    for (const setting of settings) {
+    57→      vals[setting.key] = setting.value || ''
+    58→    }
+    59→    return vals
+    60→  })
+    61→
+    62→  const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({})
+    63→  const [changedKeys, setChangedKeys] = useState<Set<string>>(new Set())
+    64→  const [apiSaveStatus, setApiSaveStatus] = useState<SaveStatus>('idle')
+    65→  const [errorMessage, setErrorMessage] = useState<string | TechnicalError | null>(null)
+    66→  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+    67→
+    68→  // ─── Store Information State ────────────────────────────────
+    69→  const [storeForm, setStoreForm] = useState<Record<string, any>>(() => ({
+    70→    name: store?.name || '',
+    71→    address: store?.address || '',
+    72→    phone: store?.phone || '',
+    73→    email: store?.email || '',
+    74→    latitude: store?.latitude ?? 0,
+    75→    longitude: store?.longitude ?? 0,
+    76→    base_delivery_fee: store?.base_delivery_fee ?? 0,
+    77→    per_km_charge: store?.per_km_charge ?? 0,
+    78→    free_delivery_threshold: store?.free_delivery_threshold ?? 0,
+    79→    delivery_radius_km: store?.delivery_radius_km ?? 0,
+    80→    is_active: store?.is_active ?? true,
+    81→  }))
+    82→
+    83→  const [storeChanged, setStoreChanged] = useState(false)
+    84→  const [storeSaveStatus, setStoreSaveStatus] = useState<SaveStatus>('idle')
+    85→  const [storeError, setStoreError] = useState<string | null>(null)
+    86→
+    87→  // ─── API Keys Handlers (existing) ──────────────────────────
+    88→  const toggleVisibility = useCallback((key: string) => {
+    89→    setVisibleKeys((prev) => ({ ...prev, [key]: !prev[key] }))
+    90→  }, [])
+    91→
+    92→  const handleValueChange = useCallback((key: string, value: string) => {
+    93→    setFormValues((prev) => ({ ...prev, [key]: value }))
+    94→    setChangedKeys((prev) => new Set(prev).add(key))
+    95→    setApiSaveStatus('idle')
+    96→    setErrorMessage(null)
+    97→    setFieldErrors((prev) => {
+    98→      const next = { ...prev }
+    99→      delete next[key]
+   100→      return next
+   101→    })
+   102→  }, [])
+   103→
+   104→  const validateApiKeys = useCallback((): boolean => {
+   105→    const errors: Record<string, string> = {}
+   106→
+   107→    for (const [key, value] of Object.entries(formValues)) {
+   108→      if (!value.trim()) continue
+   109→
+   110→      if (key === 'stripe_publishable_key' && !value.startsWith('pk_')) {
+   111→        errors[key] = 'Must start with pk_test_ or pk_live_'
+   112→      }
+   113→      if (key === 'stripe_secret_key' && !value.startsWith('sk_')) {
+   114→        errors[key] = 'Must start with sk_test_ or sk_live_'
+   115→      }
+   116→      if (key === 'stripe_webhook_secret' && !value.startsWith('whsec_')) {
+   117→        errors[key] = 'Must start with whsec_'
+   118→      }
+   119→      if (key === 'google_oauth_client_id' && !value.includes('.apps.googleusercontent.com') && value.length > 0) {
+   120→        errors[key] = 'Should end with .apps.googleusercontent.com'
+   121→      }
+   122→    }
+   123→
+   124→    setFieldErrors(errors)
+   125→    return Object.keys(errors).length === 0
+   126→  }, [formValues])
+   127→
+   128→  const handleApiKeysSave = useCallback(async () => {
+   129→    if (!validateApiKeys()) return
+   130→
+   131→    setApiSaveStatus('saving')
+   132→    setErrorMessage(null)
+   133→
+   134→    try {
+   135→      const updates = Array.from(changedKeys).map((key) => ({
+   136→        key,
+   137→        value: formValues[key] || '',
+   138→        last_updated_by: userId,
+   139→      }))
+   140→
+   141→      const response = await fetch('/api/admin/settings', {
+   142→        method: 'PUT',
+   143→        headers: { 'Content-Type': 'application/json' },
+   144→        body: JSON.stringify({ settings: updates }),
+   145→      })
+   146→
+   147→      const data = await response.json()
+   148→
+   149→      if (!response.ok) {
+   150→        const timestamp = new Date().toISOString()
+   151→        const techErr = data.technicalError
+   152→        if (techErr) {
+   153→          setErrorMessage({ ...techErr, timestamp: techErr.timestamp || timestamp })
+   154→        } else {
+   155→          setErrorMessage({
+   156→            message: data.error || 'Failed to save settings.',
+   157→            code: `HTTP_${response.status}`,
+   158→            status: response.status,
+   159→            details: JSON.stringify(data, null, 2),
+   160→            timestamp,
+   161→            endpoint: '/api/admin/settings',
+   162→          })
+   163→        }
+   164→        setApiSaveStatus('error')
+   165→        return
+   166→      }
+   167→
+   168→      setChangedKeys(new Set())
+   169→      setApiSaveStatus('saved')
+   170→      setTimeout(() => setApiSaveStatus('idle'), 3000)
+   171→    } catch (err) {
+   172→      setApiSaveStatus('error')
+   173→      const errMsg = err instanceof Error ? err.message : String(err)
+   174→      setErrorMessage({
+   175→        message: 'Failed to save settings due to a network or client error.',
+   176→        code: 'CLIENT_ERROR',
+   177→        details: `Error: ${errMsg}\n${err instanceof Error ? err.stack || '' : ''}`,
+   178→        timestamp: new Date().toISOString(),
+   179→        endpoint: '/api/admin/settings',
+   180→      })
+   181→    }
+   182→  }, [changedKeys, formValues, userId, validateApiKeys])
+   183→
+   184→  // ─── Store Information Handlers ────────────────────────────
+   185→  const handleStoreFieldChange = useCallback((field: string, value: any) => {
+   186→    setStoreForm((prev) => ({ ...prev, [field]: value }))
+   187→    setStoreChanged(true)
+   188→    setStoreSaveStatus('idle')
+   189→    setStoreError(null)
+   190→  }, [])
+   191→
+   192→  const handleStoreSave = useCallback(async () => {
+   193→    setStoreSaveStatus('saving')
+   194→    setStoreError(null)
+   195→
+   196→    try {
+   197→      const response = await fetch('/api/admin/settings', {
+   198→        method: 'PATCH',
+   199→        headers: { 'Content-Type': 'application/json' },
+   200→        body: JSON.stringify({
+   201→          store: {
+   202→            name: storeForm.name,
+   203→            address: storeForm.address,
+   204→            phone: storeForm.phone,
+   205→            email: storeForm.email,
+   206→            base_delivery_fee: Number(storeForm.base_delivery_fee),
+   207→            per_km_charge: Number(storeForm.per_km_charge),
+   208→            free_delivery_threshold: Number(storeForm.free_delivery_threshold),
+   209→            delivery_radius_km: Number(storeForm.delivery_radius_km),
+   210→            is_active: storeForm.is_active,
+   211→          },
+   212→        }),
+   213→      })
+   214→
+   215→      const data = await response.json()
+   216→
+   217→      if (!response.ok) {
+   218→        setStoreError(data.error || 'Failed to save store information.')
+   219→        setStoreSaveStatus('error')
+   220→        return
+   221→      }
+   222→
+   223→      setStoreChanged(false)
+   224→      setStoreSaveStatus('saved')
+   225→      setTimeout(() => setStoreSaveStatus('idle'), 3000)
+   226→    } catch (err) {
+   227→      setStoreSaveStatus('error')
+   228→      setStoreError(err instanceof Error ? err.message : 'Failed to save store information.')
+   229→    }
+   230→  }, [storeForm])
+   231→
+   232→  // ─── Group settings by category (for API Keys tab) ─────────
+   233→  const categories: Record<string, StoreSetting[]> = {}
+   234→  for (const setting of settings) {
+   235→    if (!categories[setting.category]) {
+   236→      categories[setting.category] = []
+   237→    }
+   238→    categories[setting.category].push(setting)
+   239→  }
+   240→
+   241→  const categoryLabels: Record<string, { label: string; icon: string; description: string }> = {
+   242→    integrations: {
+   243→      label: 'Payment & Integrations',
+   244→      icon: '🔌',
+   245→      description: 'API keys for third-party services. These are stored securely and only accessible by store owners.',
+   246→    },
+   247→    notifications: {
+   248→      label: 'Notifications',
+   249→      icon: '📧',
+   250→      description: 'Email and notification service configuration.',
+   251→    },
+   252→    delivery: {
+   253→      label: 'Delivery',
+   254→      icon: '🚚',
+   255→      description: 'Delivery and logistics provider configuration.',
+   256→    },
+   257→    general: {
+   258→      label: 'General',
+   259→      icon: '⚙️',
+   260→      description: 'General store configuration.',
+   261→    },
+   262→  }
+   263→
+   264→  const apiHasChanges = changedKeys.size > 0
+   265→  const configuredCount = settings.filter((s) => s.value && s.value.length > 0).length
+   266→  const totalCount = settings.length
+   267→
+   268→  // ─── Delivery Zones helpers ────────────────────────────────
+   269→  const parsePostcodes = (json: string): string[] => {
+   270→    try {
+   271→      return JSON.parse(json)
+   272→    } catch {
+   273→      return []
+   274→    }
+   275→  }
+   276→
+   277→  const totalPostcodes = deliveryZones.reduce((acc, z) => {
+   278→    return acc + parsePostcodes(z.postcodes).length
+   279→  }, 0)
+   280→
+   281→  const activeZones = deliveryZones.filter((z) => z.is_active).length
+   282→
+   283→  // ─── Render ────────────────────────────────────────────────
+   284→  return (
+   285→    <div>
+   286→      {/* Page Header */}
+   287→      <div className="mb-6">
+   288→        <div className="flex items-center gap-3 mb-2">
+   289→          <Shield className="h-6 w-6 text-[#16a34a]" />
+   290→          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Settings</h1>
+   291→        </div>
+   292→        <p className="text-gray-500">
+   293→          Manage your store information, integrations, delivery settings, and compliance.
+   294→        </p>
+   295→      </div>
+   296→
+   297→      {/* Tabbed Interface */}
+   298→      <Tabs defaultValue="store" className="w-full">
+   299→        <TabsList className="w-full sm:w-auto mb-6 flex flex-wrap h-auto gap-1 p-1">
+   300→          <TabsTrigger value="store" className="gap-1.5 text-xs sm:text-sm">
+   301→            <StoreIcon className="h-4 w-4" />
+   302→            <span className="hidden sm:inline">Store Information</span>
+   303→            <span className="sm:hidden">Store</span>
+   304→          </TabsTrigger>
+   305→          <TabsTrigger value="api-keys" className="gap-1.5 text-xs sm:text-sm">
+   306→            <Key className="h-4 w-4" />
+   307→            <span className="hidden sm:inline">API Keys</span>
+   308→            <span className="sm:hidden">API</span>
+   309→            {apiHasChanges && (
+   310→              <span className="h-2 w-2 rounded-full bg-amber-500" />
+   311→            )}
+   312→          </TabsTrigger>
+   313→          <TabsTrigger value="delivery" className="gap-1.5 text-xs sm:text-sm">
+   314→            <Truck className="h-4 w-4" />
+   315→            <span className="hidden sm:inline">Delivery & Zones</span>
+   316→            <span className="sm:hidden">Delivery</span>
+   317→          </TabsTrigger>
+   318→          <TabsTrigger value="vat" className="gap-1.5 text-xs sm:text-sm">
+   319→            <FileText className="h-4 w-4" />
+   320→            <span className="hidden sm:inline">VAT & Compliance</span>
+   321→            <span className="sm:hidden">VAT</span>
+   322→          </TabsTrigger>
+   323→        </TabsList>
+   324→
+   325→        {/* ─── Tab 1: Store Information ──────────────────────── */}
+   326→        <TabsContent value="store">
+   327→          {/* Save Bar (sticky) */}
+   328→          {storeChanged && (
+   329→            <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm -mx-6 px-6 py-3 mb-6 flex items-center justify-between">
+   330→              <div className="flex items-center gap-2 text-sm">
+   331→                <RefreshCw className="h-4 w-4 text-amber-500" />
+   332→                <span className="text-gray-700">Unsaved changes</span>
+   333→              </div>
+   334→              <div className="flex items-center gap-3">
+   335→                {storeSaveStatus === 'saved' && (
+   336→                  <span className="text-sm text-green-600 font-medium flex items-center gap-1">
+   337→                    <CheckCircle2 className="h-4 w-4" /> Saved!
+   338→                  </span>
+   339→                )}
+   340→                {storeSaveStatus === 'error' && (
+   341→                  <span className="text-sm text-red-600 font-medium">Failed to save</span>
+   342→                )}
+   343→                <Button
+   344→                  onClick={handleStoreSave}
+   345→                  disabled={storeSaveStatus === 'saving'}
+   346→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   347→                >
+   348→                  {storeSaveStatus === 'saving' ? (
+   349→                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+   350→                  ) : (
+   351→                    <><Save className="h-4 w-4 mr-2" /> Save Changes</>
+   352→                  )}
+   353→                </Button>
+   354→              </div>
+   355→            </div>
+   356→          )}
+   357→
+   358→          {storeError && (
+   359→            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+   360→              <div className="flex items-center gap-2">
+   361→                <AlertTriangle className="h-4 w-4 text-red-600" />
+   362→                <p className="text-sm text-red-700">{storeError}</p>
+   363→              </div>
+   364→            </div>
+   365→          )}
+   366→
+   367→          {/* Basic Information */}
+   368→          <Card className="mb-6">
+   369→            <CardHeader>
+   370→              <CardTitle className="flex items-center gap-2 text-lg">
+   371→                <StoreIcon className="h-5 w-5 text-[#16a34a]" />
+   372→                Basic Information
+   373→              </CardTitle>
+   374→              <CardDescription>Your store&apos;s public-facing details.</CardDescription>
+   375→            </CardHeader>
+   376→            <CardContent className="space-y-5">
+   377→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+   378→                <div className="space-y-2">
+   379→                  <Label htmlFor="store-name" className="text-sm font-medium text-gray-700">
+   380→                    Store Name
+   381→                  </Label>
+   382→                  <Input
+   383→                    id="store-name"
+   384→                    type="text"
+   385→                    value={storeForm.name}
+   386→                    onChange={(e) => handleStoreFieldChange('name', e.target.value)}
+   387→                    placeholder="Fresh Mart UK"
+   388→                  />
+   389→                </div>
+   390→                <div className="space-y-2">
+   391→                  <Label htmlFor="store-address" className="text-sm font-medium text-gray-700">
+   392→                    Store Address
+   393→                  </Label>
+   394→                  <Input
+   395→                    id="store-address"
+   396→                    type="text"
+   397→                    value={storeForm.address}
+   398→                    onChange={(e) => handleStoreFieldChange('address', e.target.value)}
+   399→                    placeholder="123 High Street, London"
+   400→                  />
+   401→                </div>
+   402→              </div>
+   403→
+   404→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+   405→                <div className="space-y-2">
+   406→                  <Label htmlFor="store-phone" className="text-sm font-medium text-gray-700">
+   407→                    Phone
+   408→                  </Label>
+   409→                  <Input
+   410→                    id="store-phone"
+   411→                    type="text"
+   412→                    value={storeForm.phone || ''}
+   413→                    onChange={(e) => handleStoreFieldChange('phone', e.target.value)}
+   414→                    placeholder="+44 20 1234 5678"
+   415→                  />
+   416→                </div>
+   417→                <div className="space-y-2">
+   418→                  <Label htmlFor="store-email" className="text-sm font-medium text-gray-700">
+   419→                    Email
+   420→                  </Label>
+   421→                  <Input
+   422→                    id="store-email"
+   423→                    type="email"
+   424→                    value={storeForm.email || ''}
+   425→                    onChange={(e) => handleStoreFieldChange('email', e.target.value)}
+   426→                    placeholder="hello@freshmart.co.uk"
+   427→                  />
+   428→                </div>
+   429→              </div>
+   430→
+   431→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+   432→                <div className="space-y-2">
+   433→                  <Label htmlFor="store-latitude" className="text-sm font-medium text-gray-500">
+   434→                    Latitude
+   435→                  </Label>
+   436→                  <Input
+   437→                    id="store-latitude"
+   438→                    type="number"
+   439→                    step="0.000001"
+   440→                    value={storeForm.latitude}
+   441→                    readOnly
+   442→                    className="bg-gray-50 text-gray-500 cursor-not-allowed"
+   443→                  />
+   444→                  <p className="text-xs text-gray-400">Read-only — set during store setup</p>
+   445→                </div>
+   446→                <div className="space-y-2">
+   447→                  <Label htmlFor="store-longitude" className="text-sm font-medium text-gray-500">
+   448→                    Longitude
+   449→                  </Label>
+   450→                  <Input
+   451→                    id="store-longitude"
+   452→                    type="number"
+   453→                    step="0.000001"
+   454→                    value={storeForm.longitude}
+   455→                    readOnly
+   456→                    className="bg-gray-50 text-gray-500 cursor-not-allowed"
+   457→                  />
+   458→                  <p className="text-xs text-gray-400">Read-only — set during store setup</p>
+   459→                </div>
+   460→              </div>
+   461→
+   462→              <Separator />
+   463→
+   464→              <div className="flex items-center justify-between">
+   465→                <div className="space-y-0.5">
+   466→                  <Label className="text-sm font-medium text-gray-700">Store Active</Label>
+   467→                  <p className="text-xs text-gray-500">When active, customers can place orders.</p>
+   468→                </div>
+   469→                <Switch
+   470→                  checked={storeForm.is_active}
+   471→                  onCheckedChange={(v) => handleStoreFieldChange('is_active', v)}
+   472→                />
+   473→              </div>
+   474→            </CardContent>
+   475→          </Card>
+   476→
+   477→          {/* Delivery Pricing */}
+   478→          <Card className="mb-6">
+   479→            <CardHeader>
+   480→              <CardTitle className="flex items-center gap-2 text-lg">
+   481→                <PoundSterling className="h-5 w-5 text-[#16a34a]" />
+   482→                Delivery Pricing
+   483→              </CardTitle>
+   484→              <CardDescription>
+   485→                Configure how delivery fees are calculated. These are the default rates — delivery zones can override them.
+   486→              </CardDescription>
+   487→            </CardHeader>
+   488→            <CardContent className="space-y-5">
+   489→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+   490→                <div className="space-y-2">
+   491→                  <Label htmlFor="base-delivery-fee" className="text-sm font-medium text-gray-700">
+   492→                    Base Delivery Fee (GBP)
+   493→                  </Label>
+   494→                  <div className="relative">
+   495→                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">£</span>
+   496→                    <Input
+   497→                      id="base-delivery-fee"
+   498→                      type="number"
+   499→                      step="0.01"
+   500→                      min="0"
+   501→                      value={storeForm.base_delivery_fee}
+   502→                      onChange={(e) => handleStoreFieldChange('base_delivery_fee', e.target.value)}
+   503→                      className="pl-7"
+   504→                    />
+   505→                  </div>
+   506→                  <p className="text-xs text-gray-500">Fixed fee applied to every delivery</p>
+   507→                </div>
+   508→                <div className="space-y-2">
+   509→                  <Label htmlFor="per-km-charge" className="text-sm font-medium text-gray-700">
+   510→                    Per KM Charge (GBP)
+   511→                  </Label>
+   512→                  <div className="relative">
+   513→                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">£</span>
+   514→                    <Input
+   515→                      id="per-km-charge"
+   516→                      type="number"
+   517→                      step="0.01"
+   518→                      min="0"
+   519→                      value={storeForm.per_km_charge}
+   520→                      onChange={(e) => handleStoreFieldChange('per_km_charge', e.target.value)}
+   521→                      className="pl-7"
+   522→                    />
+   523→                  </div>
+   524→                  <p className="text-xs text-gray-500">Additional charge per kilometre from store</p>
+   525→                </div>
+   526→              </div>
+   527→
+   528→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+   529→                <div className="space-y-2">
+   530→                  <Label htmlFor="free-delivery-threshold" className="text-sm font-medium text-gray-700">
+   531→                    Free Delivery Threshold (GBP)
+   532→                  </Label>
+   533→                  <div className="relative">
+   534→                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">£</span>
+   535→                    <Input
+   536→                      id="free-delivery-threshold"
+   537→                      type="number"
+   538→                      step="0.01"
+   539→                      min="0"
+   540→                      value={storeForm.free_delivery_threshold}
+   541→                      onChange={(e) => handleStoreFieldChange('free_delivery_threshold', e.target.value)}
+   542→                      className="pl-7"
+   543→                    />
+   544→                  </div>
+   545→                  <p className="text-xs text-gray-500">Orders above this amount get free delivery</p>
+   546→                </div>
+   547→                <div className="space-y-2">
+   548→                  <Label htmlFor="delivery-radius-km" className="text-sm font-medium text-gray-700">
+   549→                    Delivery Radius (KM)
+   550→                  </Label>
+   551→                  <Input
+   552→                    id="delivery-radius-km"
+   553→                    type="number"
+   554→                    step="0.1"
+   555→                    min="0"
+   556→                    value={storeForm.delivery_radius_km}
+   557→                    onChange={(e) => handleStoreFieldChange('delivery_radius_km', e.target.value)}
+   558→                  />
+   559→                  <p className="text-xs text-gray-500">Maximum delivery distance from store</p>
+   560→                </div>
+   561→              </div>
+   562→
+   563→              {/* Current pricing preview */}
+   564→              <Separator />
+   565→              <div className="bg-gray-50 rounded-lg p-4">
+   566→                <p className="text-xs font-medium text-gray-500 mb-2">CURRENT PRICING PREVIEW</p>
+   567→                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   568→                  <div>
+   569→                    <p className="text-xs text-gray-400">Base Fee</p>
+   570→                    <p className="text-lg font-semibold text-gray-900">{formatPrice(Number(storeForm.base_delivery_fee) || 0)}</p>
+   571→                  </div>
+   572→                  <div>
+   573→                    <p className="text-xs text-gray-400">Per KM</p>
+   574→                    <p className="text-lg font-semibold text-gray-900">{formatPrice(Number(storeForm.per_km_charge) || 0)}</p>
+   575→                  </div>
+   576→                  <div>
+   577→                    <p className="text-xs text-gray-400">Free Above</p>
+   578→                    <p className="text-lg font-semibold text-gray-900">{formatPrice(Number(storeForm.free_delivery_threshold) || 0)}</p>
+   579→                  </div>
+   580→                  <div>
+   581→                    <p className="text-xs text-gray-400">Max Radius</p>
+   582→                    <p className="text-lg font-semibold text-gray-900">{Number(storeForm.delivery_radius_km) || 0} km</p>
+   583→                  </div>
+   584→                </div>
+   585→              </div>
+   586→            </CardContent>
+   587→          </Card>
+   588→
+   589→          {/* Bottom Save Button */}
+   590→          {storeChanged && (
+   591→            <div className="flex justify-end pt-2 pb-4">
+   592→              <Button
+   593→                onClick={handleStoreSave}
+   594→                disabled={storeSaveStatus === 'saving'}
+   595→                size="lg"
+   596→                className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   597→              >
+   598→                {storeSaveStatus === 'saving' ? (
+   599→                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+   600→                ) : (
+   601→                  <><Save className="h-4 w-4 mr-2" /> Save Store Information</>
+   602→                )}
+   603→              </Button>
+   604→            </div>
+   605→          )}
+   606→        </TabsContent>
+   607→
+   608→        {/* ─── Tab 2: API Keys & Integrations ────────────────── */}
+   609→        <TabsContent value="api-keys">
+   610→          {/* Security Notice */}
+   611→          <Card className="mb-6 border-blue-200 bg-blue-50">
+   612→            <CardContent className="p-4">
+   613→              <div className="flex items-start gap-3">
+   614→                <Shield className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+   615→                <div>
+   616→                  <p className="font-medium text-blue-800">Secure Storage</p>
+   617→                  <p className="text-sm text-blue-700 mt-0.5">
+   618→                    API keys are protected by Row Level Security (RLS). Only users with the <strong>owner</strong> role can view and modify them.
+   619→                    Secret values are masked by default. Database values take priority over environment variables when both are set.
+   620→                  </p>
+   621→                </div>
+   622→              </div>
+   623→            </CardContent>
+   624→          </Card>
+   625→
+   626→          {/* Configuration Status */}
+   627→          <div className="flex items-center gap-3 mb-6">
+   628→            <Badge
+   629→              variant="outline"
+   630→              className={`text-sm px-3 py-1 ${
+   631→                configuredCount === totalCount
+   632→                  ? 'border-green-300 text-green-700 bg-green-50'
+   633→                  : 'border-amber-300 text-amber-700 bg-amber-50'
+   634→              }`}
+   635→            >
+   636→              {configuredCount === totalCount ? (
+   637→                <><CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> All {totalCount} keys configured</>
+   638→              ) : (
+   639→                <><AlertTriangle className="h-3.5 w-3.5 mr-1.5" /> {configuredCount}/{totalCount} keys configured</>
+   640→              )}
+   641→            </Badge>
+   642→          </div>
+   643→
+   644→          {/* Save Bar (sticky) */}
+   645→          {apiHasChanges && (
+   646→            <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm -mx-6 px-6 py-3 mb-6 flex items-center justify-between">
+   647→              <div className="flex items-center gap-2 text-sm">
+   648→                <RefreshCw className="h-4 w-4 text-amber-500" />
+   649→                <span className="text-gray-700">
+   650→                  <strong>{changedKeys.size}</strong> unsaved change{changedKeys.size !== 1 ? 's' : ''}
+   651→                </span>
+   652→              </div>
+   653→              <div className="flex items-center gap-3">
+   654→                {apiSaveStatus === 'saved' && (
+   655→                  <span className="text-sm text-green-600 font-medium flex items-center gap-1">
+   656→                    <CheckCircle2 className="h-4 w-4" /> Saved!
+   657→                  </span>
+   658→                )}
+   659→                {apiSaveStatus === 'error' && (
+   660→                  <span className="text-sm text-red-600 font-medium">Failed to save</span>
+   661→                )}
+   662→                <Button
+   663→                  onClick={handleApiKeysSave}
+   664→                  disabled={apiSaveStatus === 'saving'}
+   665→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   666→                >
+   667→                  {apiSaveStatus === 'saving' ? (
+   668→                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+   669→                  ) : (
+   670→                    <><Save className="h-4 w-4 mr-2" /> Save Changes</>
+   671→                  )}
+   672→                </Button>
+   673→              </div>
+   674→            </div>
+   675→          )}
+   676→
+   677→          {/* Error Message */}
+   678→          <ErrorAlert error={errorMessage} className="mb-6" />
+   679→
+   680→          {/* Settings by Category */}
+   681→          {Object.entries(categories).map(([category, categorySettings]) => {
+   682→            const meta = categoryLabels[category] || { label: category, icon: '⚙️', description: '' }
+   683→
+   684→            return (
+   685→              <Card key={category} className="mb-6">
+   686→                <CardHeader>
+   687→                  <CardTitle className="flex items-center gap-2 text-lg">
+   688→                    <span className="text-xl">{meta.icon}</span>
+   689→                    {meta.label}
+   690→                  </CardTitle>
+   691→                  <CardDescription>{meta.description}</CardDescription>
+   692→                </CardHeader>
+   693→                <CardContent className="space-y-6">
+   694→                  {categorySettings.map((setting, index) => {
+   695→                    const def = SETTING_DEFINITIONS[setting.key]
+   696→                    const label = def?.label || setting.key
+   697→                    const placeholder = def?.placeholder || 'Enter value...'
+   698→                    const description = setting.description || def?.description
+   699→                    const isSecret = setting.is_secret
+   700→                    const isVisible = visibleKeys[setting.key]
+   701→                    const isConfigured = !!(formValues[setting.key] && formValues[setting.key].length > 0)
+   702→                    const hasError = !!fieldErrors[setting.key]
+   703→                    const isChanged = changedKeys.has(setting.key)
+   704→
+   705→                    return (
+   706→                      <div key={setting.key}>
+   707→                        {index > 0 && <Separator className="mb-6" />}
+   708→                        <div className="space-y-2">
+   709→                          <div className="flex items-center justify-between">
+   710→                            <Label htmlFor={setting.key} className="text-sm font-medium text-gray-700">
+   711→                              {label}
+   712→                              {isSecret && (
+   713→                                <Badge variant="secondary" className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0">
+   714→                                  SECRET
+   715→                                </Badge>
+   716→                              )}
+   717→                            </Label>
+   718→                            <div className="flex items-center gap-2">
+   719→                              {isConfigured ? (
+   720→                                <Badge variant="outline" className="text-[10px] border-green-300 text-green-700 bg-green-50 px-1.5 py-0">
+   721→                                  CONFIGURED
+   722→                                </Badge>
+   723→                              ) : (
+   724→                                <Badge variant="outline" className="text-[10px] border-gray-300 text-gray-500 px-1.5 py-0">
+   725→                                  NOT SET
+   726→                                </Badge>
+   727→                              )}
+   728→                              {isChanged && (
+   729→                                <Badge variant="outline" className="text-[10px] border-blue-300 text-blue-700 bg-blue-50 px-1.5 py-0">
+   730→                                  MODIFIED
+   731→                                </Badge>
+   732→                              )}
+   733→                            </div>
+   734→                          </div>
+   735→
+   736→                          {description && (
+   737→                            <p className="text-xs text-gray-500">{description}</p>
+   738→                          )}
+   739→
+   740→                          <div className="relative">
+   741→                            <Input
+   742→                              id={setting.key}
+   743→                              type={isSecret && !isVisible ? 'password' : 'text'}
+   744→                              placeholder={placeholder}
+   745→                              value={formValues[setting.key] || ''}
+   746→                              onChange={(e) => handleValueChange(setting.key, e.target.value)}
+   747→                              className={`${hasError ? 'border-red-300 focus-visible:ring-red-500' : ''} ${isChanged ? 'border-blue-300' : ''}`}
+   748→                              autoComplete="off"
+   749→                              data-1p-ignore
+   750→                            />
+   751→                            {isSecret && (
+   752→                              <button
+   753→                                type="button"
+   754→                                onClick={() => toggleVisibility(setting.key)}
+   755→                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+   756→                              >
+   757→                                {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+   758→                              </button>
+   759→                            )}
+   760→                          </div>
+   761→
+   762→                          {hasError && (
+   763→                            <p className="text-xs text-red-600">{fieldErrors[setting.key]}</p>
+   764→                          )}
+   765→
+   766→                          <p className="text-xs text-gray-400">
+   767→                            {isConfigured
+   768→                              ? `Last updated: ${new Date(setting.updated_at).toLocaleDateString('en-GB', {
+   769→                                  day: 'numeric',
+   770→                                  month: 'short',
+   771→                                  year: 'numeric',
+   772→                                  hour: '2-digit',
+   773→                                  minute: '2-digit',
+   774→                                })}`
+   775→                              : 'No value set — will fall back to environment variable if available'
+   776→                            }
+   777→                          </p>
+   778→                        </div>
+   779→                      </div>
+   780→                    )
+   781→                  })}
+   782→                </CardContent>
+   783→              </Card>
+   784→            )
+   785→          })}
+   786→
+   787→          {/* Bottom Save Button */}
+   788→          {apiHasChanges && (
+   789→            <div className="flex justify-end pt-4">
+   790→              <Button
+   791→                onClick={handleApiKeysSave}
+   792→                disabled={apiSaveStatus === 'saving'}
+   793→                size="lg"
+   794→                className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
+   795→              >
+   796→                {apiSaveStatus === 'saving' ? (
+   797→                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+   798→                ) : (
+   799→                  <><Save className="h-4 w-4 mr-2" /> Save All Changes</>
+   800→                )}
+   801→              </Button>
+   802→            </div>
+   803→          )}
+   804→
+   805→          {/* Priority Notice */}
+   806→          <Card className="mt-8 bg-gray-50">
+   807→            <CardContent className="p-4">
+   808→              <div className="flex items-start gap-3">
+   809→                <Key className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
+   810→                <div>
+   811→                  <p className="font-medium text-gray-700 text-sm">How API Key Priority Works</p>
+   812→                  <ul className="text-xs text-gray-500 mt-2 space-y-1 list-disc list-inside">
+   813→                    <li><strong>Database values</strong> (set here) always take priority over environment variables</li>
+   814→                    <li><strong>Environment variables</strong> (.env.local) serve as fallback when no DB value is set</li>
+   815→                    <li>Clearing a value here will cause the system to fall back to the environment variable</li>
+   816→                    <li>Changes are protected by Row Level Security — only the <strong>owner</strong> role can modify these settings</li>
+   817→                    <li>All secret keys are masked by default and must be explicitly revealed</li>
+   818→                  </ul>
+   819→                </div>
+   820→              </div>
+   821→            </CardContent>
+   822→          </Card>
+   823→        </TabsContent>
+   824→
+   825→        {/* ─── Tab 3: Delivery & Zones ───────────────────────── */}
+   826→        <TabsContent value="delivery">
+   827→          {/* Link to full management */}
+   828→          <Card className="mb-6 border-[#16a34a]/20 bg-green-50">
+   829→            <CardContent className="p-4">
+   830→              <div className="flex items-center justify-between">
+   831→                <div className="flex items-start gap-3">
+   832→                  <Truck className="h-5 w-5 text-[#16a34a] mt-0.5 flex-shrink-0" />
+   833→                  <div>
+   834→                    <p className="font-medium text-green-800">Full Delivery Zone Management</p>
+   835→                    <p className="text-sm text-green-700 mt-0.5">
+   836→                      Create, edit, and delete delivery zones with postcode assignments on the dedicated management page.
+   837→                    </p>
+   838→                  </div>
+   839→                </div>
+   840→                <Link href="/admin/delivery-zones">
+   841→                  <Button variant="outline" className="border-green-300 text-green-700 hover:bg-green-100 gap-1.5 shrink-0">
+   842→                    <ExternalLink className="h-4 w-4" />
+   843→                    <span className="hidden sm:inline">Manage Zones</span>
+   844→                    <span className="sm:hidden">Open</span>
+   845→                  </Button>
+   846→                </Link>
+   847→              </div>
+   848→            </CardContent>
+   849→          </Card>
+   850→
+   851→          {/* Delivery Zones Table */}
+   852→          <Card className="mb-6">
+   853→            <CardHeader>
+   854→              <CardTitle className="flex items-center gap-2 text-lg">
+   855→                <MapPin className="h-5 w-5 text-[#16a34a]" />
+   856→                Delivery Zones
+   857→              </CardTitle>
+   858→              <CardDescription>
+   859→                {deliveryZones.length} zone{deliveryZones.length !== 1 ? 's' : ''} configured ({activeZones} active)
+   860→              </CardDescription>
+   861→            </CardHeader>
+   862→            <CardContent>
+   863→              {deliveryZones.length === 0 ? (
+   864→                <div className="text-center py-8">
+   865→                  <MapPin className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+   866→                  <p className="text-gray-500 mb-3">No delivery zones configured yet.</p>
+   867→                  <Link href="/admin/delivery-zones">
+   868→                    <Button className="bg-[#16a34a] hover:bg-[#15803d] text-white">
+   869→                      Create Your First Zone
+   870→                    </Button>
+   871→                  </Link>
+   872→                </div>
+   873→              ) : (
+   874→                <Table>
+   875→                  <TableHeader>
+   876→                    <TableRow>
+   877→                      <TableHead>Name</TableHead>
+   878→                      <TableHead>Postcodes</TableHead>
+   879→                      <TableHead>Delivery Fee</TableHead>
+   880→                      <TableHead>Min. Order</TableHead>
+   881→                      <TableHead>Status</TableHead>
+   882→                    </TableRow>
+   883→                  </TableHeader>
+   884→                  <TableBody>
+   885→                    {deliveryZones.map((zone) => {
+   886→                      const postcodes = parsePostcodes(zone.postcodes)
+   887→                      return (
+   888→                        <TableRow key={zone.id}>
+   889→                          <TableCell className="font-medium text-gray-900">
+   890→                            {zone.name}
+   891→                          </TableCell>
+   892→                          <TableCell>
+   893→                            <div className="flex flex-wrap gap-1 max-w-xs">
+   894→                              {postcodes.slice(0, 4).map((pc) => (
+   895→                                <Badge key={pc} variant="secondary" className="text-xs">{pc}</Badge>
+   896→                              ))}
+   897→                              {postcodes.length > 4 && (
+   898→                                <Badge variant="outline" className="text-xs">+{postcodes.length - 4}</Badge>
+   899→                              )}
+   900→                              {postcodes.length === 0 && (
+   901→                                <span className="text-xs text-gray-400">None</span>
+   902→                              )}
+   903→                            </div>
+   904→                          </TableCell>
+   905→                          <TableCell>{formatPrice(zone.delivery_fee)}</TableCell>
+   906→                          <TableCell>{formatPrice(zone.minimum_order)}</TableCell>
+   907→                          <TableCell>
+   908→                            {zone.is_active ? (
+   909→                              <Badge variant="outline" className="text-xs border-green-300 text-green-700 bg-green-50">
+   910→                                Active
+   911→                              </Badge>
+   912→                            ) : (
+   913→                              <Badge variant="outline" className="text-xs border-gray-300 text-gray-500">
+   914→                                Inactive
+   915→                              </Badge>
+   916→                            )}
+   917→                          </TableCell>
+   918→                        </TableRow>
+   919→                      )
+   920→                    })}
+   921→                  </TableBody>
+   922→                </Table>
+   923→              )}
+   924→            </CardContent>
+   925→          </Card>
+   926→
+   927→          {/* Delivery Coverage Summary */}
+   928→          <Card>
+   929→            <CardHeader>
+   930→              <CardTitle className="flex items-center gap-2 text-lg">
+   931→                <Info className="h-5 w-5 text-[#16a34a]" />
+   932→                Delivery Coverage
+   933→              </CardTitle>
+   934→            </CardHeader>
+   935→            <CardContent>
+   936→              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+   937→                <div className="bg-gray-50 rounded-lg p-4 text-center">
+   938→                  <p className="text-2xl font-bold text-gray-900">{deliveryZones.length}</p>
+   939→                  <p className="text-xs text-gray-500 mt-1">Total Zones</p>
+   940→                </div>
+   941→                <div className="bg-gray-50 rounded-lg p-4 text-center">
+   942→                  <p className="text-2xl font-bold text-green-600">{activeZones}</p>
+   943→                  <p className="text-xs text-gray-500 mt-1">Active Zones</p>
+   944→                </div>
+   945→                <div className="bg-gray-50 rounded-lg p-4 text-center">
+   946→                  <p className="text-2xl font-bold text-gray-900">{totalPostcodes}</p>
+   947→                  <p className="text-xs text-gray-500 mt-1">Postcodes Covered</p>
+   948→                </div>
+   949→                <div className="bg-gray-50 rounded-lg p-4 text-center">
+   950→                  <p className="text-2xl font-bold text-gray-900">
+   951→                    {storeForm.delivery_radius_km || 0}
+   952→                  </p>
+   953→                  <p className="text-xs text-gray-500 mt-1">KM Radius</p>
+   954→                </div>
+   955→              </div>
+   956→            </CardContent>
+   957→          </Card>
+   958→        </TabsContent>
+   959→
+   960→        {/* ─── Tab 4: VAT & Compliance ───────────────────────── */}
+   961→        <TabsContent value="vat">
+   962→          {/* UK VAT Rates */}
+   963→          <div className="mb-6">
+   964→            <h2 className="text-lg font-semibold text-gray-900 mb-4">UK VAT Rates</h2>
+   965→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   966→              {/* Standard Rate */}
+   967→              <Card className="border-red-200">
+   968→                <CardContent className="p-5">
+   969→                  <div className="flex items-center justify-between mb-2">
+   970→                    <span className="text-xs font-medium text-red-600 uppercase tracking-wider">Standard Rate</span>
+   971→                    <span className="text-2xl font-bold text-red-600">20%</span>
+   972→                  </div>
+   973→                  <p className="text-xs text-gray-500">Most goods and services</p>
+   974→                  <Separator className="my-3" />
+   975→                  <div className="flex items-center justify-between">
+   976→                    <span className="text-xs text-gray-500">Products</span>
+   977→                    <span className="text-sm font-semibold text-gray-900">{vatStats.standardCount}</span>
+   978→                  </div>
+   979→                </CardContent>
+   980→              </Card>
+   981→
+   982→              {/* Reduced Rate */}
+   983→              <Card className="border-amber-200">
+   984→                <CardContent className="p-5">
+   985→                  <div className="flex items-center justify-between mb-2">
+   986→                    <span className="text-xs font-medium text-amber-600 uppercase tracking-wider">Reduced Rate</span>
+   987→                    <span className="text-2xl font-bold text-amber-600">5%</span>
+   988→                  </div>
+   989→                  <p className="text-xs text-gray-500">Children&apos;s car seats, energy-saving materials</p>
+   990→                  <Separator className="my-3" />
+   991→                  <div className="flex items-center justify-between">
+   992→                    <span className="text-xs text-gray-500">Products</span>
+   993→                    <span className="text-sm font-semibold text-gray-900">{vatStats.reducedCount}</span>
+   994→                  </div>
+   995→                </CardContent>
+   996→              </Card>
+   997→
+   998→              {/* Zero Rate */}
+   999→              <Card className="border-green-200">
+  1000→                <CardContent className="p-5">
+  1001→                  <div className="flex items-center justify-between mb-2">
+  1002→                    <span className="text-xs font-medium text-green-600 uppercase tracking-wider">Zero Rate</span>
+  1003→                    <span className="text-2xl font-bold text-green-600">0%</span>
+  1004→                  </div>
+  1005→                  <p className="text-xs text-gray-500">Most food, books, children&apos;s clothes</p>
+  1006→                  <Separator className="my-3" />
+  1007→                  <div className="flex items-center justify-between">
+  1008→                    <span className="text-xs text-gray-500">Products</span>
+  1009→                    <span className="text-sm font-semibold text-gray-900">{vatStats.zeroCount}</span>
+  1010→                  </div>
+  1011→                </CardContent>
+  1012→              </Card>
+  1013→            </div>
+  1014→          </div>
+  1015→
+  1016→          {/* Product Distribution by VAT Rate */}
+  1017→          <Card className="mb-6">
+  1018→            <CardHeader>
+  1019→              <CardTitle className="flex items-center gap-2 text-lg">
+  1020→                <FileText className="h-5 w-5 text-[#16a34a]" />
+  1021→                Product Distribution by VAT Rate
+  1022→              </CardTitle>
+  1023→              <CardDescription>Number of products assigned to each VAT rate band.</CardDescription>
+  1024→            </CardHeader>
+  1025→            <CardContent>
+  1026→              <div className="space-y-4">
+  1027→                {/* Standard 20% */}
+  1028→                <div className="flex items-center gap-4">
+  1029→                  <div className="w-20 shrink-0">
+  1030→                    <Badge variant="outline" className="border-red-300 text-red-700 bg-red-50 text-xs">
+  1031→                      20% VAT
+  1032→                    </Badge>
+  1033→                  </div>
+  1034→                  <div className="flex-1">
+  1035→                    <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
+  1036→                      <div
+  1037→                        className="h-full bg-red-400 rounded-full transition-all duration-500"
+  1038→                        style={{
+  1039→                          width: `${Math.max(
+  1040→                            (vatStats.standardCount /
+  1041→                              Math.max(vatStats.standardCount + vatStats.reducedCount + vatStats.zeroCount, 1)) *
+  1042→                              100,
+  1043→                            2
+  1044→                          )}%`,
+  1045→                        }}
+  1046→                      />
+  1047→                    </div>
+  1048→                  </div>
+  1049→                  <span className="text-sm font-semibold text-gray-900 w-16 text-right">
+  1050→                    {vatStats.standardCount} item{vatStats.standardCount !== 1 ? 's' : ''}
+  1051→                  </span>
+  1052→                </div>
+  1053→
+  1054→                {/* Reduced 5% */}
+  1055→                <div className="flex items-center gap-4">
+  1056→                  <div className="w-20 shrink-0">
+  1057→                    <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50 text-xs">
+  1058→                      5% VAT
+  1059→                    </Badge>
+  1060→                  </div>
+  1061→                  <div className="flex-1">
+  1062→                    <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
+  1063→                      <div
+  1064→                        className="h-full bg-amber-400 rounded-full transition-all duration-500"
+  1065→                        style={{
+  1066→                          width: `${Math.max(
+  1067→                            (vatStats.reducedCount /
+  1068→                              Math.max(vatStats.standardCount + vatStats.reducedCount + vatStats.zeroCount, 1)) *
+  1069→                              100,
+  1070→                            2
+  1071→                          )}%`,
+  1072→                        }}
+  1073→                      />
+  1074→                    </div>
+  1075→                  </div>
+  1076→                  <span className="text-sm font-semibold text-gray-900 w-16 text-right">
+  1077→                    {vatStats.reducedCount} item{vatStats.reducedCount !== 1 ? 's' : ''}
+  1078→                  </span>
+  1079→                </div>
+  1080→
+  1081→                {/* Zero 0% */}
+  1082→                <div className="flex items-center gap-4">
+  1083→                  <div className="w-20 shrink-0">
+  1084→                    <Badge variant="outline" className="border-green-300 text-green-700 bg-green-50 text-xs">
+  1085→                      0% VAT
+  1086→                    </Badge>
+  1087→                  </div>
+  1088→                  <div className="flex-1">
+  1089→                    <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
+  1090→                      <div
+  1091→                        className="h-full bg-green-400 rounded-full transition-all duration-500"
+  1092→                        style={{
+  1093→                          width: `${Math.max(
+  1094→                            (vatStats.zeroCount /
+  1095→                              Math.max(vatStats.standardCount + vatStats.reducedCount + vatStats.zeroCount, 1)) *
+  1096→                              100,
+  1097→                            2
+  1098→                          )}%`,
+  1099→                        }}
+  1100→                      />
+  1101→                    </div>
+  1102→                  </div>
+  1103→                  <span className="text-sm font-semibold text-gray-900 w-16 text-right">
+  1104→                    {vatStats.zeroCount} item{vatStats.zeroCount !== 1 ? 's' : ''}
+  1105→                  </span>
+  1106→                </div>
+  1107→              </div>
+  1108→
+  1109→              <Separator className="my-4" />
+  1110→
+  1111→              <div className="flex items-center justify-between text-sm">
+  1112→                <span className="text-gray-500">Total Products</span>
+  1113→                <span className="font-semibold text-gray-900">
+  1114→                  {vatStats.standardCount + vatStats.reducedCount + vatStats.zeroCount}
+  1115→                </span>
+  1116→              </div>
+  1117→            </CardContent>
+  1118→          </Card>
+  1119→
+  1120→          {/* HFSS Compliance */}
+  1121→          <Card className="mb-6 border-orange-200">
+  1122→            <CardHeader>
+  1123→              <CardTitle className="flex items-center gap-2 text-lg">
+  1124→                <AlertTriangle className="h-5 w-5 text-orange-600" />
+  1125→                HFSS Compliance
+  1126→              </CardTitle>
+  1127→              <CardDescription>
+  1128→                High Fat, Sugar, and Salt regulations
+  1129→              </CardDescription>
+  1130→            </CardHeader>
+  1131→            <CardContent className="space-y-4">
+  1132→              <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+  1133→                <p className="text-sm text-orange-800">
+  1134→                  Products flagged as HFSS (High Fat, Sugar, and Salt) are automatically excluded from promotional
+  1135→                  placements per UK regulations effective January 2026.
+  1136→                </p>
+  1137→              </div>
+  1138→
+  1139→              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+  1140→                <div>
+  1141→                  <p className="text-sm font-medium text-gray-700">HFSS-Flagged Products</p>
+  1142→                  <p className="text-xs text-gray-500 mt-0.5">
+  1143→                    These products are restricted from volume promotions and prominent placement
+  1144→                  </p>
+  1145→                </div>
+  1146→                <div className="text-right">
+  1147→                  <p className="text-2xl font-bold text-orange-600">{vatStats.hfssCount}</p>
+  1148→                  <p className="text-xs text-gray-500">product{vatStats.hfssCount !== 1 ? 's' : ''}</p>
+  1149→                </div>
+  1150→              </div>
+  1151→
+  1152→              <div className="text-xs text-gray-500 space-y-1">
+  1153→                <p><strong>What this means:</strong></p>
+  1154→                <ul className="list-disc list-inside space-y-0.5">
+  1155→                  <li>HFSS products cannot be placed in &quot;buy one get one free&quot; or similar volume promotions</li>
+  1156→                  <li>They are excluded from featured/promoted positions on the storefront</li>
+  1157→                  <li>They remain available for purchase but without promotional pricing incentives</li>
+  1158→                  <li>The <code className="bg-gray-100 px-1 rounded">is_hfss</code> flag on each product controls this behaviour</li>
+  1159→                </ul>
+  1160→              </div>
+  1161→            </CardContent>
+  1162→          </Card>
+  1163→
+  1164→          {/* VAT Reference */}
+  1165→          <Card className="bg-gray-50">
+  1166→            <CardContent className="p-4">
+  1167→              <div className="flex items-start gap-3">
+  1168→                <Info className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
+  1169→                <div>
+  1170→                  <p className="font-medium text-gray-700 text-sm">UK VAT Reference</p>
+  1171→                  <ul className="text-xs text-gray-500 mt-2 space-y-1 list-disc list-inside">
+  1172→                    <li>VAT rates are set per-product in the product management section</li>
+  1173→                    <li>The <strong>Standard Rate (20%)</strong> applies to most non-food items, alcohol, and soft drinks</li>
+  1174→                    <li>The <strong>Reduced Rate (5%)</strong> applies to some goods like children&apos;s car seats and energy-saving materials</li>
+  1175→                    <li>The <strong>Zero Rate (0%)</strong> applies to most groceries (unprepared food), books, and children&apos;s clothing</li>
+  1176→                    <li>VAT is calculated automatically at checkout based on each product&apos;s assigned rate</li>
+  1177→                  </ul>
+  1178→                </div>
+  1179→              </div>
+  1180→            </CardContent>
+  1181→          </Card>
+  1182→        </TabsContent>
+  1183→      </Tabs>
+  1184→    </div>
+  1185→  )
+  1186→}
+  1187→

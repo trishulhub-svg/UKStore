@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, MapPin, Clock, ShoppingBag, CreditCard, ChevronRight, Loader2, Banknote, Building2, Info } from 'lucide-react'
+import { Check, MapPin, Clock, ShoppingBag, CreditCard, ChevronRight, Loader2, Banknote, Building2, Info, Tag, X, Navigation, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,7 +16,10 @@ import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
 import { useCartStore } from '@/store/cart'
 import { formatPrice, getVatRateLabel, calculateVatFromGross } from '@/lib/vat'
+import { calculateDeliveryFee } from '@/lib/delivery'
+import { useDeliveryLocation, geocodeAddress } from '@/lib/delivery-location'
 import type { Store, Address } from '@/types'
+import { toast } from 'sonner'
 
 interface CheckoutClientProps {
   store: Store
@@ -80,6 +83,18 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
   // Bank details (will be returned from the API after order creation)
   const [bankDetails, setBankDetails] = useState<{ sortCode: string; accountNumber: string; accountName: string } | null>(null)
 
+  // Promo code state
+  const [promoCode, setPromoCode] = useState('')
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string
+    discount: number
+    promotionName: string
+    promotionId: string
+    discountType: string
+    discountValue: number
+  } | null>(null)
+
   // Calculate totals
   const subtotal = items.reduce((total, item) => total + item.product.price * item.quantity, 0)
 
@@ -96,10 +111,40 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
   })
 
   const totalVat = Object.values(vatGroups).reduce((sum, group) => sum + group.vat, 0)
-  const distanceKm = 2
-  const isFreeDelivery = subtotal >= store.free_delivery_threshold
-  const deliveryFee = isFreeDelivery ? 0 : store.base_delivery_fee + store.per_km_charge * distanceKm
-  const total = subtotal + deliveryFee
+
+  // Delivery fee calculation using real distance from delivery location context
+  const deliveryLocation = useDeliveryLocation()
+  const contextDistanceKm = deliveryLocation.location.distanceKm
+  const isWithinZone = deliveryLocation.location.isWithinDeliveryZone
+  const hasLocation = deliveryLocation.location.latitude !== null && deliveryLocation.location.longitude !== null
+
+  // When on the address step, we'll geocode the entered address separately
+  // Use context distance as default, but can be overridden by address step geocoding
+  const [addressDistanceKm, setAddressDistanceKm] = useState<number | null>(null)
+  const [addressWithinZone, setAddressWithinZone] = useState<boolean | null>(null)
+  const [geocodingAddress, setGeocodingAddress] = useState(false)
+
+  // Use address-specific distance if available, otherwise context distance
+  const effectiveDistanceKm = addressDistanceKm ?? contextDistanceKm
+  const effectiveWithinZone = addressWithinZone !== null ? addressWithinZone : isWithinZone
+
+  const deliveryPricing = effectiveDistanceKm !== null
+    ? calculateDeliveryFee({
+        base_delivery_fee: store.base_delivery_fee,
+        per_km_charge: store.per_km_charge,
+        free_delivery_threshold: store.free_delivery_threshold,
+        delivery_radius_km: store.delivery_radius_km,
+        order_subtotal: subtotal,
+        distance_km: effectiveDistanceKm,
+      })
+    : null
+
+  const deliveryFee = deliveryPricing
+    ? deliveryPricing.delivery_fee
+    : (subtotal >= store.free_delivery_threshold ? 0 : store.base_delivery_fee)
+  const isFreeDelivery = deliveryPricing ? deliveryPricing.is_free_delivery : (subtotal >= store.free_delivery_threshold)
+  const promoDiscount = appliedPromo?.discount || 0
+  const total = subtotal + deliveryFee - promoDiscount
 
   const currentStepIndex = steps.findIndex((s) => s.id === currentStep)
 
@@ -113,7 +158,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
     return true
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     setError(null)
     if (currentStep === 'address') {
       if (!validateAddress()) {
@@ -125,6 +170,55 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
         })
         return
       }
+
+      // Geocode the delivery address to check delivery zone
+      setGeocodingAddress(true)
+      try {
+        const fullAddress = [addressLine1, addressLine2, city, postcode].filter(Boolean).join(', ')
+        const geoResult = await geocodeAddress(fullAddress, postcode)
+
+        if (geoResult) {
+          // Update the delivery location context with the new address
+          deliveryLocation.setManualAddress(fullAddress, postcode, geoResult.latitude, geoResult.longitude)
+
+          // Calculate distance inline for immediate feedback
+          const R = 6371
+          const dLat = ((geoResult.latitude - store.latitude) * Math.PI) / 180
+          const dLon = ((geoResult.longitude - store.longitude) * Math.PI) / 180
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos((store.latitude * Math.PI) / 180) *
+              Math.cos((geoResult.latitude * Math.PI) / 180) *
+              Math.sin(dLon / 2) *
+              Math.sin(dLon / 2)
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+          const dist = Math.round((R * c) * 10) / 10
+          const within = dist <= store.delivery_radius_km
+
+          setAddressDistanceKm(dist)
+          setAddressWithinZone(within)
+
+          if (!within) {
+            setError({
+              message: `This address is ${dist}km from our store, which is outside our ${store.delivery_radius_km}km delivery zone.`,
+              code: 'OUTSIDE_DELIVERY_ZONE',
+              details: 'Please enter a delivery address within our delivery area, or contact us for special arrangements.',
+              timestamp: new Date().toISOString(),
+            })
+            setGeocodingAddress(false)
+            return
+          }
+        } else {
+          // Could not geocode - allow to proceed but warn
+          toast.warning('Could not verify delivery address location. Delivery fee may be adjusted.')
+        }
+      } catch {
+        // Geocoding failed - allow to proceed
+        toast.warning('Could not verify delivery address. Proceeding anyway.')
+      } finally {
+        setGeocodingAddress(false)
+      }
+
       setCurrentStep('slot')
     } else if (currentStep === 'slot') {
       setCurrentStep('summary')
@@ -138,6 +232,49 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
     if (currentStep === 'slot') setCurrentStep('address')
     else if (currentStep === 'summary') setCurrentStep('slot')
     else if (currentStep === 'payment') setCurrentStep('summary')
+  }
+
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) return
+    setPromoLoading(true)
+    try {
+      const categoryIds = [...new Set(items.map((item) => item.product.category?.id).filter(Boolean))] as string[]
+      const res = await fetch('/api/promotions/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: promoCode.trim(),
+          subtotal,
+          categoryIds,
+        }),
+      })
+      const data = await res.json()
+
+      if (data.valid) {
+        setAppliedPromo({
+          code: promoCode.trim(),
+          discount: data.discount,
+          promotionName: data.promotionName,
+          promotionId: data.promotionId,
+          discountType: data.discountType,
+          discountValue: data.discountValue,
+        })
+        toast.success(`Promo code applied! You save ${formatPrice(data.discount)}`)
+      } else {
+        toast.error(data.message || 'Invalid promo code')
+        setAppliedPromo(null)
+      }
+    } catch {
+      toast.error('Failed to validate promo code. Please try again.')
+    } finally {
+      setPromoLoading(false)
+    }
+  }
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null)
+    setPromoCode('')
+    toast.info('Promo code removed')
   }
 
   const handlePlaceOrder = async () => {
@@ -171,6 +308,9 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
           save_address: saveAddress,
           payment_method: paymentMethod,
           bank_transfer_ref: bankTransferRef || undefined,
+          promo_code: appliedPromo?.code || undefined,
+          promotion_id: appliedPromo?.promotionId || undefined,
+          discount_amount: promoDiscount || undefined,
         }),
       })
 
@@ -228,7 +368,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
   // Redirect if cart is empty (except on payment step where order might have just been placed)
   if (items.length === 0 && currentStep !== 'payment') {
     return (
-      <CustomerLayout storeName={store.name}>
+      <CustomerLayout storeName={store.name} store={store}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center max-w-md mx-auto">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Your Cart is Empty</h1>
@@ -245,7 +385,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
   }
 
   return (
-    <CustomerLayout storeName={store.name}>
+    <CustomerLayout storeName={store.name} store={store}>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Page Header */}
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6">Checkout</h1>
@@ -386,13 +526,55 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
                 </Label>
               </div>
 
+              {/* Delivery Zone Info */}
+              {addressDistanceKm !== null && (
+                <div className={`rounded-lg px-4 py-3 flex items-start gap-3 ${
+                  effectiveWithinZone
+                    ? 'bg-green-50 border border-green-200'
+                    : 'bg-red-50 border border-red-200'
+                }`}>
+                  {effectiveWithinZone ? (
+                    <Check className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                  )}
+                  <div>
+                    <p className={`text-sm font-medium ${effectiveWithinZone ? 'text-green-700' : 'text-red-700'}`}>
+                      {effectiveWithinZone
+                        ? `Within delivery zone — ${addressDistanceKm}km from store`
+                        : `Outside delivery zone — ${addressDistanceKm}km from store (max: ${store.delivery_radius_km}km)`}
+                    </p>
+                    {!isFreeDelivery && effectiveWithinZone && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Delivery fee: {formatPrice(store.base_delivery_fee)} + {formatPrice(store.per_km_charge)} x {addressDistanceKm}km = {formatPrice(deliveryFee)}
+                      </p>
+                    )}
+                    {isFreeDelivery && effectiveWithinZone && (
+                      <p className="text-xs text-green-600 mt-0.5">
+                        Free delivery (order over {formatPrice(store.free_delivery_threshold)})
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end pt-2">
                 <Button
                   onClick={handleNext}
+                  disabled={geocodingAddress}
                   className="bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold"
                 >
-                  Continue to Delivery Slot
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  {geocodingAddress ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Verifying Address...
+                    </>
+                  ) : (
+                    <>
+                      Continue to Delivery Slot
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>
@@ -481,6 +663,58 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
 
               <Separator />
 
+              {/* Promo Code Section */}
+              <div>
+                <h3 className="font-medium text-sm text-gray-700 mb-3 flex items-center gap-1.5">
+                  <Tag className="h-4 w-4 text-[#16a34a]" />
+                  Promo Code
+                </h3>
+                {appliedPromo ? (
+                  <div className="flex items-center justify-between bg-[#16a34a]/5 border border-[#16a34a]/20 rounded-lg p-3">
+                    <div>
+                      <p className="text-sm font-medium text-[#16a34a]">{appliedPromo.promotionName}</p>
+                      <p className="text-xs text-gray-500">
+                        Code: <span className="font-mono uppercase">{appliedPromo.code}</span> &middot; Save {formatPrice(appliedPromo.discount)}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemovePromo}
+                      className="text-gray-400 hover:text-red-500 h-8 w-8 p-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter promo code"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                      className="uppercase font-mono flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleApplyPromo()
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={handleApplyPromo}
+                      disabled={promoLoading || !promoCode.trim()}
+                      className="shrink-0"
+                    >
+                      {promoLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        'Apply'
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
               {/* Items */}
               <div>
                 <h3 className="font-medium text-sm text-gray-700 mb-3">Items ({items.length})</h3>
@@ -528,6 +762,15 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
                     )}
                   </span>
                 </div>
+                {appliedPromo && promoDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#16a34a] flex items-center gap-1">
+                      <Tag className="h-3.5 w-3.5" />
+                      {appliedPromo.promotionName}
+                    </span>
+                    <span className="text-[#16a34a] font-medium">-{formatPrice(promoDiscount)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between text-base font-bold">
                   <span>Total</span>

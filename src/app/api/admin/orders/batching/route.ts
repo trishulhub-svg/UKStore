@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/orders/batching — Suggest batches based on postcode area prefix
 export async function GET() {

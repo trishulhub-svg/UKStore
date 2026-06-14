@@ -5,7 +5,7 @@ import { PoundSterling, TrendingUp, TrendingDown, Receipt, ShoppingBag } from 'l
 
 export const dynamic = 'force-dynamic'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 export default async function AdminFinancePage() {
   const prisma = await getPrisma()

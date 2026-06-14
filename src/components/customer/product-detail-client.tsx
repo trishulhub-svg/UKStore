@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ShoppingCart, Minus, Plus, ChevronRight, Package, AlertTriangle, ArrowRight } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, ChevronRight, Package, AlertTriangle, ArrowRight, Star, Tag, ZoomIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -19,8 +19,12 @@ import {
 } from '@/components/ui/breadcrumb'
 import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
+import { useCartSidebarStore } from '@/stores/cart-sidebar-store'
 import { formatPrice, getVatRateLabel } from '@/lib/vat'
-import type { Store, ProductWithCategory } from '@/types'
+import { TrustBadges } from '@/components/customer/trust-badges'
+import { CrossSellSection } from '@/components/customer/cross-sell-slider'
+import { toast } from 'sonner'
+import type { Store, ProductWithCategory, Promotion } from '@/types'
 
 interface SubstituteProduct {
   id: string
@@ -36,6 +40,7 @@ interface SubstituteProduct {
 interface ProductDetailClientProps {
   store: Store
   product: ProductWithCategory
+  allCategories?: { id: string; name: string; slug: string }[]
 }
 
 const categoryIcons: Record<string, string> = {
@@ -47,28 +52,47 @@ const categoryIcons: Record<string, string> = {
   'drinks': '🧃',
   'frozen': '🧊',
   'snacks-sweets': '🍫',
+  'household': '🧹',
+  'baby-care': '🍼',
+  'health-beauty': '💊',
+  'pet-care': '🐾',
 }
 
 function getStockStatus(product: ProductWithCategory) {
   if (product.stock_quantity === 0) {
-    return { label: 'Out of Stock', color: 'text-red-600', bgColor: 'bg-red-50', available: false }
+    return { label: 'Out of Stock', color: 'text-red-600', bgColor: 'bg-red-50', dotColor: 'bg-red-500', available: false }
   }
   if (product.stock_quantity <= 10) {
-    return { label: 'Low Stock', color: 'text-amber-600', bgColor: 'bg-amber-50', available: true }
+    return { label: 'Low Stock', color: 'text-amber-600', bgColor: 'bg-amber-50', dotColor: 'bg-amber-500', available: true }
   }
-  return { label: 'In Stock', color: 'text-[#16a34a]', bgColor: 'bg-green-50', available: true }
+  return { label: 'In Stock', color: 'text-[#16a34a]', bgColor: 'bg-green-50', dotColor: 'bg-green-500', available: true }
 }
 
-export function ProductDetailClient({ store, product }: ProductDetailClientProps) {
+export function ProductDetailClient({ store, product, allCategories = [] }: ProductDetailClientProps) {
   const addItem = useCartStore((state) => state.addItem)
+  const openCartSidebar = useCartSidebarStore((state) => state.open)
   const [quantity, setQuantity] = useState(1)
   const [substitutePreference, setSubstitutePreference] = useState<'closest_match' | 'do_not_substitute'>('closest_match')
   const [substituteProduct, setSubstituteProduct] = useState<SubstituteProduct | null>(null)
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0)
+  const [promotions, setPromotions] = useState<Promotion[]>([])
 
   const stockStatus = getStockStatus(product)
 
+  // Parse images array
+  const allImages: string[] = (() => {
+    const imgs: string[] = []
+    if (product.image_url) imgs.push(product.image_url)
+    if (product.images && Array.isArray(product.images)) {
+      product.images.forEach((img: string) => {
+        if (img && !imgs.includes(img)) imgs.push(img)
+      })
+    }
+    return imgs
+  })()
+
+  // Fetch substitute product
   useEffect(() => {
-    // Try to fetch substitute product if available
     async function fetchSubstitute() {
       try {
         const res = await fetch(`/api/products/${product.id}/substitute`)
@@ -76,13 +100,44 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
           const data = await res.json()
           setSubstituteProduct(data.substitute || null)
         }
-      } catch {}
+      } catch {
+        // silently fail
+      }
     }
     fetchSubstitute()
   }, [product.id])
 
+  // Fetch promotions for this product's category
+  useEffect(() => {
+    async function fetchPromotions() {
+      try {
+        const params = new URLSearchParams()
+        if (product.category_id) params.set('categoryId', product.category_id)
+        const res = await fetch(`/api/promotions?${params.toString()}`)
+        if (res.ok) {
+          const data = await res.json()
+          setPromotions(data.promotions || [])
+        }
+      } catch {
+        // silently fail
+      }
+    }
+    fetchPromotions()
+  }, [product.category_id])
+
+  // Calculate discount percentage
+  const discountPercent = product.original_price && product.original_price > product.price
+    ? Math.round(((product.original_price - product.price) / product.original_price) * 100)
+    : 0
+
   const handleAddToCart = () => {
     addItem(product, quantity, substitutePreference)
+    toast.success(`${product.name} added to cart`, {
+      action: {
+        label: 'View Cart',
+        onClick: () => openCartSidebar(),
+      },
+    })
     setQuantity(1)
   }
 
@@ -96,15 +151,20 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
       slug: substituteProduct.slug,
       description: null,
       price: substituteProduct.price,
+      original_price: null,
       vat_rate: 0,
       is_hfss: false,
       image_url: substituteProduct.imageUrl,
+      images: null,
       barcode: null,
+      brand: null,
       unit: 'each',
       weight_kg: null,
       is_available: substituteProduct.isAvailable,
       stock_quantity: substituteProduct.stockQuantity,
       is_featured: false,
+      rating: 0,
+      review_count: 0,
       sort_order: 0,
       created_at: '',
       updated_at: '',
@@ -122,13 +182,20 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
       },
     }
     addItem(subProduct, 1, 'closest_match')
+    toast.success(`${substituteProduct.name} added to cart`)
   }
 
   const incrementQuantity = () => setQuantity((q) => q + 1)
   const decrementQuantity = () => setQuantity((q) => Math.max(1, q - 1))
 
+  // Get complementary category IDs for "You Might Also Like"
+  const complementaryCategoryIds = allCategories
+    .filter((c) => c.id !== product.category_id)
+    .slice(0, 3)
+    .map((c) => c.id)
+
   return (
-    <CustomerLayout storeName={store.name}>
+    <CustomerLayout storeName={store.name} store={store}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Breadcrumb */}
         <Breadcrumb className="mb-6">
@@ -168,34 +235,125 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
 
         {/* Product Detail Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-          {/* Product Image */}
-          <div className="aspect-square bg-gray-100 rounded-xl relative flex items-center justify-center overflow-hidden">
-            {product.image_url ? (
-              <img
-                src={product.image_url}
-                alt={product.name}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-6xl sm:text-8xl text-gray-300">
-                {categoryIcons[product.category?.slug || ''] || '🛒'}
-              </span>
-            )}
-            {product.is_hfss && (
-              <Badge className="absolute top-4 left-4 bg-amber-500 text-white px-3 py-1 text-sm">
-                <AlertTriangle className="h-3 w-3 mr-1" />
-                HFSS
-              </Badge>
-            )}
+          {/* ── LEFT: Image Gallery ── */}
+          <div className="flex flex-col">
+            <div className="flex gap-3">
+              {/* Thumbnail Gallery (vertical) */}
+              {allImages.length > 1 && (
+                <div className="flex flex-col gap-2 w-16 flex-shrink-0">
+                  {allImages.map((img, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedImageIndex(idx)}
+                      className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                        selectedImageIndex === idx
+                          ? 'border-[#f97316] shadow-md'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <img
+                        src={img}
+                        alt={`${product.name} thumbnail ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Main Image Display */}
+              <div className="flex-1 aspect-square bg-gray-50 rounded-xl relative flex items-center justify-center overflow-hidden border border-gray-200">
+                {allImages.length > 0 ? (
+                  <img
+                    src={allImages[selectedImageIndex] || allImages[0]}
+                    alt={product.name}
+                    className="w-full h-full object-contain p-4"
+                  />
+                ) : (
+                  <span className="text-6xl sm:text-8xl text-gray-300">
+                    {categoryIcons[product.category?.slug || ''] || '🛒'}
+                  </span>
+                )}
+
+                {/* Badges */}
+                <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+                  {product.is_hfss && (
+                    <Badge className="bg-amber-500 text-white px-2.5 py-1 text-xs">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      HFSS
+                    </Badge>
+                  )}
+                  {discountPercent > 0 && (
+                    <Badge className="bg-red-500 text-white px-2.5 py-1 text-xs font-bold">
+                      {discountPercent}% OFF
+                    </Badge>
+                  )}
+                  {'is_age_restricted' in product && (product as Record<string, unknown>).is_age_restricted && (
+                    <Badge className="bg-purple-600 text-white px-2.5 py-1 text-xs">
+                      Challenge 25
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Zoom hint */}
+                {allImages.length > 0 && (
+                  <div className="absolute bottom-3 right-3 text-gray-400">
+                    <ZoomIn className="h-5 w-5" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quantity + Add To Cart */}
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700">Qty:</span>
+                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 rounded-none hover:bg-gray-100"
+                    onClick={decrementQuantity}
+                    disabled={quantity <= 1}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="w-12 text-center font-semibold text-base border-x border-gray-200 h-10 flex items-center justify-center">
+                    {quantity}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 rounded-none hover:bg-gray-100"
+                    onClick={incrementQuantity}
+                    disabled={quantity >= product.stock_quantity}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <Button
+                size="lg"
+                className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-bold text-base h-12 rounded-xl"
+                onClick={handleAddToCart}
+                disabled={!stockStatus.available}
+              >
+                <ShoppingCart className="h-5 w-5 mr-2" />
+                {!stockStatus.available
+                  ? 'Out of Stock'
+                  : `Add to Cart — ${formatPrice(product.price * quantity)}`}
+              </Button>
+            </div>
           </div>
 
-          {/* Product Info */}
+          {/* ── RIGHT: Product Details ── */}
           <div className="flex flex-col">
             {/* Category Tag */}
             {product.category && (
               <Link
                 href={`/catalog?category=${product.category.slug}`}
-                className="text-sm font-medium text-[#16a34a] hover:underline mb-2 self-start"
+                className="text-sm font-medium text-[#16a34a] hover:underline mb-1.5 self-start"
               >
                 {product.category.name}
               </Link>
@@ -206,37 +364,100 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
               {product.name}
             </h1>
 
-            {/* Description */}
-            {product.description && (
-              <p className="text-gray-600 mt-3 leading-relaxed">
-                {product.description}
-              </p>
+            {/* Brand + Unit/Weight */}
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              {product.brand && (
+                <span className="text-sm font-medium text-gray-500">{product.brand}</span>
+              )}
+              {(product.unit || product.weight_kg) && (
+                <>
+                  {product.brand && <span className="text-gray-300">•</span>}
+                  <span className="text-sm text-gray-500">
+                    {product.weight_kg ? `${product.weight_kg}kg` : product.unit}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Star Rating Badge */}
+            {product.rating > 0 && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <div className="flex items-center gap-0.5 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-full">
+                  <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
+                  <span className="text-sm font-bold text-yellow-700">{product.rating.toFixed(1)}</span>
+                </div>
+                {product.review_count > 0 && (
+                  <span className="text-xs text-gray-400">({product.review_count} reviews)</span>
+                )}
+              </div>
             )}
 
-            {/* Price & VAT */}
-            <div className="mt-4 flex items-baseline gap-3">
-              <span className="text-3xl font-bold text-gray-900">
-                {formatPrice(product.price)}
-              </span>
-              <span className="text-sm text-gray-500">
-                per {product.unit}
-              </span>
+            {/* Price Badge */}
+            <div className="mt-4 flex items-center gap-3 flex-wrap">
+              <div className="px-4 py-2 bg-gray-900 text-white rounded-lg">
+                <span className="text-2xl font-bold">{formatPrice(product.price)}</span>
+              </div>
+              {product.original_price && product.original_price > product.price && (
+                <div className="flex items-center gap-2">
+                  <span className="text-lg text-gray-400 line-through">{formatPrice(product.original_price)}</span>
+                  <Badge className="bg-red-100 text-red-700 border-red-200 text-xs font-semibold">
+                    Save {formatPrice(product.original_price - product.price)}
+                  </Badge>
+                </div>
+              )}
+              <span className="text-sm text-gray-500">per {product.unit}</span>
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              {getVatRateLabel(product.vat_rate)}
-            </p>
+
+            {/* Coupons & Offers */}
+            {promotions.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                  <Tag className="h-4 w-4 text-orange-500" />
+                  Coupons & Offers
+                </h3>
+                {promotions.map((promo) => (
+                  <div
+                    key={promo.id}
+                    className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg"
+                  >
+                    <Tag className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-orange-800">{promo.name}</p>
+                      {promo.description && (
+                        <p className="text-xs text-orange-600">{promo.description}</p>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="border-orange-300 text-orange-600 text-xs flex-shrink-0">
+                      {promo.discount_type === 'percentage'
+                        ? `${promo.discount_value}% off`
+                        : formatPrice(promo.discount_value)}
+                    </Badge>
+                    {promo.code && (
+                      <code className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-mono">
+                        {promo.code}
+                      </code>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Stock Status */}
             <div className="mt-4 flex items-center gap-2">
-              <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${stockStatus.bgColor} ${stockStatus.color}`}>
-                <Package className="h-3.5 w-3.5" />
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${stockStatus.bgColor} ${stockStatus.color}`}>
+                <div className={`h-2 w-2 rounded-full ${stockStatus.dotColor}`} />
                 {stockStatus.label}
               </div>
-              {stockStatus.available && (
+              {stockStatus.available && product.stock_quantity <= 50 && (
                 <span className="text-xs text-gray-400">
                   {product.stock_quantity} available
                 </span>
               )}
+            </div>
+
+            {/* Trust Badges */}
+            <div className="mt-4">
+              <TrustBadges />
             </div>
 
             {/* HFSS Notice */}
@@ -297,77 +518,38 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
               </Card>
             )}
 
-            <Separator className="my-6" />
+            <Separator className="my-5" />
 
-            {/* Quantity Selector */}
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium text-gray-700">Quantity</Label>
-                <div className="flex items-center gap-3 mt-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-11 w-11"
-                    onClick={decrementQuantity}
-                    disabled={quantity <= 1}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <span className="w-12 text-center font-semibold text-lg">{quantity}</span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-11 w-11"
-                    onClick={incrementQuantity}
-                    disabled={quantity >= product.stock_quantity}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Substitute Preference */}
-              <div>
-                <Label className="text-sm font-medium text-gray-700">Substitute Preference</Label>
-                <p className="text-xs text-gray-500 mb-2">
-                  If this item is unavailable, what should we do?
-                </p>
-                <RadioGroup
-                  value={substitutePreference}
-                  onValueChange={(val) => setSubstitutePreference(val as 'closest_match' | 'do_not_substitute')}
-                  className="space-y-2"
-                >
-                  <div className="flex items-center space-x-2 min-h-[44px]">
-                    <RadioGroupItem value="closest_match" id="closest_match" />
-                    <Label htmlFor="closest_match" className="text-sm font-normal cursor-pointer py-2">
-                      Closest match — pick the most similar alternative
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 min-h-[44px]">
-                    <RadioGroupItem value="do_not_substitute" id="do_not_substitute" />
-                    <Label htmlFor="do_not_substitute" className="text-sm font-normal cursor-pointer py-2">
-                      Do not substitute — refund if unavailable
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-            </div>
-
-            {/* Add to Cart */}
-            <div className="mt-6 flex flex-col sm:flex-row gap-3">
-              <Button
-                size="lg"
-                className="flex-1 bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold text-base h-12"
-                onClick={handleAddToCart}
-                disabled={!stockStatus.available}
+            {/* Substitute Preference */}
+            <div>
+              <Label className="text-sm font-medium text-gray-700">Substitute Preference</Label>
+              <p className="text-xs text-gray-500 mb-2">
+                If this item is unavailable, what should we do?
+              </p>
+              <RadioGroup
+                value={substitutePreference}
+                onValueChange={(val) => setSubstitutePreference(val as 'closest_match' | 'do_not_substitute')}
+                className="space-y-2"
               >
-                <ShoppingCart className="h-5 w-5 mr-2" />
-                {!stockStatus.available ? 'Out of Stock' : `Add to Cart — ${formatPrice(product.price * quantity)}`}
-              </Button>
+                <div className="flex items-center space-x-2 min-h-[44px]">
+                  <RadioGroupItem value="closest_match" id="closest_match" />
+                  <Label htmlFor="closest_match" className="text-sm font-normal cursor-pointer py-2">
+                    Closest match — pick the most similar alternative
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2 min-h-[44px]">
+                  <RadioGroupItem value="do_not_substitute" id="do_not_substitute" />
+                  <Label htmlFor="do_not_substitute" className="text-sm font-normal cursor-pointer py-2">
+                    Do not substitute — refund if unavailable
+                  </Label>
+                </div>
+              </RadioGroup>
             </div>
+
+            <Separator className="my-5" />
 
             {/* Delivery Info */}
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <div className="p-4 bg-gray-50 rounded-lg">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div className="flex items-center gap-2 text-gray-600">
                   <span className="text-[#16a34a]">🚚</span>
@@ -381,7 +563,7 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
             </div>
 
             {/* Product Details */}
-            <div className="mt-6">
+            <div className="mt-5">
               <h3 className="font-semibold text-gray-900 mb-3">Product Details</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="text-gray-500">Unit</div>
@@ -390,6 +572,12 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
                   <>
                     <div className="text-gray-500">Weight</div>
                     <div className="text-gray-900 font-medium">{product.weight_kg}kg</div>
+                  </>
+                )}
+                {product.brand && (
+                  <>
+                    <div className="text-gray-500">Brand</div>
+                    <div className="text-gray-900 font-medium">{product.brand}</div>
                   </>
                 )}
                 {product.barcode && (
@@ -403,6 +591,31 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ── BOTTOM: Cross-Selling Engine ── */}
+        <div className="mt-12 space-y-8">
+          {/* Similar Products */}
+          {product.category_id && (
+            <CrossSellSection
+              title="Similar Products"
+              categoryId={product.category_id}
+              excludeProductId={product.id}
+              limit={10}
+              storeId={store.id}
+            />
+          )}
+
+          {/* You Might Also Like */}
+          {complementaryCategoryIds.length > 0 && (
+            <CrossSellSection
+              title="You Might Also Like"
+              complementaryCategoryIds={complementaryCategoryIds}
+              excludeProductId={product.id}
+              limit={10}
+              storeId={store.id}
+            />
+          )}
         </div>
       </div>
     </CustomerLayout>

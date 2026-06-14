@@ -1,0 +1,393 @@
+   200→   200→   200→- Auto-creation of database + schema verified working locally
+   201→   201→   201→- All auth endpoints (register, login, session) tested and working
+   202→   202→   202→- Error handling improved for SQLite-specific errors
+   203→   203→   203→- Fix deployed to production via git push
+   204→   204→   204→
+   205→   205→   205→---
+   206→   206→   206→Task ID: 8
+   207→   207→   207→Agent: Super Z (main)
+   208→   208→   208→Task: Make entire website mobile responsive
+   209→   209→   209→
+   210→   210→   210→Work Log:
+   211→   211→   211→- Conducted comprehensive mobile responsiveness audit - found 34 issues across 30+ files
+   212→   212→   212→- Categorized issues: Critical (admin tables unusable), Moderate (touch targets < 44px), Minor (cosmetic)
+   213→   213→   213→- Delegated 5 parallel workstreams to full-stack-developer subagents
+   214→   214→   214→- Admin shell: replaced horizontal scroll nav with Sheet-based slide-out drawer, 44px touch targets
+   215→   215→   215→- 6 admin table pages: added mobile card-based layouts (hidden md:block / md:hidden pattern)
+   216→   216→   216→- Admin dashboard: mobile card list for recent orders, responsive stat text sizes
+   217→   217→   217→- Admin settings: responsive save bar with flex-wrap, proper touch targets
+   218→   218→   218→- Admin analytics: responsive chart heights/widths, truncated labels on mobile
+   219→   219→   219→- 10 customer pages: increased touch targets (h-10 w-10), responsive grids, flex-col sm:flex-row
+   220→   220→   220→- 5 driver pages: responsive grids, timeline adjustments, larger buttons
+   221→   221→   221→- Build succeeded with zero errors
+   222→   222→   222→- Pushed to GitHub and verified live deployment (all pages HTTP 200)
+   223→   223→   223→
+   224→   224→   224→Stage Summary:
+   225→   225→   225→- 25 files modified, 1000 insertions, 499 deletions
+   226→   226→   226→- All interactive elements now meet 44px minimum touch target
+   227→   227→   227→- Admin tables have mobile card alternatives
+   228→   228→   228→- All grids are responsive (stack on mobile)
+   229→   229→   229→- Driver and customer pages properly adapt to small screens
+   230→   230→   230→
+   231→   231→   231→---
+   232→   232→   232→Task ID: 2
+   233→   233→   233→Agent: Feature Agent
+   234→   234→   234→Task: Implement 3 critical customer-facing features (Postcode Gate, Floating Basket Bar, UK Unit Pricing)
+   235→   235→   235→
+   236→   236→   236→Work Log:
+   237→   237→   237→- Feature 1: Postcode Gate
+   238→   238→   238→  - Created /src/components/customer/postcode-gate.tsx with:
+   239→   239→   239→    - Full-screen minimalistic white overlay with Fresh Mart London logo (MapPin icon)
+   240→   240→   240→    - Bold headline: "Fresh groceries delivered to your UK doorstep in minutes."
+   241→   241→   241→    - Large input bar with placeholder "Enter your UK Postcode (e.g., SW1A 1AA)"
+   242→   242→   242→    - Green "Check Availability" button with arrow icon
+   243→   243→   243→    - UK postcode validation regex: /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i
+   244→   244→   244→    - Saves validated postcode to localStorage key 'delivery_postcode'
+   245→   245→   245→    - Smooth slide-out CSS transition (opacity + translateY) when postcode accepted
+   246→   246→   246→    - Error message display for invalid format
+   247→   247→   247→    - Auto-skips gate if postcode already saved in localStorage
+   248→   248→   248→    - Exported getSavedPostcode() and clearSavedPostcode() utility functions
+   249→   249→   249→  - Modified /src/components/customer/home-client.tsx:
+   250→   250→   250→    - Added PostcodeGate overlay at top of component
+   251→   251→   251→    - Initialized deliveryPostcode and postcodeVerified state from localStorage via lazy initializers
+   252→   252→   252→    - Added handlePostcodeVerified and handleChangePostcode callbacks
+   253→   253→   253→    - Shows "Delivering to KT1..." with "Change" link in hero section for both logged-in and logged-out views
+   254→   254→   254→
+   255→   255→   255→- Feature 2: Floating Basket Bar
+   256→   256→   256→  - Created /src/components/customer/floating-basket-bar.tsx with:
+   257→   257→   257→    - Fixed position at bottom of screen (z-50), only visible on mobile (md:hidden)
+   258→   258→   258→    - Shows when cart has items: [N Items] • [£X.XX] ── [View Basket →]
+   259→   259→   259→    - Green background (#16a34a), white text, rounded top corners (rounded-2xl), shadow
+   260→   260→   260→    - Animated slide-up via CSS transition (translateY)
+   261→   261→   261→    - Subscribes to useCartStore for reactive cart count/price updates
+   262→   262→   262→    - Hidden on /cart page (uses usePathname)
+   263→   263→   263→    - Uses formatPrice for GBP currency display
+   264→   264→   264→  - Added FloatingBasketBar to /src/components/layout/customer-layout.tsx:
+   265→   265→   265→    - Imported and rendered inside layout, right before closing </div>
+   266→   266→   266→    - Visible across all customer pages
+   267→   267→   267→
+   268→   268→   268→- Feature 3: UK Unit Pricing Display
+   269→   269→   269→  - Added formatUnitPrice() utility to /src/lib/vat.ts:
+   270→   270→   270→    - Handles volume (per litre), weight in grams (per 100g), ml (per 100ml), and default kg (per kg)
+   271→   271→   271→    - Returns formatted string like "£4.98 per kg" or null when unit price cannot be calculated
+   272→   272→   272→  - Modified /src/components/customer/home-client.tsx Featured Products grid:
+   273→   273→   273→    - Added unit price display under main price using formatUnitPrice(product.price, product.weight_kg, null, product.unit)
+   274→   274→   274→    - Styled as text-xs text-gray-500 block
+   275→   275→   275→    - Wrapped price + unit price in a min-w-0 div for proper flex layout with Add button
+   276→   276→   276→  - Modified /src/components/customer/catalog-client.tsx product grid:
+   277→   277→   277→    - Same unit price display pattern as home-client.tsx
+   278→   278→   278→    - Import formatUnitPrice from @/lib/vat
+   279→   279→   279→    - Added flex-shrink-0 to Add/Sold Out buttons for consistent layout
+   280→   280→   280→
+   281→   281→   281→- Lint: All new code passes ESLint (remaining errors are pre-existing in other files)
+   282→   282→   282→- Dev server: Compiles successfully, pages load correctly
+   283→   283→   283→
+   284→   284→   284→Stage Summary:
+   285→   285→   285→- 5 files created/modified: postcode-gate.tsx (new), floating-basket-bar.tsx (new), vat.ts, home-client.tsx, catalog-client.tsx, customer-layout.tsx
+   286→   286→   286→- Postcode Gate provides landing screen with UK postcode validation and localStorage persistence
+   287→   287→   287→- Floating Basket Bar provides mobile cart summary with animated slide-up across all pages
+   288→   288→   288→- UK Unit Pricing ensures Trading Standards compliance with per-kg/per-100g/per-litre display
+   289→   289→   289→- All components are responsive, accessible, and follow existing design patterns
+   290→   290→   290→
+   291→   291→   291→---
+   292→   292→   292→Task ID: 3
+   293→   293→   293→Agent: Backend Feature Agent
+   294→   294→   294→Task: Implement 3 critical backend features (Stripe Webhook, Challenge 25 ID Verification, Additional Payment Methods)
+   295→   295→   295→
+   296→   296→   296→Work Log:
+   297→   297→   297→- Feature 1: Stripe Webhook Handler
+   298→   298→   298→  - Created /src/app/api/stripe/webhook/route.ts
+   299→   299→   299→  - Handles POST requests from Stripe with raw body for signature verification
+   300→   300→   300→  - Verifies Stripe signature using STRIPE_WEBHOOK_SECRET from settings/env
+   301→   301→   301→  - Handles checkout.session.completed event:
+   302→   302→   302→    - Extracts orderId from metadata (primary) or finds order by stripeSessionId (fallback)
+   303→   303→   303→    - Updates order paymentStatus from 'pending' to 'paid'
+   304→   304→   304→    - Stores stripePaymentIntentId on the order
+   305→   305→   305→    - Creates notification for customer about payment confirmation
+   306→   306→   306→  - Handles payment_intent.payment_failed event:
+   307→   307→   307→    - Updates order paymentStatus to 'failed'
+   308→   308→   308→    - Notifies customer about failed payment
+   309→   309→   309→  - Returns 200 quickly (Stripe expects fast response)
+   310→   310→   310→  - Modified checkout route to include orderId in Stripe session metadata and payment_intent metadata
+   311→   311→   311→
+   312→   312→   312→- Feature 2: Challenge 25 ID Verification
+   313→   313→   313→  - Modified /src/app/api/checkout/route.ts:
+   314→   314→   314→    - Queries products for isHfss status (now includes isHfss in DB product select)
+   315→   315→   315→    - Sets hasChallenge25: true on order if any items have isHfss: true
+   316→   316→   316→    - Collects HFSS item names for driver reference
+   317→   317→   317→  - Modified /src/components/driver/driver-order-flow-client.tsx:
+   318→   318→   318→    - Added Challenge 25 warning banner (amber) when hasChallenge25 && !challenge25Verified
+   319→   319→   319→    - Added Challenge 25 verified banner (green) when hasChallenge25 && challenge25Verified
+   320→   320→   320→    - Added Challenge 25 verification screen before "Mark Delivered" button:
+   321→   321→   321→      - Shows warning card: "Challenge 25 — Age Verification Required"
+   322→   322→   322→      - Lists HFSS items in the order
+   323→   323→   323→      - "Verify Customer Age" button opens verification form
+   324→   324→   324→      - Birth year input field with real-time age calculation
+   325→   325→   325→      - "Confirm ID Verified" button that calls PATCH API
+   326→   326→   326→      - Under-18 refusal handling
+   327→   327→   327→    - Shows payment method badge (Cash on Delivery / Bank Transfer / Card Payment)
+   328→   328→   328→    - Marks age-restricted items with "(Age-restricted)" label in pick list
+   329→   329→   329→  - Modified /src/app/api/driver/orders/[id]/route.ts PATCH handler:
+   330→   330→   330→    - Added challenge25Verified field handling
+   331→   331→   331→    - Validates order has hasChallenge25 before allowing verification
+   332→   332→   332→    - Prevents duplicate verification
+   333→   333→   333→    - Blocks delivery confirmation if Challenge 25 not verified
+   334→   334→   334→    - Added Challenge 25 check when status transitions to 'delivered'
+   335→   335→   335→
+   336→   336→   336→- Feature 3: Additional Payment Methods (Cash on Delivery + Bank Transfer)
+   337→   337→   337→  - Modified /src/components/customer/checkout-client.tsx:
+   338→   338→   338→    - Added payment method selection in payment step:
+   339→   339→   339→      - Card Payment (Stripe) — with redirect to Stripe checkout
+   340→   340→   340→      - Cash on Delivery — with info card about having exact amount ready
+   341→   341→   341→      - Bank Transfer — with optional reference number input
+   342→   342→   342→    - Dynamic place order button text based on selected payment method
+   343→   343→   343→    - Bank transfer shows purple info card explaining the process
+   344→   344→   344→    - Cash on delivery shows blue info card with amount to prepare
+   345→   345→   345→  - Modified /src/app/api/checkout/route.ts:
+   346→   346→   346→    - Added payment_method and bank_transfer_ref to request body parsing
+   347→   347→   347→    - Cash on Delivery: sets paymentMethod='cash', paymentStatus='pending', skips Stripe
+   348→   348→   348→    - Bank Transfer: sets paymentMethod='bank_transfer', paymentStatus='pending', bankTransferVerified=false
+   349→   349→   349→      - Returns bank details (sort code, account number, account name) from settings
+   350→   350→   350→    - Card Payment: now creates order first, then creates Stripe session with orderId in metadata
+   351→   351→   351→      - Updates order's stripeSessionId after session creation
+   352→   352→   352→  - Created /src/app/api/admin/orders/[id]/verify-bank-transfer/route.ts:
+   353→   353→   353→    - POST endpoint for admin to verify bank transfer payment
+   354→   354→   354→    - Validates order is bank_transfer payment method
+   355→   355→   355→    - Prevents duplicate verification
+   356→   356→   356→    - Sets bankTransferVerified=true and paymentStatus='paid'
+   357→   357→   357→    - Creates notification for customer about payment verification
+   358→   358→   358→
+   359→   359→   359→- Database schema already had all required fields (hasChallenge25, challenge25Verified, paymentMethod, bankTransferRef, bankTransferVerified)
+   360→   360→   360→- Ran prisma db push — database already in sync
+   361→   361→   361→- Lint passes with zero errors on all modified/created files
+   362→   362→   362→- Dev server compiles successfully
+   363→   363→   363→
+   364→   364→   364→Stage Summary:
+   365→   365→   365→- Stripe Webhook: Full handler for checkout.session.completed and payment_intent.payment_failed events
+   366→   366→   366→- Challenge 25: Complete ID verification flow in driver app with age validation, UI banners, and API enforcement
+   367→   367→   367→- Payment Methods: 3 payment options (Card/Cash/Bank Transfer) in checkout with proper backend handling
+   368→   368→   368→- Bank Transfer Admin: Verification endpoint for admins to confirm received payments
+   369→   369→   369→- 5 files created, 4 files modified
+   370→   370→   370→- All features follow existing code patterns and use Prisma via getPrisma()
+   371→   371→   371→
+   372→   372→   372→---
+   373→   373→   373→Task ID: 6
+   374→   374→   374→Agent: Inventory Management Agent
+   375→   375→   375→Task: Implement inventory management features (Low-Stock Alerts, Wastage Logger, Substitutes, CSV Import/Export, Image/Document Upload)
+   376→   376→   376→
+   377→   377→   377→Work Log:
+   378→   378→   378→
+   379→   379→   379→Feature 1: Low-Stock Alert Flags
+   380→   380→   380→- Created /src/app/api/admin/products/low-stock/route.ts (GET: returns products where stockQuantity <= minStockThreshold)
+   381→   381→   381→- Created /src/components/admin/low-stock-alerts.tsx with color-coded list (red=out of stock, amber=low), inline stock update, restock modal
+   382→   382→   382→- Modified /src/components/admin/admin-dashboard-client.tsx to show low-stock alert card when products below threshold
+   383→   383→   383→
+   384→   384→   384→Feature 2: Wastage & Expiry Logger
+   385→   385→   385→- Created /src/app/api/admin/wastage/route.ts (GET with filters + summary stats, POST creates log + decrements stock in transaction)
+   386→   386→   386→- Created /src/app/admin/wastage/page.tsx (server page with auth check)
+   387→   387→   387→- Created /src/components/admin/wastage-client.tsx with summary cards, searchable product dropdown, reason/date filters, responsive table/cards
+   388→   388→   388→- Added "Wastage" link to admin sidebar in /src/components/admin/admin-shell.tsx
+   389→   389→   389→
+   390→   390→   390→Feature 3: Pre-Approved Substitutes
+   391→   391→   391→- Modified admin product edit form: added "Substitute Product" dropdown (same category), minStockThreshold, aisle fields
+   392→   392→   392→- Modified /src/app/api/admin/products/[id]/route.ts PATCH: handles substituteProductId, minStockThreshold, aisle
+   393→   393→   393→- Modified /src/app/api/admin/products/route.ts POST: includes aisle, minStockThreshold, substituteProductId
+   394→   394→   394→- Created /src/app/api/products/[id]/substitute/route.ts (public endpoint for substitute product)
+   395→   395→   395→- Modified /src/components/customer/product-detail-client.tsx: shows "Recommended Alternative" card with "Add Instead" button when out of stock
+   396→   396→   396→
+   397→   397→   397→Feature 4: Bulk CSV Import/Export
+   398→   398→   398→- Created /src/app/api/admin/products/export/route.ts (GET: exports all products as CSV with proper escaping)
+   399→   399→   399→- Created /src/app/api/admin/products/import/route.ts (POST: imports from CSV, creates/updates by slug, returns created/updated/failed counts)
+   400→   400→   400→- Created /src/components/admin/csv-import-export.tsx with export button, file upload, CSV preview (first 5 rows), import results dialog
+   401→   401→   401→- Added CsvImportExport component to /src/app/admin/products/page.tsx
+   402→   402→   402→
+   403→   403→   403→Feature 5: Product Image Upload + Driver Document Upload
+   404→   404→   404→- Created /src/lib/upload.ts (base64 data URL conversion, image/document validation)
+   405→   405→   405→- Modified admin product form: image upload with preview and validation (jpg/png/webp, max 2MB)
+   406→   406→   406→- Modified /src/components/driver/driver-profile-client.tsx: real file upload for Right to Work and Driving License, preview modal, toast notifications
+   407→   407→   407→
+   408→   408→   408→Stage Summary:
+   409→   409→   409→- 10 new files created, 7 existing files modified
+   410→   410→   410→- Complete low-stock alerting system with dashboard integration
+   411→   411→   411→- Wastage logging with stock decrement and cost tracking
+   412→   412→   412→- Pre-approved substitutes for out-of-stock products
+   413→   413→   413→- CSV import/export with preview and validation
+   414→   414→   414→- Image/document upload using base64 data URLs (temporary, production would use cloud storage)
+   415→   415→   415→- All components responsive (mobile-first), ESLint clean, TypeScript strict
+   416→   416→   416→
+   417→   417→   417→---
+   418→   418→   418→Task ID: 7
+   419→   419→   419→Agent: Feature Agent
+   420→   420→   420→Task: Implement 5 medium-priority features (Bank Holiday Scheduler, Notification Editor, Smart Order Batching, Delivery Map, Driver Photo Proof)
+   421→   421→   421→
+   422→   422→   422→Work Log:
+   423→   423→   423→
+   424→   424→   424→Feature 1: UK Bank Holiday Scheduler
+   425→   425→   425→- Created /src/app/api/admin/bank-holidays/route.ts (GET list, POST add single or bulk)
+   426→   426→   426→- Created /src/app/api/admin/bank-holidays/[id]/route.ts (DELETE)
+   427→   427→   427→- Created /src/components/admin/bank-holiday-manager.tsx with:
+   428→   428→   428→  - UK bank holiday auto-generation using Easter algorithm (Good Friday, Easter Monday, May Day, Spring/Summer Bank, Christmas, Boxing Day, New Year)
+   429→   429→   429→  - Year selector (2025-2027) + "Add UK Bank Holidays for [Year]" button
+   430→   430→   430→  - Each holiday has mode dropdown: Auto Close, Reduced Hours, Normal
+   431→   431→   431→  - Delete individual holidays
+   432→   432→   432→  - Next upcoming holiday shown prominently in amber alert box
+   433→   433→   433→  - Past holidays displayed with reduced opacity
+   434→   434→   434→  - Bulk add with deduplication against existing holidays
+   435→   435→   435→- Modified /src/app/api/store/status/route.ts:
+   436→   436→   436→  - Added bank holiday check on every public store status request
+   437→   437→   437→  - Returns bankHolidayMode and bankHolidayName fields
+   438→   438→   438→  - If today is a bank holiday with mode=auto_close, overrides isOpen to false
+   439→   439→   439→- Added BankHolidayManager to /src/app/admin/settings/page.tsx
+   440→   440→   440→
+   441→   441→   441→Feature 2: Notification Text Editor
+   442→   442→   442→- Created /src/components/admin/notification-editor.tsx with:
+   443→   443→   443→  - Edit 5 notification templates: Order Confirmation, Order Picking, Out for Delivery, Order Delivered, Store Closed
+   444→   444→   444→  - Each template has textarea with variable placeholders shown as clickable hint buttons
+   445→   445→   445→  - Variables: {orderId}, {customerName}, {total}, {driverName}, {eta}, {openingTime}
+   446→   446→   446→  - Live preview panel showing how notification would look with sample data
+   447→   447→   447→  - Save button that updates store's notificationTemplate field via /api/admin/store/status
+   448→   448→   448→- Modified /src/app/api/admin/store/status/route.ts:
+   449→   449→   449→  - GET now returns notificationTemplate field
+   450→   450→   450→  - PUT now handles notificationTemplate updates (stored as JSON string)
+   451→   451→   451→- Added NotificationEditor to /src/app/admin/settings/page.tsx
+   452→   452→   452→
+   453→   453→   453→Feature 3: Smart Order Batching
+   454→   454→   454→- Created /src/app/api/admin/orders/batching/route.ts:
+   455→   455→   455→  - GET: Groups active orders by postcode area prefix (e.g., "KT1" from "KT1 2AB")
+   456→   456→   456→  - Returns batches with 2+ orders sharing same postcode area
+   457→   457→   457→  - POST: Assign batch to driver — sets batchGroup, driverId, status=out_for_delivery, dispatchedAt
+   458→   458→   458→- Modified /src/components/admin/kanban-order-board.tsx:
+   459→   459→   459→  - Added BatchSuggestionsPanel component at top of kanban board
+   460→   460→   460→  - Shows orders grouped by postcode area with expandable details
+   461→   461→   461→  - "Assign Batch to Driver" button with driver select dropdown
+   462→   462→   462→  - Batch group badge on order cards (colour-coded by batch hash)
+   463→   463→   463→  - Auto-refreshes every 60 seconds
+   464→   464→   464→
+   465→   465→   465→Feature 4: 15km Delivery Radius Map
+   466→   466→   466→- Installed leaflet, react-leaflet, @types/leaflet
+   467→   467→   467→- Created /src/app/api/admin/delivery-map/route.ts:
+   468→   468→   468→  - Returns store location + deliveryRadiusKm
+   469→   469→   469→  - Returns active orders with addresses (lat/lng)
+   470→   470→   470→  - Returns active drivers with approximate positions
+   471→   471→   471→- Created /src/components/admin/delivery-map.tsx:
+   472→   472→   472→  - Leaflet map centered on store location
+   473→   473→   473→  - Dashed circle showing delivery radius
+   474→   474→   474→  - Store marker (green), order markers (blue), driver markers (orange)
+   475→   475→   475→  - Order details popup on marker click
+   476→   476→   476→  - Custom div icons for each marker type
+   477→   477→   477→  - Legend bar showing marker meanings
+   478→   478→   478→  - SSR-safe with dynamic imports
+   479→   479→   479→- Added DeliveryMap to admin dashboard (admin-dashboard-client.tsx)
+   480→   480→   480→- Created /src/components/customer/customer-tracking-map.tsx:
+   481→   481→   481→  - Customer-facing map with store, driver, and delivery destination markers
+   482→   482→   482→  - Pulse animation on driver marker
+   483→   483→   483→  - Different icon styles for store/driver/destination
+   484→   484→   484→- Modified /src/components/customer/order-tracking-client.tsx:
+   485→   485→   485→  - Replaced "Coming soon" placeholder with actual CustomerTrackingMap component
+   486→   486→   486→  - Shows store, driver (when out for delivery), and delivery location
+   487→   487→   487→
+   488→   488→   488→Feature 5: Driver Photo Proof of Delivery
+   489→   489→   489→- Created /src/app/api/driver/orders/[id]/deliver/route.ts:
+   490→   490→   490→  - POST endpoint for delivery confirmation with proof
+   491→   491→   491→  - Accepts deliveryPhotoUrl and signatureUrl (base64 data URLs)
+   492→   492→   492→  - Sets status=delivered, deliveredAt=now
+   493→   493→   493→  - Validates Challenge 25 verification if required
+   494→   494→   494→- Modified /src/components/driver/driver-order-flow-client.tsx:
+   495→   495→   495→  - Added photo capture with <input type="file" accept="image/*" capture="environment">
+   496→   496→   496→  - Photo preview with delete button
+   497→   497→   497→  - Canvas-based signature pad with mouse and touch support
+   498→   498→   498→  - Clear signature button
+   499→   499→   499→  - Proof status badges (Photo captured / Signature captured / No proof)
+   500→   500→   500→  - Confirm Delivered button sends photo and signature data URLs to API
+   501→   501→   501→  - Also shows "Confirm Delivery" button when Challenge 25 is verified
+   502→   502→   502→
+   503→   503→   503→- ESLint: 0 errors in src/ directory
+   504→   504→   504→- Dev server compiles and runs successfully
+   505→   505→   505→- All APIs return correct responses (tested /api/store/status, admin endpoints return 401 for unauthenticated)
+   506→   506→   506→
+   507→   507→   507→Stage Summary:
+   508→   508→   508→- 10 new files created, 6 existing files modified
+   509→   509→   509→- UK Bank Holiday Scheduler with auto-close logic, year auto-generation, and next-holiday display
+   510→   510→   510→- Notification Text Editor with variable placeholders and live preview
+   511→   511→   511→- Smart Order Batching with postcode-area grouping and one-click driver assignment
+   512→   512→   512→- Leaflet-based Delivery Map on admin dashboard and customer tracking
+   513→   513→   513→- Driver Photo Proof with camera capture and signature pad
+   514→   514→   514→- All components responsive, use shadcn/ui, and follow existing code patterns
+   515→   515→   515→
+   516→   516→   516→---
+   517→   517→   517→Task ID: 8
+   518→   518→   518→Agent: Feature Agent
+   519→   519→   519→Task: Implement final lower-priority features (PWA, Rate Limiting, Google OAuth, Order Refund)
+   520→   520→   520→
+   521→   521→   521→Work Log:
+   522→   522→   522→
+   523→   523→   523→Feature 1: PWA Support
+   524→   524→   524→- Created /public/manifest.json with app metadata and icon references
+   525→   525→   525→- Created /public/sw.js service worker with cache-first (static assets) and network-first (API/HTML) strategies
+   526→   526→   526→- Generated PWA icons via z-ai-generate: /public/icon-192.png, /public/icon-512.png
+   527→   527→   527→- Created /src/components/pwa-sw-register.tsx client component for service worker registration
+   528→   528→   528→- Updated /src/app/layout.tsx: added Viewport export with themeColor, manifest link, apple icon, appleWebApp config, and ServiceWorkerRegistration component
+   529→   529→   529→
+   530→   530→   530→Feature 2: API Rate Limiting
+   531→   531→   531→- Created /src/lib/rate-limit.ts with in-memory rate limiter (Map-based, IP-tracked)
+   532→   532→   532→- Includes checkRateLimit(), getClientIp(), RATE_LIMIT_PRESETS (general: 100/min, auth: 10/min, checkout: 5/min)
+   533→   533→   533→- withRateLimit() HOF wraps API route handlers, returns 429 with Retry-After header when exceeded
+   534→   534→   534→- Automatic cleanup of expired entries every 60 seconds
+   535→   535→   535→
+   536→   536→   536→Feature 3: Google OAuth Integration
+   537→   537→   537→- Created /src/app/api/auth/google/route.ts (GET: redirect to Google consent screen, CSRF state protection)
+   538→   538→   538→- Created /src/app/api/auth/google/callback/route.ts (GET: exchange code for tokens, find/create user, set session, role-based redirect)
+   539→   539→   539→- Added "Sign in with Google" button to login-client.tsx and auth-modal.tsx (both login and register views)
+   540→   540→   540→- Installed react-icons package for SiGoogle icon
+   541→   541→   541→
+   542→   542→   542→Feature 4: Order Refund Flow
+   543→   543→   543→- Created /src/app/api/admin/orders/[id]/refund/route.ts (POST: validate, Stripe refund if applicable, update order, notify customer)
+   544→   544→   544→- Updated kanban-order-board.tsx: added "Refund Order" button with AlertDialog confirmation + reason textarea, "Refunded" badge, "Cancelled" column
+   545→   545→   545→- Updated order-confirmation-client.tsx: red refund alert banner, amber cancelled alert banner, hides success banner for refunded/cancelled orders
+   546→   546→   546→
+   547→   547→   547→---
+   548→   548→   548→Task ID: main
+   549→   549→   549→Agent: Main Orchestrator
+   550→   550→   550→Task: Implement all 36 missing features from the UK Store requirements PDF
+   551→   551→   551→
+   552→   552→   552→Work Log:
+   553→   553→   553→- Analyzed the requirements PDF (21 pages) against the current codebase
+   554→   554→   554→- Identified 36 missing features organized by priority (6 Critical, 11 High, 11 Medium, 8 Low)
+   555→   555→   555→- Updated Prisma schema with new models (AttendanceLog, Shift, WastageLog, Expense, BankHoliday) and new fields on existing models
+   556→   556→   556→- Pushed schema to database successfully
+   557→   557→   557→- Updated TypeScript types to match new schema
+   558→   558→   558→- Dispatched 6 parallel subagents to implement all features simultaneously
+   559→   559→   559→- Built successfully (next build passes, ESLint clean in src/)
+   560→   560→   560→- Committed and pushed to GitHub (110 files changed, 16,110 insertions)
+   561→   561→   561→- Verified Vercel deployment is live
+   562→   562→   562→
+   563→   563→   563→Stage Summary:
+   564→   564→   564→- All 36 features implemented across 110 files
+   565→   565→   565→- 6 new API route groups, 5 new admin pages, 5 new picker pages
+   566→   566→   566→- Key new features: Postcode Gate, Kanban Board, Finance Ledger, Stripe Webhook, Challenge 25, Picker Dashboard, Delivery Map, PWA support
+   567→   567→   567→- Site live at https://uk-store.vercel.app/
+   568→   568→   568→
+   569→   569→   569→---
+   570→   570→   570→Task ID: fix-database-schema-error-v2
+   571→   571→   571→Agent: Main Agent
+   572→   572→   572→Task: Fix DATABASE_SCHEMA_ERROR on login - auto-create full schema and seed on fresh DB
+   573→   573→   573→
+   574→   574→   574→Work Log:
+   575→   575→   575→- Analyzed screenshot showing DATABASE_SCHEMA_ERROR HTTP 500 on login
+   576→   576→   576→- Found that prisma.ts was creating empty SQLite files but never creating tables
+   577→   577→   577→- Previous fix (commit 61f3742) had auto-schema SQL but was removed in later commit (31193ec)
+   578→   578→   578→- Wrote comprehensive SQL for all 18 tables matching current Prisma schema
+   579→   579→   579→- Added auto-seeding of admin, driver, and customer accounts on fresh databases
+   580→   580→   580→- Updated login route to try Supabase Auth first (when configured) then fall back to local Prisma
+   581→   581→   581→- Updated register route with same Supabase Auth support
+   582→   582→   582→- Tested locally: auto-schema creation and seeding works
+   583→   583→   583→- Built successfully and pushed to GitHub (commit 2c0997c)
+   584→   584→   584→- Verified on production: admin@freshmart.co.uk, driver@freshmart.co.uk, customer@freshmart.co.uk all login successfully
+   585→   585→   585→- Registration also works for new users
+   586→   586→   586→
+   587→   587→   587→Stage Summary:
+   588→   588→   588→- Fixed DATABASE_SCHEMA_ERROR by restoring auto-schema creation with full 18-table SQL
+   589→   589→   589→- Added auto-seeding of default accounts (admin, driver, customer) on fresh databases
+   590→   590→   590→- Added Supabase Auth as primary auth method (falls back to local Prisma)
+   591→   591→   591→- All three user roles verified working on production: uk-store.vercel.app
+   592→   592→   592→

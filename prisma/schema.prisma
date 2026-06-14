@@ -81,6 +81,7 @@ model User {
   driverProfile   DriverProfile?
   attendanceLogs  AttendanceLog[]
   shifts          Shift[]       @relation("StaffShifts")
+  employeeProfile EmployeeProfile?
 
   @@map("users")
 }
@@ -115,6 +116,7 @@ model Store {
   promotions     Promotion[]
   expenses       Expense[]
   bankHolidays   BankHoliday[]
+  banners        Banner[]
 
   @@map("stores")
 }
@@ -149,12 +151,15 @@ model Product {
   slug                  String
   description           String?
   price                 Float
+  originalPrice         Float?   // For discount display: if set, shows as crossed-out original price
   vatRate               Float    @default(0.0)
   isHfss                Boolean  @default(false)
   isAgeRestricted       Boolean  @default(false)  // UK Challenge 25 — alcohol, tobacco, knives, solvents, etc.
   minimumAge            Int      @default(0)      // 0 = no restriction, 16 = energy drinks, 18 = alcohol/tobacco/knives, 21 = some US items
   imageUrl              String?
+  images                String?  // JSON array of additional image URLs for gallery
   barcode               String?
+  brand                 String?  // Brand name for customer filters (e.g., "Amul", "Coca-Cola")
   unit                  String   @default("each")
   weightKg              Float?
   volumeLitres          Float?
@@ -164,6 +169,8 @@ model Product {
   isAvailable           Boolean  @default(true)
   stockQuantity         Int      @default(0)
   isFeatured            Boolean  @default(false)
+  rating                Float    @default(0)    // Average rating (0-5)
+  reviewCount           Int      @default(0)    // Total number of reviews
   sortOrder             Int      @default(0)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -227,6 +234,8 @@ model Order {
   deliveryPhotoUrl     String?
   bankTransferRef      String?
   bankTransferVerified Boolean       @default(false)
+  promotionId          String?       // Applied promotion
+  discountAmount       Float         @default(0)   // Discount applied from promotion
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
@@ -355,6 +364,9 @@ model Promotion {
   discountValue         Float
   startDate             DateTime
   endDate               DateTime
+  minimumOrderValue     Float        @default(0)
+  usageLimit            Int?         // Max total uses (null = unlimited)
+  usedCount             Int          @default(0)
   appliesToCategoryIds  String?      // JSON array of category IDs
   excludesHfss          Boolean      @default(false)
   isActive              Boolean      @default(true)
@@ -444,4 +456,40 @@ model BankHoliday {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@map("bank_holidays")
+}
+
+model Banner {
+  id           String   @id @default(cuid())
+  storeId      String
+  title        String?
+  imageUrl     String
+  linkUrl      String?  // URL to navigate on click (e.g., "/catalog?category=dairy-eggs")
+  linkCategory String?  // Category slug for quick link
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("banners")
+}
+
+model EmployeeProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  salary          Float?   // Monthly salary
+  wageRate        Float?   // Hourly/daily wage rate
+  wageType        String?  // 'monthly', 'hourly', 'daily'
+  bankName        String?
+  bankAccountNo   String?
+  bankSortCode    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("employee_profiles")
 }

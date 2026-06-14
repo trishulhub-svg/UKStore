@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Minus, Plus, Trash2, ArrowLeft, ShoppingBag, SwitchCamera } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, Trash2, ArrowLeft, ShoppingBag, SwitchCamera, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge'
 import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
 import { formatPrice, getVatRateLabel, calculateVatFromGross } from '@/lib/vat'
+import { calculateDeliveryFee } from '@/lib/delivery'
+import { useDeliveryLocation } from '@/lib/delivery-location'
 import type { Store } from '@/types'
 
 interface CartClientProps {
@@ -54,16 +56,33 @@ export function CartClient({ store }: CartClientProps) {
 
   const totalVat = Object.values(vatGroups).reduce((sum, group) => sum + group.vat, 0)
 
-  // Delivery fee calculation (placeholder distance of 2km)
-  const distanceKm = 2
-  const isFreeDelivery = subtotal >= store.free_delivery_threshold
-  const deliveryFee = isFreeDelivery ? 0 : store.base_delivery_fee + store.per_km_charge * distanceKm
+  // Delivery fee calculation using real distance from delivery location context
+  const deliveryLocation = useDeliveryLocation()
+  const distanceKm = deliveryLocation.location.distanceKm
+  const isWithinZone = deliveryLocation.location.isWithinDeliveryZone
+  const hasLocation = deliveryLocation.location.latitude !== null && deliveryLocation.location.longitude !== null
+
+  const deliveryPricing = distanceKm !== null
+    ? calculateDeliveryFee({
+        base_delivery_fee: store.base_delivery_fee,
+        per_km_charge: store.per_km_charge,
+        free_delivery_threshold: store.free_delivery_threshold,
+        delivery_radius_km: store.delivery_radius_km,
+        order_subtotal: subtotal,
+        distance_km: distanceKm,
+      })
+    : null
+
+  const deliveryFee = deliveryPricing
+    ? deliveryPricing.delivery_fee
+    : (subtotal >= store.free_delivery_threshold ? 0 : store.base_delivery_fee)
+  const isFreeDelivery = deliveryPricing ? deliveryPricing.is_free_delivery : (subtotal >= store.free_delivery_threshold)
   const total = subtotal + deliveryFee
 
   // Empty cart state
   if (items.length === 0) {
     return (
-      <CustomerLayout storeName={store.name}>
+      <CustomerLayout storeName={store.name} store={store}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center max-w-md mx-auto">
             <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-6">
@@ -86,7 +105,7 @@ export function CartClient({ store }: CartClientProps) {
   }
 
   return (
-    <CustomerLayout storeName={store.name}>
+    <CustomerLayout storeName={store.name} store={store}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Page Header */}
         <div className="mb-6">
@@ -218,6 +237,26 @@ export function CartClient({ store }: CartClientProps) {
                 <CardTitle className="text-lg">Order Summary</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {/* Delivery Zone Warning */}
+                {hasLocation && !isWithinZone && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                    <MapPin className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-red-600 font-medium">Outside delivery zone</p>
+                      <p className="text-xs text-red-500 mt-0.5">Your location is {distanceKm}km away — we deliver within {store.delivery_radius_km}km.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Distance Info */}
+                {hasLocation && distanceKm !== null && isWithinZone && !isFreeDelivery && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-blue-600 font-medium">
+                      📍 {distanceKm}km from store — Delivery: {formatPrice(store.base_delivery_fee)} + {formatPrice(store.per_km_charge)}/km
+                    </p>
+                  </div>
+                )}
+
                 {/* Subtotal */}
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal</span>
@@ -236,7 +275,12 @@ export function CartClient({ store }: CartClientProps) {
 
                 {/* Delivery Fee */}
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Delivery fee</span>
+                  <span className="text-gray-600">
+                    Delivery fee
+                    {hasLocation && distanceKm !== null && !isFreeDelivery && (
+                      <span className="text-gray-400 ml-1">({distanceKm}km)</span>
+                    )}
+                  </span>
                   <span className="font-medium">
                     {isFreeDelivery ? (
                       <span className="text-[#16a34a]">Free</span>
@@ -274,11 +318,17 @@ export function CartClient({ store }: CartClientProps) {
 
                 {/* Action Buttons */}
                 <div className="space-y-2 pt-2">
-                  <Link href="/checkout" className="block">
-                    <Button className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold h-11">
-                      Proceed to Checkout
+                  {hasLocation && !isWithinZone ? (
+                    <Button className="w-full bg-gray-300 text-gray-500 cursor-not-allowed" disabled>
+                      Outside Delivery Zone
                     </Button>
-                  </Link>
+                  ) : (
+                    <Link href="/checkout" className="block">
+                      <Button className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold h-11">
+                        Proceed to Checkout
+                      </Button>
+                    </Link>
+                  )}
                   <Link href="/catalog" className="block">
                     <Button variant="outline" className="w-full h-11">
                       <ArrowLeft className="h-4 w-4 mr-2" />

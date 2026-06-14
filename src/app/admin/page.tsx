@@ -3,7 +3,7 @@ import { AdminDashboardClient } from '@/components/admin/admin-dashboard-client'
 
 export const dynamic = 'force-dynamic'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 export default async function AdminDashboardPage() {
   const prisma = await getPrisma()

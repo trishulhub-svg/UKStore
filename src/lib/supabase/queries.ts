@@ -1,7 +1,5 @@
 import { getPrisma } from '@/lib/auth/prisma'
-import { createServiceClient } from '@/lib/supabase/server'
 import type { Store, Category, ProductWithCategory } from '@/types'
-import { mockData } from './mock-data'
 
 // ─── Mappers: Prisma camelCase → Frontend snake_case ──────────
 
@@ -51,17 +49,22 @@ function mapPrismaProductToProductWithCategory(p: any): ProductWithCategory {
     slug: p.slug,
     description: p.description,
     price: p.price,
+    original_price: p.originalPrice ?? null,
     vat_rate: p.vatRate,
     is_hfss: p.isHfss,
     is_age_restricted: p.isAgeRestricted,
     minimum_age: p.minimumAge,
     image_url: p.imageUrl,
+    images: p.images ? (typeof p.images === 'string' ? JSON.parse(p.images) : p.images) : null,
     barcode: p.barcode,
+    brand: p.brand ?? null,
     unit: p.unit,
     weight_kg: p.weightKg,
     is_available: p.isAvailable,
     stock_quantity: p.stockQuantity,
     is_featured: p.isFeatured,
+    rating: p.rating ?? 0,
+    review_count: p.reviewCount ?? 0,
     sort_order: p.sortOrder,
     created_at: p.createdAt?.toISOString?.() ?? p.created_at ?? '',
     updated_at: p.updatedAt?.toISOString?.() ?? p.updated_at ?? '',
@@ -69,99 +72,29 @@ function mapPrismaProductToProductWithCategory(p: any): ProductWithCategory {
   }
 }
 
-// ─── Supabase reachability cache ──────────────────────────────
-
-// Cache whether Supabase is reachable to avoid repeated timeouts
-let supabaseReachable: boolean | null = null
-let lastCheckTime = 0
-const CHECK_INTERVAL = 60_000 // Re-check every 60 seconds
-
-async function isSupabaseReachable(): Promise<boolean> {
-  const now = Date.now()
-  if (supabaseReachable !== null && now - lastCheckTime < CHECK_INTERVAL) {
-    return supabaseReachable
-  }
-
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 2000)
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!url || !key) {
-      supabaseReachable = false
-      lastCheckTime = now
-      return false
-    }
-    const response = await fetch(`${url}/rest/v1/`, {
-      signal: controller.signal,
-      headers: {
-        apikey: key,
-      },
-    })
-    clearTimeout(timeoutId)
-    supabaseReachable = response.ok || response.status === 401 // 401 means server is reachable
-    lastCheckTime = now
-    return supabaseReachable
-  } catch {
-    supabaseReachable = false
-    lastCheckTime = now
-    return false
-  }
-}
-
-/**
- * Try Supabase query — returns null if Supabase is not available or query fails
- */
-async function trySupabase<T>(fetcher: () => Promise<T>): Promise<T | null> {
-  const reachable = await isSupabaseReachable()
-  if (!reachable) return null
-
-  try {
-    return await fetcher()
-  } catch {
-    return null
-  }
-}
-
 // ─── Query functions ──────────────────────────────────────────
-// Pattern: 1. Try Prisma → 2. Try Supabase → 3. Mock data fallback
+// Pattern: 1. Try Prisma → 2. Try Supabase → 3. Return empty/null
 
 /**
  * Get store by ID
  */
 export async function getStore(storeId: string): Promise<Store | null> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const store = await prisma.store.findUnique({ where: { id: storeId } })
     if (store) return mapPrismaStoreToStore(store)
   } catch (err) {
-    console.warn('[queries] Prisma getStore failed, trying fallback:', err)
+    console.warn('[queries] Prisma getStore failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('stores')
-      .select('*')
-      .eq('id', storeId)
-      .single()
-    if (error || !data) return null
-    return data as Store
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.store
+  // No mock data — return null if DB has no data
+  return null
 }
 
 /**
  * Get the first active store (for single-store MVP)
  */
 export async function getDefaultStore(): Promise<Store | null> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const store = await prisma.store.findFirst({
@@ -169,33 +102,17 @@ export async function getDefaultStore(): Promise<Store | null> {
     })
     if (store) return mapPrismaStoreToStore(store)
   } catch (err) {
-    console.warn('[queries] Prisma getDefaultStore failed, trying fallback:', err)
+    console.warn('[queries] Prisma getDefaultStore failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('stores')
-      .select('*')
-      .eq('is_active', true)
-      .limit(1)
-      .single()
-    if (error || !data) return null
-    return data as Store
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.store
+  // No mock data — return null if DB has no data
+  return null
 }
 
 /**
  * Get all active categories for a store, ordered by sort_order
  */
 export async function getCategories(storeId: string): Promise<Category[]> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const categories = await prisma.category.findMany({
@@ -204,33 +121,17 @@ export async function getCategories(storeId: string): Promise<Category[]> {
     })
     if (categories.length > 0) return categories.map(mapPrismaCategoryToCategory)
   } catch (err) {
-    console.warn('[queries] Prisma getCategories failed, trying fallback:', err)
+    console.warn('[queries] Prisma getCategories failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .eq('store_id', storeId)
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as Category[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.categories
+  // No mock data — return empty array if DB has no data
+  return []
 }
 
 /**
  * Get all available products for a store, with category relation
  */
 export async function getProducts(storeId: string): Promise<ProductWithCategory[]> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const products = await prisma.product.findMany({
@@ -240,33 +141,17 @@ export async function getProducts(storeId: string): Promise<ProductWithCategory[
     })
     if (products.length > 0) return products.map(mapPrismaProductToProductWithCategory)
   } catch (err) {
-    console.warn('[queries] Prisma getProducts failed, trying fallback:', err)
+    console.warn('[queries] Prisma getProducts failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('is_available', true)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as ProductWithCategory[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products
+  // No mock data — return empty array if DB has no data
+  return []
 }
 
 /**
  * Get products filtered by category
  */
 export async function getProductsByCategory(storeId: string, categoryId: string): Promise<ProductWithCategory[]> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const products = await prisma.product.findMany({
@@ -276,34 +161,17 @@ export async function getProductsByCategory(storeId: string, categoryId: string)
     })
     if (products.length > 0) return products.map(mapPrismaProductToProductWithCategory)
   } catch (err) {
-    console.warn('[queries] Prisma getProductsByCategory failed, trying fallback:', err)
+    console.warn('[queries] Prisma getProductsByCategory failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('category_id', categoryId)
-      .eq('is_available', true)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as ProductWithCategory[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products.filter((p) => p.category_id === categoryId)
+  // No mock data — return empty array if DB has no data
+  return []
 }
 
 /**
  * Get featured products only (is_featured = true)
  */
 export async function getFeaturedProducts(storeId: string): Promise<ProductWithCategory[]> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const products = await prisma.product.findMany({
@@ -313,34 +181,17 @@ export async function getFeaturedProducts(storeId: string): Promise<ProductWithC
     })
     if (products.length > 0) return products.map(mapPrismaProductToProductWithCategory)
   } catch (err) {
-    console.warn('[queries] Prisma getFeaturedProducts failed, trying fallback:', err)
+    console.warn('[queries] Prisma getFeaturedProducts failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('is_available', true)
-      .eq('is_featured', true)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as ProductWithCategory[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products.filter((p) => p.is_featured)
+  // No mock data — return empty array if DB has no data
+  return []
 }
 
 /**
  * Get single product by slug
  */
 export async function getProductBySlug(storeId: string, slug: string): Promise<ProductWithCategory | null> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const product = await prisma.product.findFirst({
@@ -349,33 +200,17 @@ export async function getProductBySlug(storeId: string, slug: string): Promise<P
     })
     if (product) return mapPrismaProductToProductWithCategory(product)
   } catch (err) {
-    console.warn('[queries] Prisma getProductBySlug failed, trying fallback:', err)
+    console.warn('[queries] Prisma getProductBySlug failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('slug', slug)
-      .single()
-    if (error || !data) return null
-    return data as ProductWithCategory
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products.find((p) => p.slug === slug) || null
+  // No mock data — return null if DB has no data
+  return null
 }
 
 /**
  * Text search using contains on name
  */
 export async function searchProducts(storeId: string, query: string): Promise<ProductWithCategory[]> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const products = await prisma.product.findMany({
@@ -389,34 +224,17 @@ export async function searchProducts(storeId: string, query: string): Promise<Pr
     })
     if (products.length > 0) return products.map(mapPrismaProductToProductWithCategory)
   } catch (err) {
-    console.warn('[queries] Prisma searchProducts failed, trying fallback:', err)
+    console.warn('[queries] Prisma searchProducts failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('is_available', true)
-      .ilike('name', `%${query}%`)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as ProductWithCategory[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+  // No mock data — return empty array if DB has no data
+  return []
 }
 
 /**
  * Get category by slug
  */
 export async function getCategoryBySlug(storeId: string, slug: string): Promise<Category | null> {
-  // 1. Try Prisma
   try {
     const prisma = await getPrisma()
     const category = await prisma.category.findFirst({
@@ -424,25 +242,9 @@ export async function getCategoryBySlug(storeId: string, slug: string): Promise<
     })
     if (category) return mapPrismaCategoryToCategory(category)
   } catch (err) {
-    console.warn('[queries] Prisma getCategoryBySlug failed, trying fallback:', err)
+    console.warn('[queries] Prisma getCategoryBySlug failed:', err)
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .eq('store_id', storeId)
-      .eq('slug', slug)
-      .eq('is_active', true)
-      .single()
-    if (error || !data) return null
-    return data as Category
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.categories.find((c) => c.slug === slug) || null
+  // No mock data — return null if DB has no data
+  return null
 }

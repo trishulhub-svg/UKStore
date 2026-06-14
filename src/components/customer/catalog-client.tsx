@@ -3,24 +3,14 @@
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ShoppingCart, Search, X, SlidersHorizontal } from 'lucide-react'
+import { Search, X, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
 import { CustomerLayout } from '@/components/layout/customer-layout'
-import { useCartStore } from '@/store/cart'
-import { formatPrice, formatUnitPrice } from '@/lib/vat'
+import { ProductCard } from '@/components/customer/product-card'
 import type { Store, Category, ProductWithCategory } from '@/types'
-
-interface CatalogClientProps {
-  store: Store
-  categories: Category[]
-  products: ProductWithCategory[]
-  activeCategory: Category | null
-  searchQuery: string | null
-}
 
 const categoryIcons: Record<string, string> = {
   'fruits-vegetables': '🥬',
@@ -31,6 +21,14 @@ const categoryIcons: Record<string, string> = {
   'drinks': '🧃',
   'frozen': '🧊',
   'snacks-sweets': '🍫',
+}
+
+interface CatalogClientProps {
+  store: Store
+  categories: Category[]
+  products: ProductWithCategory[]
+  activeCategory: Category | null
+  searchQuery: string | null
 }
 
 interface CategorySidebarProps {
@@ -80,7 +78,6 @@ export function CatalogClient({
   searchQuery,
 }: CatalogClientProps) {
   const router = useRouter()
-  const addItem = useCartStore((state) => state.addItem)
   const [searchInput, setSearchInput] = useState(searchQuery || '')
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
@@ -112,13 +109,13 @@ export function CatalogClient({
   }, [router])
 
   return (
-    <CustomerLayout storeName={store.name}>
+    <CustomerLayout storeName={store.name} store={store}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Page Header */}
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             {searchQuery
-              ? `Search: &quot;${searchQuery}&quot;`
+              ? `Search: "${searchQuery}"`
               : activeCategory
               ? activeCategory.name
               : 'All Products'}
@@ -237,80 +234,11 @@ export function CatalogClient({
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                 {products.map((product) => (
-                  <Card key={product.id} className="group hover:shadow-md transition-all duration-200 overflow-hidden">
-                    <Link href={`/product/${product.slug}`}>
-                      <div className="aspect-square bg-gray-200 relative flex items-center justify-center">
-                        {product.image_url ? (
-                          <img
-                            src={product.image_url}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-4xl text-gray-400">
-                            {categoryIcons[product.category?.slug || ''] || '🛒'}
-                          </span>
-                        )}
-                        {product.is_hfss && (
-                          <Badge className="absolute top-2 left-2 bg-amber-500 text-white text-[10px] px-1.5 py-0.5">
-                            HFSS
-                          </Badge>
-                        )}
-                        {product.stock_quantity <= 5 && product.stock_quantity > 0 && (
-                          <Badge className="absolute top-2 right-2 bg-amber-100 text-amber-700 text-[10px] px-1.5 py-0.5">
-                            Low Stock
-                          </Badge>
-                        )}
-                        {product.stock_quantity === 0 && (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                            <span className="text-white font-semibold text-sm">Out of Stock</span>
-                          </div>
-                        )}
-                      </div>
-                    </Link>
-                    <CardContent className="p-3 sm:p-4">
-                      <Link href={`/product/${product.slug}`}>
-                        <h3 className="font-medium text-sm text-gray-900 line-clamp-2 group-hover:text-[#16a34a] transition-colors">
-                          {product.name}
-                        </h3>
-                      </Link>
-                      {product.description && (
-                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
-                          {product.description}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {product.category?.name}
-                      </p>
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="min-w-0">
-                          <span className="font-bold text-base text-gray-900">
-                            {formatPrice(product.price)}
-                          </span>
-                          {/* Unit price for UK Trading Standards */}
-                          {formatUnitPrice(product.price, product.weight_kg, null, product.unit) && (
-                            <span className="text-xs text-gray-500 block">
-                              {formatUnitPrice(product.price, product.weight_kg, null, product.unit)}
-                            </span>
-                          )}
-                        </div>
-                        {product.stock_quantity > 0 ? (
-                          <Button
-                            size="sm"
-                            className="bg-[#f97316] hover:bg-[#ea580c] text-white h-10 px-3 text-xs flex-shrink-0"
-                            onClick={() => addItem(product)}
-                          >
-                            <ShoppingCart className="h-3 w-3 mr-1" />
-                            Add
-                          </Button>
-                        ) : (
-                          <Button size="sm" disabled className="h-10 px-3 text-xs flex-shrink-0">
-                            Sold Out
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    showAddOverlay={false}
+                  />
                 ))}
               </div>
             )}

@@ -7,6 +7,7 @@ import {
   searchProducts,
 } from '@/lib/supabase/queries'
 import { CatalogClient } from '@/components/customer/catalog-client'
+import type { Category, ProductWithCategory } from '@/types'
 
 interface CatalogPageProps {
   searchParams: Promise<{ category?: string; q?: string }>
@@ -14,16 +15,16 @@ interface CatalogPageProps {
 
 export default async function CatalogPage({ searchParams }: CatalogPageProps) {
   const params = await searchParams
-  const storeId = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+  const storeId = 'store-fresh-mart-001'
 
   const [store, categories] = await Promise.all([
     getDefaultStore(),
     getCategories(storeId),
   ])
 
-  let products
-  let activeCategory = null
-  let searchQuery = null
+  let products: ProductWithCategory[] = []
+  let activeCategory: Category | null = null
+  let searchQuery: string | null = null
 
   if (params.q) {
     // Search mode

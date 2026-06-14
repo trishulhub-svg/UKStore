@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Eye, AlertTriangle } from 'lucide-react'
+import { Search, Eye, AlertTriangle, ShieldBan, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -61,6 +61,7 @@ export default function AdminCustomersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [total, setTotal] = useState(0)
+  const [banningId, setBanningId] = useState<string | null>(null)
 
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -98,6 +99,36 @@ export default function AdminCustomersPage() {
       toast.error('Failed to load customer details')
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const handleToggleBan = async (customerId: string, currentIsActive: boolean) => {
+    setBanningId(customerId)
+    try {
+      const res = await fetch(`/api/admin/customers/${customerId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !currentIsActive }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+
+      // Update local state
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === customerId ? { ...c, isActive: data.customer.isActive } : c
+        )
+      )
+
+      toast.success(
+        data.customer.isActive
+          ? 'Customer has been unbanned'
+          : 'Customer has been banned'
+      )
+    } catch {
+      toast.error('Failed to update customer status')
+    } finally {
+      setBanningId(null)
     }
   }
 
@@ -156,10 +187,12 @@ export default function AdminCustomersPage() {
                     {customers.map((c) => (
                       <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3 px-4 font-medium text-gray-900">
-                          {c.name || 'N/A'}
-                          {!c.isActive && (
-                            <Badge variant="outline" className="ml-2 text-xs text-gray-400">Inactive</Badge>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {c.name || 'N/A'}
+                            {!c.isActive && (
+                              <Badge variant="destructive" className="text-xs">Banned</Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-gray-500">{c.email}</td>
                         <td className="py-3 px-4">
@@ -174,9 +207,30 @@ export default function AdminCustomersPage() {
                           })}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <Button variant="ghost" size="sm" onClick={() => handleViewDetail(c.id)}>
-                            <Eye className="h-4 w-4 mr-1" /> View
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant={c.isActive ? 'outline' : 'default'}
+                              size="sm"
+                              onClick={() => handleToggleBan(c.id, c.isActive)}
+                              disabled={banningId === c.id}
+                              className={
+                                c.isActive
+                                  ? 'text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700'
+                                  : 'bg-green-600 hover:bg-green-700 text-white'
+                              }
+                            >
+                              {banningId === c.id ? (
+                                '...'
+                              ) : c.isActive ? (
+                                <><ShieldBan className="h-3.5 w-3.5 mr-1" /> Ban</>
+                              ) : (
+                                <><ShieldCheck className="h-3.5 w-3.5 mr-1" /> Unban</>
+                              )}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleViewDetail(c.id)}>
+                              <Eye className="h-4 w-4 mr-1" /> View
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -191,12 +245,12 @@ export default function AdminCustomersPage() {
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
                         <div>
-                          <p className="font-medium text-gray-900">
+                          <p className="font-medium text-gray-900 flex items-center gap-2">
                             {c.name || 'N/A'}
+                            {!c.isActive && (
+                              <Badge variant="destructive" className="text-xs">Banned</Badge>
+                            )}
                           </p>
-                          {!c.isActive && (
-                            <Badge variant="outline" className="text-xs text-gray-400 mt-1">Inactive</Badge>
-                          )}
                         </div>
                       </div>
                       <div className="space-y-2 mb-3">
@@ -224,8 +278,25 @@ export default function AdminCustomersPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 pt-2 border-t">
+                        <Button
+                          variant={c.isActive ? 'outline' : 'default'}
+                          size="sm"
+                          className={
+                            c.isActive
+                              ? 'flex-1 text-red-600 border-red-200 hover:bg-red-50 min-h-10'
+                              : 'flex-1 bg-green-600 hover:bg-green-700 text-white min-h-10'
+                          }
+                          onClick={() => handleToggleBan(c.id, c.isActive)}
+                          disabled={banningId === c.id}
+                        >
+                          {c.isActive ? (
+                            <><ShieldBan className="h-4 w-4 mr-1" /> Ban</>
+                          ) : (
+                            <><ShieldCheck className="h-4 w-4 mr-1" /> Unban</>
+                          )}
+                        </Button>
                         <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleViewDetail(c.id)}>
-                          <Eye className="h-4 w-4 mr-1" /> View Details
+                          <Eye className="h-4 w-4 mr-1" /> View
                         </Button>
                       </div>
                     </CardContent>
@@ -253,7 +324,12 @@ export default function AdminCustomersPage() {
             <div className="py-4 space-y-6">
               {/* Customer Info */}
               <div className="bg-gray-50 p-4 rounded-lg space-y-1">
-                <p className="font-medium">{selectedCustomer.name || 'N/A'}</p>
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">{selectedCustomer.name || 'N/A'}</p>
+                  {!selectedCustomer.isActive && (
+                    <Badge variant="destructive" className="text-xs">Banned</Badge>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">{selectedCustomer.email}</p>
                 {selectedCustomer.phone && <p className="text-sm text-gray-500">{selectedCustomer.phone}</p>}
                 <p className="text-sm text-gray-500">

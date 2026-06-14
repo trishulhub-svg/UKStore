@@ -4,7 +4,7 @@ import { getPrisma } from '@/lib/auth/prisma'
 import { calculateVatFromGross } from '@/lib/vat'
 import { getStripeConfig, getSetting } from '@/lib/settings'
 
-const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+const STORE_ID = 'store-fresh-mart-001'
 
 function buildApiError(
   message: string,
@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
       save_address,
       payment_method: paymentMethod,
       bank_transfer_ref: bankTransferRef,
+      promo_code: promoCode,
+      promotion_id: promotionId,
+      discount_amount: discountAmount,
     } = body
 
     // Validate cart items
@@ -186,7 +189,8 @@ export async function POST(request: NextRequest) {
 
     const finalSubtotal = validatedSubtotal || subtotal
     const finalVatAmount = validatedVatAmount || vat_amount
-    const finalTotal = finalSubtotal + delivery_fee
+    const finalDiscount = discountAmount || 0
+    const finalTotal = finalSubtotal + delivery_fee - finalDiscount
 
     // Save address if requested and user is authenticated
     let addressId: string | null = null
@@ -241,6 +245,25 @@ export async function POST(request: NextRequest) {
     // ─── Payment Method: Cash on Delivery ───────────────────────
     if (paymentMethod === 'cash') {
       try {
+        // Validate promo code if provided
+        let validatedPromoId: string | null = promotionId || null
+        let validatedDiscount = finalDiscount
+        if (promoCode) {
+          try {
+            const promo = await prisma.promotion.findFirst({
+              where: { storeId: STORE_ID, code: { equals: promoCode, mode: 'insensitive' }, isActive: true },
+            })
+            if (promo) {
+              validatedPromoId = promo.id
+              // Increment usage count
+              await prisma.promotion.update({
+                where: { id: promo.id },
+                data: { usedCount: { increment: 1 } },
+              })
+            }
+          } catch { /* non-critical */ }
+        }
+
         const order = await prisma.order.create({
           data: {
             storeId: STORE_ID,
@@ -256,6 +279,8 @@ export async function POST(request: NextRequest) {
             paymentMethod: 'cash',
             hasChallenge25: requiresChallenge25,
             deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+            promotionId: validatedPromoId,
+            discountAmount: validatedDiscount,
             items: {
               create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
                 const itemGross = item.unit_price * item.quantity
@@ -296,6 +321,24 @@ export async function POST(request: NextRequest) {
     // ─── Payment Method: Bank Transfer ──────────────────────────
     if (paymentMethod === 'bank_transfer') {
       try {
+        // Validate promo code if provided
+        let validatedPromoId: string | null = promotionId || null
+        let validatedDiscount = finalDiscount
+        if (promoCode) {
+          try {
+            const promo = await prisma.promotion.findFirst({
+              where: { storeId: STORE_ID, code: { equals: promoCode, mode: 'insensitive' }, isActive: true },
+            })
+            if (promo) {
+              validatedPromoId = promo.id
+              await prisma.promotion.update({
+                where: { id: promo.id },
+                data: { usedCount: { increment: 1 } },
+              })
+            }
+          } catch { /* non-critical */ }
+        }
+
         const order = await prisma.order.create({
           data: {
             storeId: STORE_ID,
@@ -313,6 +356,8 @@ export async function POST(request: NextRequest) {
             bankTransferVerified: false,
             hasChallenge25: requiresChallenge25,
             deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+            promotionId: validatedPromoId,
+            discountAmount: validatedDiscount,
             items: {
               create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
                 const itemGross = item.unit_price * item.quantity
@@ -423,6 +468,8 @@ export async function POST(request: NextRequest) {
             paymentMethod: 'stripe',
             hasChallenge25: requiresChallenge25,
             deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+            promotionId: promotionId || null,
+            discountAmount: finalDiscount,
             items: {
               create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
                 const itemGross = item.unit_price * item.quantity
@@ -483,6 +530,21 @@ export async function POST(request: NextRequest) {
 
     // Demo mode: Create order in Prisma
     try {
+      // Validate promo code if provided
+      if (promoCode) {
+        try {
+          const promo = await prisma.promotion.findFirst({
+            where: { storeId: STORE_ID, code: { equals: promoCode, mode: 'insensitive' }, isActive: true },
+          })
+          if (promo) {
+            await prisma.promotion.update({
+              where: { id: promo.id },
+              data: { usedCount: { increment: 1 } },
+            })
+          }
+        } catch { /* non-critical */ }
+      }
+
       const order = await prisma.order.create({
         data: {
           storeId: STORE_ID,
@@ -498,6 +560,8 @@ export async function POST(request: NextRequest) {
           paymentMethod: 'stripe',
           hasChallenge25: requiresChallenge25,
           deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+          promotionId: promotionId || null,
+          discountAmount: finalDiscount,
           items: {
             create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
               const itemGross = item.unit_price * item.quantity

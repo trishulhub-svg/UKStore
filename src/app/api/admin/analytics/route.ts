@@ -124,7 +124,7 @@ export async function GET() {
     ] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('store_id', STORE_ID),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('store_id', STORE_ID),
-      supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'CUSTOMER'),
+      supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
       supabase.from('orders').select('total').eq('store_id', STORE_ID).neq('status', 'cancelled'),
     ])
 

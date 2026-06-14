@@ -297,3 +297,139 @@ export async function PUT(request: NextRequest) {
     )
   }
 }
+
+/**
+ * PATCH /api/admin/settings
+ * Update store information (owner only)
+ * Body: { store: { name, address, phone, email, base_delivery_fee, per_km_charge, free_delivery_threshold, delivery_radius_km, is_active } }
+ */
+export async function PATCH(request: NextRequest) {
+  const endpoint = '/api/admin/settings'
+  try {
+    const user = await getServerUser()
+
+    if (!user) {
+      return buildApiError(
+        'Authentication required. Please log in.',
+        'AUTH_REQUIRED',
+        401,
+        'No valid session cookie was found.',
+        endpoint,
+      )
+    }
+
+    if (user.role !== 'owner' && user.role !== 'OWNER') {
+      return buildApiError(
+        'Only store owners can modify store settings.',
+        'FORBIDDEN_ROLE',
+        403,
+        `Current user role: "${user.role}". Required role: "owner". User: ${user.email} (ID: ${user.id})`,
+        endpoint,
+      )
+    }
+
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return buildApiError(
+        'Request body is not valid JSON.',
+        'INVALID_BODY',
+        400,
+        'The server could not parse the request body as JSON.',
+        endpoint,
+      )
+    }
+
+    const { store } = body as {
+      store: Record<string, any>
+    }
+
+    if (!store || typeof store !== 'object') {
+      return buildApiError(
+        'No store data provided.',
+        'MISSING_STORE',
+        400,
+        'Expected a "store" object in the request body.',
+        endpoint,
+      )
+    }
+
+    // Whitelist of allowed store fields for update
+    const allowedFields = new Set([
+      'name',
+      'address',
+      'phone',
+      'email',
+      'base_delivery_fee',
+      'per_km_charge',
+      'free_delivery_threshold',
+      'delivery_radius_km',
+      'is_active',
+    ])
+
+    const updates: Record<string, any> = {}
+    for (const [key, value] of Object.entries(store)) {
+      if (allowedFields.has(key)) {
+        updates[key] = value
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return buildApiError(
+        'No valid store fields provided for update.',
+        'NO_FIELDS',
+        400,
+        `Allowed fields: ${[...allowedFields].join(', ')}`,
+        endpoint,
+      )
+    }
+
+    // Update the stores table
+    try {
+      const supabase = getSupabaseAdmin()
+      const { data, error: updateError } = await supabase
+        .from('stores')
+        .update(updates)
+        .eq('id', STORE_ID)
+        .select()
+        .single()
+
+      if (updateError) {
+        console.error('[Admin Settings PATCH] Supabase error:', updateError)
+        return buildApiError(
+          'Failed to update store information.',
+          'DB_ERROR',
+          500,
+          `Supabase error: ${updateError.message}`,
+          endpoint,
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        store: data,
+        message: 'Store information updated successfully',
+      })
+    } catch (err) {
+      console.error('[Admin Settings PATCH] Supabase error:', err)
+      return buildApiError(
+        'Failed to update store information.',
+        'DB_ERROR',
+        500,
+        `Error: ${err instanceof Error ? err.message : String(err)}`,
+        endpoint,
+      )
+    }
+  } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err)
+    const errStack = err instanceof Error ? err.stack || '' : ''
+    return buildApiError(
+      'An internal server error occurred while updating store information.',
+      'INTERNAL_ERROR',
+      500,
+      `Error: ${errMessage}\n${errStack}`,
+      endpoint,
+    )
+  }
+}

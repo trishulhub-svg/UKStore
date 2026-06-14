@@ -244,7 +244,7 @@ export default function AdminOrdersPage() {
                     <th className="text-left py-3 px-4 font-medium text-gray-500">Order ID</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">Customer</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Payment</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Driver</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">Total</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">Date</th>
                     <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
@@ -267,9 +267,14 @@ export default function AdminOrdersPage() {
                           </Badge>
                         </td>
                         <td className="py-3 px-4">
-                          <Badge variant="outline" className="text-xs">
-                            {o.paymentStatus}
-                          </Badge>
+                          {o.driver ? (
+                            <div className="flex items-center gap-1.5">
+                              <Truck className="h-3.5 w-3.5 text-gray-400" />
+                              <span className="text-xs font-medium">{o.driver.name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">Unassigned</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 font-medium">{formatPrice(o.total)}</td>
                         <td className="py-3 px-4 text-gray-500 text-xs">
@@ -347,7 +352,7 @@ export default function AdminOrdersPage() {
               <Separator />
 
               {/* Assign Driver */}
-              {(selectedOrder.status === 'ready' || selectedOrder.status === 'out_for_delivery') && (
+              {(!['delivered', 'cancelled'].includes(selectedOrder.status)) && (
                 <>
                   <div className="space-y-2">
                     <h4 className="font-medium text-sm">Assign Driver</h4>

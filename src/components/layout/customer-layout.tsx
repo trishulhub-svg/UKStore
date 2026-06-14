@@ -7,6 +7,7 @@ import { useCartStore } from '@/store/cart'
 import { useEffect, useState } from 'react'
 import { authGetSession, authLogout, type AuthUser } from '@/lib/auth-client'
 import { AuthModal } from '@/components/auth/auth-modal'
+import { FloatingBasketBar } from '@/components/customer/floating-basket-bar'
 
 interface CustomerLayoutProps {
   children: React.ReactNode
@@ -295,6 +296,9 @@ export function CustomerLayout({ children, storeName = 'Fresh Mart London' }: Cu
         onClose={() => setAuthModalOpen(false)}
         initialView={authModalView}
       />
+
+      {/* Floating Basket Bar — mobile only, visible across all customer pages */}
+      <FloatingBasketBar />
     </div>
   )
 }

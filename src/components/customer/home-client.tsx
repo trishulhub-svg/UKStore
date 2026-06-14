@@ -1,16 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Truck, Clock, Leaf, ChevronRight, User } from 'lucide-react'
+import { ShoppingCart, Truck, Clock, Leaf, ChevronRight, User, Store as StoreIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
-import { formatPrice } from '@/lib/vat'
+import { formatPrice, formatUnitPrice } from '@/lib/vat'
 import { authGetSession, type AuthUser } from '@/lib/auth-client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import type { Store, Category, ProductWithCategory } from '@/types'
+import { PostcodeGate, getSavedPostcode, clearSavedPostcode } from '@/components/customer/postcode-gate'
 
 interface HomeClientProps {
   store: Store
@@ -32,6 +33,10 @@ const categoryIcons: Record<string, string> = {
 export function HomeClient({ store, categories, featuredProducts }: HomeClientProps) {
   const addItem = useCartStore((state) => state.addItem)
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [deliveryPostcode, setDeliveryPostcode] = useState<string | null>(() => getSavedPostcode())
+  const [postcodeVerified, setPostcodeVerified] = useState(() => !!getSavedPostcode())
+  const [storeOpen, setStoreOpen] = useState<boolean | null>(null)
+  const [openingHours, setOpeningHours] = useState<Record<string, { open: string; close: string; closed: boolean }> | null>(null)
 
   useEffect(() => {
     authGetSession().then(({ user }) => {
@@ -39,10 +44,81 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
     })
   }, [])
 
+  // Check store status
+  useEffect(() => {
+    fetch('/api/store/status')
+      .then((r) => r.json())
+      .then((data) => {
+        setStoreOpen(data.isOpen)
+        setOpeningHours(data.openingHours)
+      })
+      .catch(() => {
+        setStoreOpen(true) // Default to open if fetch fails
+      })
+  }, [])
+
+  const handlePostcodeVerified = useCallback((postcode: string) => {
+    setDeliveryPostcode(postcode)
+    setPostcodeVerified(true)
+  }, [])
+
+  const handleChangePostcode = useCallback(() => {
+    clearSavedPostcode()
+    setDeliveryPostcode(null)
+    setPostcodeVerified(false)
+  }, [])
+
   const userFirstName = user?.name?.split(' ')[0] || null
+
+  // Format opening hours for display
+  const dayNames: Record<string, string> = {
+    mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday',
+    thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
+  }
+
+  // Get today's opening hours
+  const todayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()]
+  const todayHours = openingHours?.[todayKey]
 
   return (
     <CustomerLayout storeName={store.name}>
+      {/* Store Closed Overlay */}
+      {storeOpen === false && (
+        <div className="fixed inset-0 z-[60] bg-gray-900/80 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+            <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+              <StoreIcon className="h-10 w-10 text-red-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Store is Currently Closed</h2>
+            <p className="text-gray-600 mb-6">
+              We&apos;re not accepting orders right now. Please check back during our opening hours.
+            </p>
+            {openingHours && (
+              <div className="bg-gray-50 rounded-lg p-4 text-left mb-6">
+                <h3 className="font-semibold text-sm text-gray-900 mb-3">Opening Hours</h3>
+                <div className="space-y-1.5">
+                  {Object.entries(openingHours).map(([day, hours]) => (
+                    <div key={day} className={`flex justify-between text-sm ${day === todayKey ? 'font-bold text-[#16a34a]' : 'text-gray-600'}`}>
+                      <span>{dayNames[day] || day}{day === todayKey ? ' (Today)' : ''}</span>
+                      <span>{hours.closed ? 'Closed' : `${hours.open} - ${hours.close}`}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {todayHours && !todayHours.closed && (
+              <p className="text-sm text-gray-500">
+                We open at <strong>{todayHours.open}</strong> and close at <strong>{todayHours.close}</strong> today.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Postcode Gate — full-screen overlay, hidden once verified */}
+      <PostcodeGate
+        onVerified={handlePostcodeVerified}
+        savedPostcode={deliveryPostcode}
+      />
       {/* ═══════════════════════════════════════════════════════════
           HERO SECTION
           Logged out: Full-width marketing with CTAs pointing to navbar auth
@@ -61,6 +137,17 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
               <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg">
                 Ready to order from {store.name}? Same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
               </p>
+              {deliveryPostcode && (
+                <p className="mt-2 text-sm text-green-200">
+                  Delivering to <strong>{deliveryPostcode}</strong>{' '}
+                  <button
+                    onClick={handleChangePostcode}
+                    className="underline hover:text-white transition-colors"
+                  >
+                    Change
+                  </button>
+                </p>
+              )}
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link href="/catalog">
                   <Button size="lg" className="bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold px-8">
@@ -86,6 +173,17 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
               <p className="mt-4 text-lg sm:text-xl text-green-100 max-w-lg mx-auto">
                 Order from {store.name} and get same-day delivery within {store.delivery_radius_km}km. Free delivery on orders over {formatPrice(store.free_delivery_threshold)}.
               </p>
+              {deliveryPostcode && (
+                <p className="mt-2 text-sm text-green-200">
+                  Delivering to <strong>{deliveryPostcode}</strong>{' '}
+                  <button
+                    onClick={handleChangePostcode}
+                    className="underline hover:text-white transition-colors"
+                  >
+                    Change
+                  </button>
+                </p>
+              )}
               <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm sm:gap-4 text-green-200">
                 <span className="flex items-center gap-1.5"><Truck className="h-4 w-4" /> Same-Day Delivery</span>
                 <span className="flex items-center gap-1.5"><Leaf className="h-4 w-4" /> Fresh & Local</span>
@@ -221,12 +319,20 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
                       {product.category?.name}
                     </p>
                     <div className="flex items-center justify-between mt-2">
-                      <span className="font-bold text-base text-gray-900">
-                        {formatPrice(product.price)}
-                      </span>
+                      <div className="min-w-0">
+                        <span className="font-bold text-base text-gray-900">
+                          {formatPrice(product.price)}
+                        </span>
+                        {/* Unit price for UK Trading Standards */}
+                        {formatUnitPrice(product.price, product.weight_kg, null, product.unit) && (
+                          <span className="text-xs text-gray-500 block">
+                            {formatUnitPrice(product.price, product.weight_kg, null, product.unit)}
+                          </span>
+                        )}
+                      </div>
                       <Button
                         size="sm"
-                        className="bg-[#f97316] hover:bg-[#ea580c] text-white h-10 px-3 text-xs"
+                        className="bg-[#f97316] hover:bg-[#ea580c] text-white h-10 px-3 text-xs flex-shrink-0"
                         onClick={() => addItem(product)}
                       >
                         <ShoppingCart className="h-3 w-3 mr-1" />

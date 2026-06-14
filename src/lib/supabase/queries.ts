@@ -20,6 +20,8 @@ function mapPrismaStoreToStore(s: any): Store {
     free_delivery_threshold: s.freeDeliveryThreshold,
     delivery_radius_km: s.deliveryRadiusKm,
     is_active: s.isActive,
+    is_open: s.isOpen ?? true,
+    opening_hours: s.openingHours ? JSON.parse(s.openingHours) : null,
     created_at: s.createdAt?.toISOString?.() ?? s.created_at ?? '',
     updated_at: s.updatedAt?.toISOString?.() ?? s.updated_at ?? '',
   }

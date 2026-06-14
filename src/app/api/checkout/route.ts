@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { calculateVatFromGross } from '@/lib/vat'
-import { getStripeConfig } from '@/lib/settings'
+import { getStripeConfig, getSetting } from '@/lib/settings'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
@@ -59,7 +59,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { items, address, delivery_slot, subtotal, vat_amount, delivery_fee, total, save_address } = body
+    const {
+      items,
+      address,
+      delivery_slot,
+      subtotal,
+      vat_amount,
+      delivery_fee,
+      total,
+      save_address,
+      payment_method: paymentMethod,
+      bank_transfer_ref: bankTransferRef,
+    } = body
 
     // Validate cart items
     if (!items || items.length === 0) {
@@ -87,12 +98,12 @@ export async function POST(request: NextRequest) {
     const prisma = await getPrisma()
 
     // Validate items against database (check prices and stock) via Prisma
-    let dbProducts: Map<string, { id: string; name: string; price: number; vatRate: number; isAvailable: boolean; stockQuantity: number }> = new Map()
+    let dbProducts: Map<string, { id: string; name: string; price: number; vatRate: number; isAvailable: boolean; stockQuantity: number; isHfss: boolean }> = new Map()
     try {
       const productIds = items.map((item: { product_id: string }) => item.product_id)
       const dbProductRows = await prisma.product.findMany({
         where: { id: { in: productIds } },
-        select: { id: true, name: true, price: true, vatRate: true, isAvailable: true, stockQuantity: true },
+        select: { id: true, name: true, price: true, vatRate: true, isAvailable: true, stockQuantity: true, isHfss: true },
       })
       for (const p of dbProductRows) {
         dbProducts.set(p.id, p)
@@ -128,6 +139,24 @@ export async function POST(request: NextRequest) {
           item.unit_price = dbProduct.price
           item.vat_rate = dbProduct.vatRate
         }
+      }
+    }
+
+    // ─── Challenge 25 Detection ─────────────────────────────────
+    // Check if any items are HFSS (High in Fat, Salt, Sugar) — requires age verification
+    const hasHfssItems =
+      items.some((item: { product_id: string }) => {
+        const dbProduct = dbProducts.get(item.product_id)
+        return dbProduct?.isHfss === true
+      }) ||
+      items.some((item: { is_hfss?: boolean }) => item.is_hfss === true)
+
+    // Collect HFSS item names for the driver's verification screen
+    const hfssItemNames: string[] = []
+    for (const item of items) {
+      const dbProduct = dbProducts.get(item.product_id)
+      if (dbProduct?.isHfss || item.is_hfss) {
+        hfssItemNames.push(item.product_name || dbProduct?.name || 'Unknown product')
       }
     }
 
@@ -198,6 +227,129 @@ export async function POST(request: NextRequest) {
       // Address creation failed — continue without address_id
     }
 
+    // ─── Payment Method: Cash on Delivery ───────────────────────
+    if (paymentMethod === 'cash') {
+      try {
+        const order = await prisma.order.create({
+          data: {
+            storeId: STORE_ID,
+            customerId: user.id,
+            addressId: addressId || '',
+            status: 'placed',
+            subtotal: finalSubtotal,
+            vatAmount: finalVatAmount,
+            deliveryFee: delivery_fee,
+            total: finalTotal,
+            stripeSessionId: `cash-${Date.now()}`,
+            paymentStatus: 'pending',
+            paymentMethod: 'cash',
+            hasChallenge25: hasHfssItems,
+            deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+            items: {
+              create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
+                const itemGross = item.unit_price * item.quantity
+                const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
+                return {
+                  productId: item.product_id,
+                  productName: item.product_name,
+                  quantity: item.quantity,
+                  unitPrice: item.unit_price,
+                  vatRate: item.vat_rate,
+                  vatAmount: itemVat,
+                  subtotal: itemGross,
+                  substitutePreference: item.substitute_preference || 'closest_match',
+                  picked: false,
+                }
+              }),
+            },
+          },
+        })
+
+        return NextResponse.json({
+          orderId: order.id,
+          paymentMethod: 'cash',
+          message: 'Order placed. Payment will be collected on delivery.',
+        })
+      } catch (err) {
+        console.error('[Checkout] Cash order creation failed:', err)
+        return buildApiError(
+          'Failed to create cash order.',
+          'ORDER_CREATE_FAILED',
+          500,
+          String(err),
+          endpoint,
+        )
+      }
+    }
+
+    // ─── Payment Method: Bank Transfer ──────────────────────────
+    if (paymentMethod === 'bank_transfer') {
+      try {
+        const order = await prisma.order.create({
+          data: {
+            storeId: STORE_ID,
+            customerId: user.id,
+            addressId: addressId || '',
+            status: 'placed',
+            subtotal: finalSubtotal,
+            vatAmount: finalVatAmount,
+            deliveryFee: delivery_fee,
+            total: finalTotal,
+            stripeSessionId: `bank-${Date.now()}`,
+            paymentStatus: 'pending',
+            paymentMethod: 'bank_transfer',
+            bankTransferRef: bankTransferRef || null,
+            bankTransferVerified: false,
+            hasChallenge25: hasHfssItems,
+            deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+            items: {
+              create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
+                const itemGross = item.unit_price * item.quantity
+                const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
+                return {
+                  productId: item.product_id,
+                  productName: item.product_name,
+                  quantity: item.quantity,
+                  unitPrice: item.unit_price,
+                  vatRate: item.vat_rate,
+                  vatAmount: itemVat,
+                  subtotal: itemGross,
+                  substitutePreference: item.substitute_preference || 'closest_match',
+                  picked: false,
+                }
+              }),
+            },
+          },
+        })
+
+        // Get bank details from settings
+        const bankSortCode = await getSetting('bank_sort_code', 'BANK_SORT_CODE', '')
+        const bankAccountNumber = await getSetting('bank_account_number', 'BANK_ACCOUNT_NUMBER', '')
+        const bankAccountName = await getSetting('bank_account_name', 'BANK_ACCOUNT_NAME', '')
+
+        return NextResponse.json({
+          orderId: order.id,
+          paymentMethod: 'bank_transfer',
+          bankDetails: {
+            sortCode: bankSortCode,
+            accountNumber: bankAccountNumber,
+            accountName: bankAccountName,
+          },
+          message: 'Order placed. Please complete the bank transfer to confirm payment.',
+        })
+      } catch (err) {
+        console.error('[Checkout] Bank transfer order creation failed:', err)
+        return buildApiError(
+          'Failed to create bank transfer order.',
+          'ORDER_CREATE_FAILED',
+          500,
+          String(err),
+          endpoint,
+        )
+      }
+    }
+
+    // ─── Payment Method: Card (Stripe) ──────────────────────────
     // If Stripe is configured, create a real Checkout Session
     const stripeConfig = await getStripeConfig()
 
@@ -244,70 +396,71 @@ export async function POST(request: NextRequest) {
           })
         }
 
+        // Create the order first so we have an orderId for the webhook
+        const order = await prisma.order.create({
+          data: {
+            storeId: STORE_ID,
+            customerId: user.id,
+            addressId: addressId || '',
+            status: 'placed',
+            subtotal: finalSubtotal,
+            vatAmount: finalVatAmount,
+            deliveryFee: delivery_fee,
+            total: finalTotal,
+            stripeSessionId: 'pending', // Will update after session is created
+            paymentStatus: 'pending',
+            paymentMethod: 'stripe',
+            hasChallenge25: hasHfssItems,
+            deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
+            items: {
+              create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
+                const itemGross = item.unit_price * item.quantity
+                const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
+                return {
+                  productId: item.product_id,
+                  productName: item.product_name,
+                  quantity: item.quantity,
+                  unitPrice: item.unit_price,
+                  vatRate: item.vat_rate,
+                  vatAmount: itemVat,
+                  subtotal: itemGross,
+                  substitutePreference: item.substitute_preference || 'closest_match',
+                  picked: false,
+                }
+              }),
+            },
+          },
+        })
+
         const session = await stripe.checkout.sessions.create({
           payment_method_types: ['card'],
           line_items: lineItems,
           mode: 'payment',
-          success_url: `${origin}/order/CONFIRMED_ID?session_id={CHECKOUT_SESSION_ID}`,
+          success_url: `${origin}/order/${order.id}?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${origin}/checkout?cancelled=true`,
           metadata: {
             store_id: STORE_ID,
             customer_id: user.id,
+            orderId: order.id,
             delivery_slot: delivery_slot || '',
           },
           payment_intent_data: {
             metadata: {
               store_id: STORE_ID,
               customer_id: user.id,
+              orderId: order.id,
             },
           },
         })
 
-        // Create order in Prisma
-        try {
-          const order = await prisma.order.create({
-            data: {
-              storeId: STORE_ID,
-              customerId: user.id,
-              addressId: addressId || '',
-              status: 'placed',
-              subtotal: finalSubtotal,
-              vatAmount: finalVatAmount,
-              deliveryFee: delivery_fee,
-              total: finalTotal,
-              stripeSessionId: session.id,
-              paymentStatus: 'pending',
-              deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
-              items: {
-                create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {
-                  const itemGross = item.unit_price * item.quantity
-                  const itemVat = calculateVatFromGross(itemGross, item.vat_rate)
-                  return {
-                    productId: item.product_id,
-                    productName: item.product_name,
-                    quantity: item.quantity,
-                    unitPrice: item.unit_price,
-                    vatRate: item.vat_rate,
-                    vatAmount: itemVat,
-                    subtotal: itemGross,
-                    substitutePreference: item.substitute_preference || 'closest_match',
-                    picked: false,
-                  }
-                }),
-              },
-            },
-          })
-
-          return NextResponse.json({
-            orderId: order.id,
-            sessionId: session.id,
-            checkoutUrl: session.url,
-          })
-        } catch {
-          // Fall through to return Stripe session without order
-        }
+        // Update the order with the real Stripe session ID
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { stripeSessionId: session.id },
+        })
 
         return NextResponse.json({
+          orderId: order.id,
           sessionId: session.id,
           checkoutUrl: session.url,
         })
@@ -331,6 +484,8 @@ export async function POST(request: NextRequest) {
           total: finalTotal,
           stripeSessionId: `demo-session-${Date.now()}`,
           paymentStatus: 'paid',
+          paymentMethod: 'stripe',
+          hasChallenge25: hasHfssItems,
           deliverySlot: delivery_slot ? new Date(delivery_slot) : null,
           items: {
             create: items.map((item: { product_id: string; product_name: string; quantity: number; unit_price: number; vat_rate: number; substitute_preference: string }) => {

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Store, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { SiGoogle } from 'react-icons/si'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -65,12 +66,21 @@ export function LoginClient() {
           <CardDescription>Sign in to your account to continue shopping</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Google Sign In */}
+          <a
+            href="/api/auth/google"
+            className="flex items-center justify-center gap-2 w-full h-11 border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
+          >
+            <SiGoogle className="h-4 w-4" />
+            Sign in with Google
+          </a>
+
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <Separator className="w-full" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-gray-500">Sign in with email</span>
+              <span className="bg-white px-2 text-gray-500">or continue with email</span>
             </div>
           </div>
 

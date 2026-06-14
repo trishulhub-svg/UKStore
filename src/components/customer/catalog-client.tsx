@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
 import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
-import { formatPrice } from '@/lib/vat'
+import { formatPrice, formatUnitPrice } from '@/lib/vat'
 import type { Store, Category, ProductWithCategory } from '@/types'
 
 interface CatalogClientProps {
@@ -283,20 +283,28 @@ export function CatalogClient({
                         {product.category?.name}
                       </p>
                       <div className="flex items-center justify-between mt-2">
-                        <span className="font-bold text-base text-gray-900">
-                          {formatPrice(product.price)}
-                        </span>
+                        <div className="min-w-0">
+                          <span className="font-bold text-base text-gray-900">
+                            {formatPrice(product.price)}
+                          </span>
+                          {/* Unit price for UK Trading Standards */}
+                          {formatUnitPrice(product.price, product.weight_kg, null, product.unit) && (
+                            <span className="text-xs text-gray-500 block">
+                              {formatUnitPrice(product.price, product.weight_kg, null, product.unit)}
+                            </span>
+                          )}
+                        </div>
                         {product.stock_quantity > 0 ? (
                           <Button
                             size="sm"
-                            className="bg-[#f97316] hover:bg-[#ea580c] text-white h-10 px-3 text-xs"
+                            className="bg-[#f97316] hover:bg-[#ea580c] text-white h-10 px-3 text-xs flex-shrink-0"
                             onClick={() => addItem(product)}
                           >
                             <ShoppingCart className="h-3 w-3 mr-1" />
                             Add
                           </Button>
                         ) : (
-                          <Button size="sm" disabled className="h-10 px-3 text-xs">
+                          <Button size="sm" disabled className="h-10 px-3 text-xs flex-shrink-0">
                             Sold Out
                           </Button>
                         )}

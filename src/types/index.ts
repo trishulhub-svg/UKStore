@@ -6,10 +6,10 @@
 
 // ─── Enums ────────────────────────────────────────────────────
 
-export type Role = 'CUSTOMER' | 'DRIVER' | 'OWNER' | 'MANAGER'
+export type Role = 'CUSTOMER' | 'DRIVER' | 'PICKER' | 'OWNER' | 'MANAGER'
 
 /** @deprecated Legacy role type for backward compatibility */
-export type LegacyRole = 'customer' | 'driver' | 'owner' | 'manager'
+export type LegacyRole = 'customer' | 'driver' | 'picker' | 'owner' | 'manager'
 
 export type OrderStatus = 'placed' | 'picking' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled'
 
@@ -46,6 +46,8 @@ export interface Store {
   free_delivery_threshold: number;
   delivery_radius_km: number;
   is_active: boolean;
+  is_open: boolean;
+  opening_hours: Record<string, { open: string; close: string; closed: boolean }> | null;
   created_at: string;
   updated_at: string;
 }
@@ -316,3 +318,57 @@ export const SETTING_DEFINITIONS: Record<string, {
     placeholder: 'xxxx...',
   },
 };
+
+// ─── New Types for Requirements ────────────────────────────────
+
+export interface AttendanceLog {
+  id: string;
+  user_id: string;
+  type: 'clock_in' | 'clock_out';
+  ip_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  created_at: string;
+}
+
+export interface Shift {
+  id: string;
+  user_id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  role: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WastageLog {
+  id: string;
+  product_id: string;
+  quantity: number;
+  reason: 'expired' | 'damaged' | 'spoiled' | 'other';
+  notes: string | null;
+  logged_by: string;
+  created_at: string;
+  product?: Product;
+}
+
+export interface Expense {
+  id: string;
+  store_id: string;
+  category: string;
+  description: string;
+  amount: number;
+  date: string;
+  receipt_url: string | null;
+  created_at: string;
+}
+
+export interface BankHoliday {
+  id: string;
+  store_id: string;
+  name: string;
+  date: string;
+  mode: 'auto_close' | 'reduced_hours' | 'normal';
+  created_at: string;
+}

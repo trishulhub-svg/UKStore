@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice, getVatRateLabel } from '@/lib/vat'
+import { CsvImportExport } from '@/components/admin/csv-import-export'
 
 interface Category {
   id: string
@@ -54,11 +55,15 @@ interface Product {
   barcode: string | null
   unit: string
   weightKg: number | null
+  aisle: string | null
+  minStockThreshold: number
+  substituteProductId: string | null
   isAvailable: boolean
   stockQuantity: number
   isFeatured: boolean
   sortOrder: number
   category: { id: string; name: string }
+  substituteProduct?: { id: string; name: string } | null
 }
 
 const emptyProduct = {
@@ -72,6 +77,9 @@ const emptyProduct = {
   barcode: '',
   unit: 'each',
   weightKg: '',
+  aisle: '',
+  minStockThreshold: '5',
+  substituteProductId: '',
   isAvailable: true,
   stockQuantity: '0',
   isFeatured: false,
@@ -155,6 +163,9 @@ export default function AdminProductsPage() {
       barcode: p.barcode || '',
       unit: p.unit,
       weightKg: p.weightKg ? String(p.weightKg) : '',
+      aisle: p.aisle || '',
+      minStockThreshold: String(p.minStockThreshold ?? 5),
+      substituteProductId: p.substituteProductId || '',
       isAvailable: p.isAvailable,
       stockQuantity: String(p.stockQuantity),
       isFeatured: p.isFeatured,
@@ -244,6 +255,11 @@ export default function AdminProductsPage() {
         <Button onClick={handleOpenCreate} className="bg-[#16a34a] hover:bg-[#15803d]">
           <Plus className="h-4 w-4 mr-1" /> Add Product
         </Button>
+      </div>
+
+      {/* CSV Import/Export */}
+      <div className="mb-6">
+        <CsvImportExport />
       </div>
 
       {/* Filters */}
@@ -520,10 +536,73 @@ export default function AdminProductsPage() {
                 <Input id="barcode" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
               </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="imageUrl">Image URL</Label>
-              <Input id="imageUrl" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="aisle">Aisle</Label>
+                <Input id="aisle" placeholder="e.g., A1" value={form.aisle} onChange={(e) => setForm({ ...form, aisle: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="minStockThreshold">Min Stock Threshold</Label>
+                <Input id="minStockThreshold" type="number" min="0" value={form.minStockThreshold} onChange={(e) => setForm({ ...form, minStockThreshold: e.target.value })} />
+              </div>
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="imageUrl">Product Image</Label>
+              <div className="flex items-start gap-3">
+                {(form.imageUrl && form.imageUrl.startsWith('data:')) && (
+                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+                    <img src={form.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <Input id="imageUrl" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="Image URL or upload below" />
+                  <div className="mt-2">
+                    <label htmlFor="imageUpload" className="cursor-pointer">
+                      <div className="inline-flex items-center gap-2 text-sm text-[#16a34a] hover:text-[#15803d] font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        Upload Image (max 2MB)
+                      </div>
+                      <input
+                        type="file"
+                        id="imageUpload"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          const { validateImageFile, fileToDataUrl } = await import('@/lib/upload')
+                          const err = validateImageFile(file)
+                          if (err) { toast.error(err); return }
+                          try {
+                            const dataUrl = await fileToDataUrl(file)
+                            setForm({ ...form, imageUrl: dataUrl })
+                          } catch { toast.error('Failed to process image') }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {editingId && (
+              <div className="grid gap-2">
+                <Label>Substitute Product</Label>
+                <Select value={form.substituteProductId || '_none'} onValueChange={(v) => setForm({ ...form, substituteProductId: v === '_none' ? '' : v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="No substitute" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">No substitute</SelectItem>
+                    {products
+                      .filter((p) => p.id !== editingId && p.category.id === form.categoryId)
+                      .map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">Select an alternative product from the same category</p>
+              </div>
+            )}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
                 <Switch checked={form.isAvailable} onCheckedChange={(v) => setForm({ ...form, isAvailable: v })} />

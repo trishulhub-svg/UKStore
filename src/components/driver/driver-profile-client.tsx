@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,7 +20,9 @@ import {
   Save,
   User,
   Mail,
+  Eye,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface DriverProfileData {
   id: string
@@ -43,6 +45,10 @@ export function DriverProfileClient() {
   const [vehicleType, setVehicleType] = useState('')
   const [vehicleReg, setVehicleReg] = useState('')
   const [saved, setSaved] = useState(false)
+  const [uploadingDoc, setUploadingDoc] = useState<'rightToWorkUrl' | 'drivingLicenseUrl' | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<'rightToWorkUrl' | 'drivingLicenseUrl' | null>(null)
+  const rightToWorkRef = useRef<HTMLInputElement>(null)
+  const drivingLicenseRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch('/api/driver/profile')
@@ -79,21 +85,34 @@ export function DriverProfileClient() {
     }
   }
 
-  const handleDocumentUpload = async (type: 'rightToWorkUrl' | 'drivingLicenseUrl') => {
-    // Placeholder for document upload
-    const fakeUrl = `https://docs.freshmart.co.uk/${type}-${Date.now()}.pdf`
+  const handleDocumentUpload = async (type: 'rightToWorkUrl' | 'drivingLicenseUrl', file: File) => {
+    const { validateDocumentFile, fileToDataUrl } = await import('@/lib/upload')
+    const err = validateDocumentFile(file)
+    if (err) {
+      toast.error(err)
+      return
+    }
+
+    setUploadingDoc(type)
     try {
+      const dataUrl = await fileToDataUrl(file)
       const res = await fetch('/api/driver/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [type]: fakeUrl }),
+        body: JSON.stringify({ [type]: dataUrl }),
       })
       if (res.ok) {
         const data = await res.json()
         setProfile(data.profile)
+        toast.success(`${type === 'rightToWorkUrl' ? 'Right to Work' : 'Driving License'} uploaded`)
+      } else {
+        toast.error('Failed to upload document')
       }
     } catch (err) {
       console.error('Failed to upload document:', err)
+      toast.error('Failed to upload document')
+    } finally {
+      setUploadingDoc(null)
     }
   }
 
@@ -299,49 +318,160 @@ export function DriverProfileClient() {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {profile.rightToWorkUrl ? (
-                <CheckCircle2 className="h-4 w-4 text-[#16a34a]" />
-              ) : (
-                <AlertCircle className="h-4 w-4 text-gray-400" />
-              )}
-              <span className="text-sm text-gray-700">Right to Work</span>
+          {/* Right to Work */}
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {profile.rightToWorkUrl ? (
+                  <CheckCircle2 className="h-4 w-4 text-[#16a34a]" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-gray-400" />
+                )}
+                <span className="text-sm text-gray-700">Right to Work</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {profile.rightToWorkUrl && profile.rightToWorkUrl.startsWith('data:') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPreviewDoc('rightToWorkUrl')}
+                    className="h-9 text-xs"
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    View
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => rightToWorkRef.current?.click()}
+                  disabled={uploadingDoc === 'rightToWorkUrl'}
+                  className="h-9 text-xs"
+                >
+                  <Upload className="h-3 w-3 mr-1" />
+                  {uploadingDoc === 'rightToWorkUrl' ? 'Uploading...' : profile.rightToWorkUrl ? 'Re-upload' : 'Upload'}
+                </Button>
+                <input
+                  type="file"
+                  ref={rightToWorkRef}
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleDocumentUpload('rightToWorkUrl', file)
+                    if (rightToWorkRef.current) rightToWorkRef.current.value = ''
+                  }}
+                />
+              </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDocumentUpload('rightToWorkUrl')}
-              className="h-9 text-xs"
-            >
-              <Upload className="h-3 w-3 mr-1" />
-              {profile.rightToWorkUrl ? 'Re-upload' : 'Upload'}
-            </Button>
+            {profile.rightToWorkUrl && profile.rightToWorkUrl.startsWith('data:image') && (
+              <div className="mt-2 ml-6">
+                <div className="w-20 h-14 rounded border border-gray-200 overflow-hidden bg-gray-50">
+                  <img
+                    src={profile.rightToWorkUrl}
+                    alt="Right to Work document"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <Separator />
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {profile.drivingLicenseUrl ? (
-                <CheckCircle2 className="h-4 w-4 text-[#16a34a]" />
-              ) : (
-                <AlertCircle className="h-4 w-4 text-gray-400" />
-              )}
-              <span className="text-sm text-gray-700">Driving License</span>
+          {/* Driving License */}
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {profile.drivingLicenseUrl ? (
+                  <CheckCircle2 className="h-4 w-4 text-[#16a34a]" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-gray-400" />
+                )}
+                <span className="text-sm text-gray-700">Driving License</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {profile.drivingLicenseUrl && profile.drivingLicenseUrl.startsWith('data:') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPreviewDoc('drivingLicenseUrl')}
+                    className="h-9 text-xs"
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    View
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => drivingLicenseRef.current?.click()}
+                  disabled={uploadingDoc === 'drivingLicenseUrl'}
+                  className="h-9 text-xs"
+                >
+                  <Upload className="h-3 w-3 mr-1" />
+                  {uploadingDoc === 'drivingLicenseUrl' ? 'Uploading...' : profile.drivingLicenseUrl ? 'Re-upload' : 'Upload'}
+                </Button>
+                <input
+                  type="file"
+                  ref={drivingLicenseRef}
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleDocumentUpload('drivingLicenseUrl', file)
+                    if (drivingLicenseRef.current) drivingLicenseRef.current.value = ''
+                  }}
+                />
+              </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDocumentUpload('drivingLicenseUrl')}
-              className="h-9 text-xs"
-            >
-              <Upload className="h-3 w-3 mr-1" />
-              {profile.drivingLicenseUrl ? 'Re-upload' : 'Upload'}
-            </Button>
+            {profile.drivingLicenseUrl && profile.drivingLicenseUrl.startsWith('data:image') && (
+              <div className="mt-2 ml-6">
+                <div className="w-20 h-14 rounded border border-gray-200 overflow-hidden bg-gray-50">
+                  <img
+                    src={profile.drivingLicenseUrl}
+                    alt="Driving license document"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Document Preview Modal */}
+      {previewDoc && profile && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setPreviewDoc(null)}
+        >
+          <div className="relative max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 text-white hover:text-gray-300"
+              onClick={() => setPreviewDoc(null)}
+            >
+              Close ✕
+            </Button>
+            {profile[previewDoc]?.startsWith('data:image') ? (
+              <img
+                src={profile[previewDoc]!}
+                alt={previewDoc === 'rightToWorkUrl' ? 'Right to Work' : 'Driving License'}
+                className="max-w-full max-h-[80vh] rounded-lg"
+              />
+            ) : (
+              <div className="bg-white rounded-lg p-8 text-center">
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-600">
+                  {previewDoc === 'rightToWorkUrl' ? 'Right to Work' : 'Driving License'} document uploaded
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Save notification */}
       {saved && (

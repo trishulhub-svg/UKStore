@@ -76,7 +76,7 @@ export async function PATCH(
     const prisma = await getPrisma()
     const { id } = await params
     const body = await request.json()
-    const { itemId, picked, status, assignToMe } = body
+    const { itemId, picked, status, assignToMe, challenge25Verified } = body
 
     const order = await prisma.order.findFirst({
       where: { id, storeId: STORE_ID },
@@ -102,8 +102,36 @@ export async function PATCH(
       })
     }
 
+    // Update Challenge 25 verification status
+    if (challenge25Verified !== undefined) {
+      if (!order.hasChallenge25) {
+        return NextResponse.json(
+          { error: 'This order does not require Challenge 25 verification' },
+          { status: 400 }
+        )
+      }
+      if (order.challenge25Verified) {
+        return NextResponse.json(
+          { error: 'Challenge 25 verification already completed' },
+          { status: 400 }
+        )
+      }
+      await prisma.order.update({
+        where: { id },
+        data: { challenge25Verified: true },
+      })
+    }
+
     // Update order status
     if (status) {
+      // If order has Challenge 25 and is being marked as delivered, ensure verification is done
+      if (status === 'delivered' && order.hasChallenge25 && !order.challenge25Verified && !challenge25Verified) {
+        return NextResponse.json(
+          { error: 'Cannot mark as delivered: Challenge 25 age verification required first' },
+          { status: 400 }
+        )
+      }
+
       const validTransitions: Record<string, string[]> = {
         placed: ['picking'],
         picking: ['ready'],

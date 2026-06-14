@@ -4,7 +4,7 @@ import { getServerUser } from '@/lib/auth/server'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
-// POST /api/driver/orders/[id]/deliver — confirm delivery
+// POST /api/driver/orders/[id]/deliver — Confirm delivery with photo/signature proof
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,10 +21,13 @@ export async function POST(
     const prisma = await getPrisma()
     const { id } = await params
     const body = await request.json()
-    const { photoUrl, signatureData } = body
+    const { deliveryPhotoUrl, signatureUrl } = body as {
+      deliveryPhotoUrl?: string
+      signatureUrl?: string
+    }
 
     const order = await prisma.order.findFirst({
-      where: { id, storeId: STORE_ID, driverId: user.id },
+      where: { id, storeId: STORE_ID },
     })
 
     if (!order) {
@@ -33,37 +36,66 @@ export async function POST(
 
     if (order.status !== 'out_for_delivery') {
       return NextResponse.json(
-        { error: 'Order must be out for delivery before confirming' },
+        { error: 'Order must be out for delivery to confirm delivery' },
         { status: 400 }
       )
     }
 
-    // Update order status to delivered
-    const updatedOrder = await prisma.order.update({
+    // Check Challenge 25 if required
+    if (order.hasChallenge25 && !order.challenge25Verified) {
+      return NextResponse.json(
+        { error: 'Cannot confirm delivery: Challenge 25 age verification required first' },
+        { status: 400 }
+      )
+    }
+
+    // Update order to delivered with proof
+    const updateData: any = {
+      status: 'delivered',
+      deliveredAt: new Date(),
+      driverId: order.driverId || user.id,
+    }
+
+    if (deliveryPhotoUrl) {
+      updateData.deliveryPhotoUrl = deliveryPhotoUrl
+    }
+
+    if (signatureUrl) {
+      // Store signature in the notes field as a data URL prefix for identification
+      // or use a separate field if available. For now we store alongside photo
+      updateData.deliveryPhotoUrl = deliveryPhotoUrl
+        ? `${deliveryPhotoUrl}|||SIG:${signatureUrl}`
+        : `SIG:${signatureUrl}`
+    }
+
+    await prisma.order.update({
       where: { id },
-      data: { status: 'delivered' },
+      data: updateData,
+    })
+
+    // Return updated order
+    const updatedOrder = await prisma.order.findFirst({
+      where: { id },
       include: {
-        customer: { select: { id: true, name: true } },
+        customer: { select: { id: true, name: true, phone: true } },
         address: true,
-        items: true,
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                imageUrl: true,
+                barcode: true,
+                category: { select: { name: true } },
+              },
+            },
+          },
+        },
       },
     })
 
-    // Create notification for customer
-    await prisma.notification.create({
-      data: {
-        userId: order.customerId,
-        type: 'order_update',
-        title: 'Order Delivered',
-        message: `Your order #${id.slice(-8)} has been delivered successfully!`,
-        link: `/orders/${id}/track`,
-      },
-    })
-
-    return NextResponse.json({
-      order: updatedOrder,
-      deliveryProof: { photoUrl: photoUrl || null, signatureData: signatureData || null },
-    })
+    return NextResponse.json({ order: updatedOrder })
   } catch (err) {
     console.error('[Driver Order Deliver POST]', err)
     return NextResponse.json({ error: 'Failed to confirm delivery' }, { status: 500 })

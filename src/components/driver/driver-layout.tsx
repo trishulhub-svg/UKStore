@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, DollarSign, User, Truck, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
+import { ClockInOutButton } from '@/components/shared/clock-in-out-button'
 import { useEffect, useState } from 'react'
 import type { AuthUser } from '@/lib/auth-client'
 
@@ -74,14 +75,17 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
             <Truck className="h-5 w-5" />
             <span className="font-bold text-base">Fresh Mart Driver</span>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <ClockInOutButton variant="compact" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="text-white/80 hover:text-white hover:bg-white/10"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </header>
 

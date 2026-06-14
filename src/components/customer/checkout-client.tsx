@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, MapPin, Clock, ShoppingBag, CreditCard, ChevronRight, Loader2 } from 'lucide-react'
+import { Check, MapPin, Clock, ShoppingBag, CreditCard, ChevronRight, Loader2, Banknote, Building2, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -23,6 +23,8 @@ interface CheckoutClientProps {
   user: { id: string; email: string; name: string }
   addresses: Address[]
 }
+
+type PaymentMethod = 'card' | 'cash' | 'bank_transfer'
 
 const deliverySlots = [
   { id: 'today-4-6', label: 'Today 4-6pm', description: 'Express delivery today' },
@@ -70,6 +72,13 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
 
   // Delivery slot state
   const [selectedSlot, setSelectedSlot] = useState(deliverySlots[0].id)
+
+  // Payment method state
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card')
+  const [bankTransferRef, setBankTransferRef] = useState('')
+
+  // Bank details (will be returned from the API after order creation)
+  const [bankDetails, setBankDetails] = useState<{ sortCode: string; accountNumber: string; accountName: string } | null>(null)
 
   // Calculate totals
   const subtotal = items.reduce((total, item) => total + item.product.price * item.quantity, 0)
@@ -160,6 +169,8 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
           delivery_fee: deliveryFee,
           total,
           save_address: saveAddress,
+          payment_method: paymentMethod,
+          bank_transfer_ref: bankTransferRef || undefined,
         }),
       })
 
@@ -183,6 +194,18 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
         return
       }
 
+      // Store bank details if returned
+      if (data.bankDetails) {
+        setBankDetails(data.bankDetails)
+      }
+
+      // For card payment with Stripe, redirect to checkout URL
+      if (paymentMethod === 'card' && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+        return
+      }
+
+      // For cash and bank transfer, go directly to order confirmation
       clearCart()
       router.push(`/order/${data.orderId}`)
     } catch (err) {
@@ -537,6 +560,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Total amount */}
               <div className="bg-gray-50 rounded-lg p-4 text-center">
                 <p className="text-sm text-gray-600 mb-3">
                   Total amount to pay
@@ -549,12 +573,134 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
                 )}
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <p className="text-sm text-amber-800">
-                  <strong>Demo Mode:</strong> Payment will be simulated. No real charges will be made.
-                </p>
+              {/* Payment Method Selection */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium text-gray-700">Select Payment Method</Label>
+                <RadioGroup
+                  value={paymentMethod}
+                  onValueChange={(val) => setPaymentMethod(val as PaymentMethod)}
+                  className="space-y-3"
+                >
+                  {/* Card Payment (Stripe) */}
+                  <Label
+                    htmlFor="payment-card"
+                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                      paymentMethod === 'card'
+                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <RadioGroupItem value="card" id="payment-card" />
+                    <CreditCard className="h-5 w-5 text-gray-600 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">Card Payment</p>
+                      <p className="text-xs text-gray-500">Pay securely with Stripe — Visa, Mastercard, Amex</p>
+                    </div>
+                    <span className="text-xs text-gray-400">Free</span>
+                  </Label>
+
+                  {/* Cash on Delivery */}
+                  <Label
+                    htmlFor="payment-cash"
+                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                      paymentMethod === 'cash'
+                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <RadioGroupItem value="cash" id="payment-cash" />
+                    <Banknote className="h-5 w-5 text-gray-600 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">Cash on Delivery</p>
+                      <p className="text-xs text-gray-500">Pay with cash when your order arrives</p>
+                    </div>
+                    <span className="text-xs text-gray-400">Free</span>
+                  </Label>
+
+                  {/* Bank Transfer */}
+                  <Label
+                    htmlFor="payment-bank"
+                    className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                      paymentMethod === 'bank_transfer'
+                        ? 'border-[#16a34a] bg-[#16a34a]/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <RadioGroupItem value="bank_transfer" id="payment-bank" />
+                    <Building2 className="h-5 w-5 text-gray-600 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">Bank Transfer</p>
+                      <p className="text-xs text-gray-500">Transfer directly to our bank account</p>
+                    </div>
+                    <span className="text-xs text-gray-400">Free</span>
+                  </Label>
+                </RadioGroup>
               </div>
 
+              {/* Card Payment Info */}
+              {paymentMethod === 'card' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <p className="text-sm text-amber-800">
+                    <strong>Note:</strong> You will be redirected to Stripe&apos;s secure checkout to complete payment.
+                    {!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY && (
+                      <><br /><strong>Demo Mode:</strong> Stripe is not configured. Payment will be simulated.</>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* Cash on Delivery Info */}
+              {paymentMethod === 'cash' && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start gap-2">
+                    <Banknote className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">Cash on Delivery</p>
+                      <p className="text-xs text-blue-700 mt-1">
+                        Please have the exact amount ready: <strong>{formatPrice(total)}</strong>. 
+                        Our driver will collect payment upon delivery. No additional fees apply.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bank Transfer Info */}
+              {paymentMethod === 'bank_transfer' && (
+                <div className="space-y-4">
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div className="flex items-start gap-2">
+                      <Building2 className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-purple-800">Bank Transfer</p>
+                        <p className="text-xs text-purple-700 mt-1">
+                          Your order will be placed and you&apos;ll receive bank details to complete the transfer.
+                          Payment must be received before delivery can be dispatched.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Reference number input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="bankRef" className="text-sm font-medium text-gray-700">
+                      Payment Reference (Optional)
+                    </Label>
+                    <Input
+                      id="bankRef"
+                      placeholder="e.g., Your bank transfer reference"
+                      value={bankTransferRef}
+                      onChange={(e) => setBankTransferRef(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-400 flex items-center gap-1">
+                      <Info className="h-3 w-3" />
+                      Add a reference to help us match your payment faster
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Place Order Button */}
               <Button
                 onClick={handlePlaceOrder}
                 className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-semibold h-12 text-base"
@@ -565,10 +711,20 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
                     <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                     Placing Order...
                   </>
-                ) : (
+                ) : paymentMethod === 'card' ? (
                   <>
                     <CreditCard className="h-5 w-5 mr-2" />
-                    Place Order — {formatPrice(total)}
+                    Pay with Card — {formatPrice(total)}
+                  </>
+                ) : paymentMethod === 'cash' ? (
+                  <>
+                    <Banknote className="h-5 w-5 mr-2" />
+                    Place Order (Cash on Delivery)
+                  </>
+                ) : (
+                  <>
+                    <Building2 className="h-5 w-5 mr-2" />
+                    Place Order (Bank Transfer)
                   </>
                 )}
               </Button>

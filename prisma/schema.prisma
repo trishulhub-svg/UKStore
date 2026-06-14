@@ -19,6 +19,7 @@ datasource db {
 enum Role {
   CUSTOMER
   DRIVER
+  PICKER
   OWNER
   MANAGER
 }
@@ -78,6 +79,8 @@ model User {
   favourites      Favourite[]
   notifications   Notification[]
   driverProfile   DriverProfile?
+  attendanceLogs  AttendanceLog[]
+  shifts          Shift[]       @relation("StaffShifts")
 
   @@map("users")
 }
@@ -96,6 +99,10 @@ model Store {
   freeDeliveryThreshold Float   @default(20.00)
   deliveryRadiusKm     Float    @default(5.00)
   isActive             Boolean  @default(true)
+  isOpen               Boolean  @default(true)
+  openingHours         String?  // JSON: {"mon":{"open":"08:00","close":"20:00"},...}
+  bankHolidayMode      String   @default("auto_close") // auto_close, reduced_hours, normal
+  notificationTemplate String?  // JSON: {"delivery":"Your order is on the way!",...}
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -106,6 +113,8 @@ model Store {
   settings       StoreSetting[]
   deliveryZones  DeliveryZone[]
   promotions     Promotion[]
+  expenses       Expense[]
+  bankHolidays   BankHoliday[]
 
   @@map("stores")
 }
@@ -133,31 +142,38 @@ model Category {
 }
 
 model Product {
-  id            String   @id @default(cuid())
-  storeId       String
-  categoryId    String
-  name          String
-  slug          String
-  description   String?
-  price         Float
-  vatRate       Float    @default(0.0)
-  isHfss        Boolean  @default(false)
-  imageUrl      String?
-  barcode       String?
-  unit          String   @default("each")
-  weightKg      Float?
-  isAvailable   Boolean  @default(true)
-  stockQuantity Int      @default(0)
-  isFeatured    Boolean  @default(false)
-  sortOrder     Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  storeId               String
+  categoryId            String
+  name                  String
+  slug                  String
+  description           String?
+  price                 Float
+  vatRate               Float    @default(0.0)
+  isHfss                Boolean  @default(false)
+  imageUrl              String?
+  barcode               String?
+  unit                  String   @default("each")
+  weightKg              Float?
+  volumeLitres          Float?
+  aisle                 String?  // e.g., "A1", "B3"
+  minStockThreshold     Int      @default(5)
+  substituteProductId   String?  // FK to alternative product
+  isAvailable           Boolean  @default(true)
+  stockQuantity         Int      @default(0)
+  isFeatured            Boolean  @default(false)
+  sortOrder             Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   // Relations
-  store       Store      @relation(fields: [storeId], references: [id])
-  category    Category   @relation(fields: [categoryId], references: [id])
-  orderItems  OrderItem[]
-  favourites  Favourite[]
+  store               Store        @relation(fields: [storeId], references: [id])
+  category            Category     @relation(fields: [categoryId], references: [id])
+  orderItems          OrderItem[]
+  favourites          Favourite[]
+  substituteProduct   Product?     @relation("ProductSubstitutes", fields: [substituteProductId], references: [id])
+  substitutedBy       Product[]    @relation("ProductSubstitutes")
+  wastageLogs         WastageLog[]
 
   @@unique([storeId, slug])
   @@map("products")
@@ -197,8 +213,18 @@ model Order {
   stripeSessionId      String?
   stripePaymentIntentId String?
   paymentStatus        PaymentStatus @default(pending)
+  paymentMethod        String?       // 'stripe', 'cash', 'bank_transfer'
   deliverySlot         DateTime?
   notes                String?
+  hasChallenge25       Boolean       @default(false)
+  challenge25Verified  Boolean       @default(false)
+  batchGroup           String?       // For order batching by postcode area
+  packedAt             DateTime?
+  dispatchedAt         DateTime?
+  deliveredAt          DateTime?
+  deliveryPhotoUrl     String?
+  bankTransferRef      String?
+  bankTransferVerified Boolean       @default(false)
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
@@ -338,4 +364,82 @@ model Promotion {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@map("promotions")
+}
+
+// ─── New Models for Requirements ────────────────────────────────
+
+model AttendanceLog {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // 'clock_in' | 'clock_out'
+  ipAddress   String?
+  latitude    Float?
+  longitude   Float?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_logs")
+}
+
+model Shift {
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime
+  startTime   String   // "08:00"
+  endTime     String   // "16:00"
+  role        String   // 'picker', 'driver', 'manager'
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user User @relation("StaffShifts", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("shifts")
+}
+
+model WastageLog {
+  id          String   @id @default(cuid())
+  productId   String
+  quantity    Int
+  reason      String   // 'expired', 'damaged', 'spoiled', 'other'
+  notes       String?
+  loggedBy    String   // userId
+  createdAt   DateTime @default(now())
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("wastage_logs")
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  storeId     String
+  category    String   // 'electricity', 'rent', 'packaging', 'fuel', 'other'
+  description String
+  amount      Float
+  date        DateTime
+  receiptUrl  String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("expenses")
+}
+
+model BankHoliday {
+  id          String   @id @default(cuid())
+  storeId     String
+  name        String
+  date        DateTime
+  mode        String   @default("auto_close") // 'auto_close', 'reduced_hours', 'normal'
+  createdAt   DateTime @default(now())
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("bank_holidays")
 }

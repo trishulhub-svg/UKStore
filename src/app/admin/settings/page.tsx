@@ -2,6 +2,9 @@ import { redirect } from 'next/navigation'
 import { getServerUser } from '@/lib/auth/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { AdminSettingsClient } from '@/components/admin/admin-settings-client'
+import { StoreStatusManager } from '@/components/admin/store-status-manager'
+import { BankHolidayManager } from '@/components/admin/bank-holiday-manager'
+import { NotificationEditor } from '@/components/admin/notification-editor'
 import type { StoreSetting } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -39,9 +42,30 @@ export default async function AdminSettingsPage() {
   }
 
   return (
-    <AdminSettingsClient
-      settings={settings}
-      userId={user.id}
-    />
+    <div>
+      {/* Store Status & Delivery — Always visible at top */}
+      <StoreStatusManager />
+
+      {/* Separator */}
+      <div className="my-8 border-t border-gray-200" />
+
+      {/* Bank Holiday Manager */}
+      <BankHolidayManager />
+
+      {/* Separator */}
+      <div className="my-8 border-t border-gray-200" />
+
+      {/* Notification Editor */}
+      <NotificationEditor />
+
+      {/* Separator */}
+      <div className="my-8 border-t border-gray-200" />
+
+      {/* API Keys & Settings */}
+      <AdminSettingsClient
+        settings={settings}
+        userId={user.id}
+      />
+    </div>
   )
 }

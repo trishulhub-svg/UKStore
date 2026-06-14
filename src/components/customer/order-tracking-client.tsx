@@ -18,6 +18,7 @@ import {
   ShoppingBag,
   Navigation,
 } from 'lucide-react'
+import { CustomerTrackingMap } from '@/components/customer/customer-tracking-map'
 
 interface DriverInfo {
   id: string
@@ -320,11 +321,24 @@ export function OrderTrackingClient() {
 
       {/* Map placeholder */}
       {(order.status === 'out_for_delivery' || order.status === 'ready') && (
-        <Card className="shadow-sm border-dashed">
-          <CardContent className="p-6 text-center">
-            <MapPin className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm font-medium text-gray-500">Live Map Tracking</p>
-            <p className="text-xs text-gray-400">Coming soon — track your driver in real time</p>
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <MapPin className="h-4 w-4" />
+              Live Map Tracking
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <CustomerTrackingMap
+              storeLat={51.5074}
+              storeLng={-0.1278}
+              driverLat={order.status === 'out_for_delivery' ? 51.5094 : undefined}
+              driverLng={order.status === 'out_for_delivery' ? -0.1258 : undefined}
+              driverName={order.driver?.name}
+              deliveryLat={51.5054}
+              deliveryLng={-0.1298}
+              deliveryAddress={`${order.address.addressLine1}, ${order.address.city}`}
+            />
           </CardContent>
         </Card>
       )}

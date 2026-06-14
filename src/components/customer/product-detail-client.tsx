@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ShoppingCart, Minus, Plus, ChevronRight, Package, AlertTriangle } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, ChevronRight, Package, AlertTriangle, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +21,17 @@ import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
 import { formatPrice, getVatRateLabel } from '@/lib/vat'
 import type { Store, ProductWithCategory } from '@/types'
+
+interface SubstituteProduct {
+  id: string
+  name: string
+  slug: string
+  price: number
+  imageUrl: string | null
+  stockQuantity: number
+  isAvailable: boolean
+  category: { id: string; name: string; slug: string }
+}
 
 interface ProductDetailClientProps {
   store: Store
@@ -52,12 +63,65 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
   const addItem = useCartStore((state) => state.addItem)
   const [quantity, setQuantity] = useState(1)
   const [substitutePreference, setSubstitutePreference] = useState<'closest_match' | 'do_not_substitute'>('closest_match')
+  const [substituteProduct, setSubstituteProduct] = useState<SubstituteProduct | null>(null)
 
   const stockStatus = getStockStatus(product)
+
+  useEffect(() => {
+    // Try to fetch substitute product if available
+    async function fetchSubstitute() {
+      try {
+        const res = await fetch(`/api/products/${product.id}/substitute`)
+        if (res.ok) {
+          const data = await res.json()
+          setSubstituteProduct(data.substitute || null)
+        }
+      } catch {}
+    }
+    fetchSubstitute()
+  }, [product.id])
 
   const handleAddToCart = () => {
     addItem(product, quantity, substitutePreference)
     setQuantity(1)
+  }
+
+  const handleAddSubstituteToCart = () => {
+    if (!substituteProduct) return
+    const subProduct: ProductWithCategory = {
+      id: substituteProduct.id,
+      store_id: product.store_id,
+      category_id: substituteProduct.category.id,
+      name: substituteProduct.name,
+      slug: substituteProduct.slug,
+      description: null,
+      price: substituteProduct.price,
+      vat_rate: 0,
+      is_hfss: false,
+      image_url: substituteProduct.imageUrl,
+      barcode: null,
+      unit: 'each',
+      weight_kg: null,
+      is_available: substituteProduct.isAvailable,
+      stock_quantity: substituteProduct.stockQuantity,
+      is_featured: false,
+      sort_order: 0,
+      created_at: '',
+      updated_at: '',
+      category: {
+        id: substituteProduct.category.id,
+        store_id: product.store_id,
+        name: substituteProduct.category.name,
+        slug: substituteProduct.category.slug,
+        description: null,
+        image_url: null,
+        parent_id: null,
+        sort_order: 0,
+        is_active: true,
+        created_at: '',
+      },
+    }
+    addItem(subProduct, 1, 'closest_match')
   }
 
   const incrementQuantity = () => setQuantity((q) => q + 1)
@@ -189,6 +253,46 @@ export function ProductDetailClient({ store, product }: ProductDetailClientProps
                       </p>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Substitute Product (when out of stock) */}
+            {!stockStatus.available && substituteProduct && (
+              <Card className="mt-4 border-[#16a34a] bg-green-50">
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden border border-gray-200">
+                      {substituteProduct.imageUrl ? (
+                        <img src={substituteProduct.imageUrl} alt={substituteProduct.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <Package className="h-6 w-6 text-gray-400" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[#16a34a]">Recommended Alternative</p>
+                      <p className="text-sm font-medium text-gray-900 mt-0.5">{substituteProduct.name}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm font-bold text-gray-900">{formatPrice(substituteProduct.price)}</span>
+                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
+                          In Stock
+                        </Badge>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-[#f97316] hover:bg-[#ea580c] text-white flex-shrink-0"
+                      onClick={handleAddSubstituteToCart}
+                    >
+                      Add Instead
+                    </Button>
+                  </div>
+                  <Link
+                    href={`/product/${substituteProduct.slug}`}
+                    className="inline-flex items-center gap-1 text-xs text-[#16a34a] hover:underline mt-2"
+                  >
+                    View details <ArrowRight className="h-3 w-3" />
+                  </Link>
                 </CardContent>
               </Card>
             )}

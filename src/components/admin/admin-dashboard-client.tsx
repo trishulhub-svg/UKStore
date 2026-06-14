@@ -1,11 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { Package, ShoppingBag, Users, Key, Settings, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Package, ShoppingBag, Users, Key, Settings, ChevronRight, AlertTriangle, CheckCircle2, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/vat'
+import { DeliveryMap } from '@/components/admin/delivery-map'
 import type { Order } from '@/types'
 
 interface AdminDashboardClientProps {
@@ -31,6 +33,14 @@ const statusColors: Record<string, string> = {
 export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClientProps) {
   const allKeysConfigured = stats.configuredKeys === stats.totalKeys
   const needsAttention = stats.configuredKeys < stats.totalKeys
+  const [lowStockCount, setLowStockCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/products/low-stock')
+      .then((res) => res.json())
+      .then((data) => setLowStockCount(data.count ?? 0))
+      .catch(() => setLowStockCount(null))
+  }, [])
 
   return (
     <div>
@@ -112,6 +122,35 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
         </Card>
       </div>
 
+      {/* Low Stock Alert Card */}
+      {lowStockCount !== null && lowStockCount > 0 && (
+        <Card className="mb-8 border-amber-200 bg-amber-50">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-3 flex-wrap">
+              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-amber-800">
+                  Low Stock Alert — {lowStockCount} product{lowStockCount !== 1 ? 's' : ''} below minimum threshold
+                </p>
+                <p className="text-sm text-amber-700 mt-1">
+                  Some products are running low or out of stock. Go to{' '}
+                  <Link href="/admin/products" className="font-medium underline hover:text-amber-900">
+                    Products
+                  </Link>{' '}
+                  to review and restock.
+                </p>
+              </div>
+              <Link href="/admin/products">
+                <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
+                  <Package className="h-3.5 w-3.5 mr-1" />
+                  View Products
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Integration Status Alert */}
       {needsAttention && (
         <Card className="mb-8 border-amber-200 bg-amber-50">
@@ -139,8 +178,13 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
         </Card>
       )}
 
+      {/* Delivery Map */}
+      <div className="mb-8">
+        <DeliveryMap />
+      </div>
+
       {/* Recent Orders */}
-      <Card>
+      <Card className="mb-8">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="text-lg">Recent Orders</CardTitle>
           {recentOrders.length > 0 && (

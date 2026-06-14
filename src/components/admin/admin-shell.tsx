@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Store, Settings, LayoutDashboard, ChevronRight, User as UserIcon, LogOut, ArrowLeft,
-  Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3, Menu,
+  Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3, Menu, PoundSterling,
+  Clock, CalendarDays, Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -27,6 +28,10 @@ const navItems = [
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { href: '/admin/customers', label: 'Customers', icon: Users },
   { href: '/admin/drivers', label: 'Drivers', icon: Truck },
+  { href: '/admin/attendance', label: 'Attendance', icon: Clock },
+  { href: '/admin/shifts', label: 'Shifts', icon: CalendarDays },
+  { href: '/admin/finance', label: 'Finance', icon: PoundSterling },
+  { href: '/admin/wastage', label: 'Wastage', icon: Trash2 },
   { href: '/admin/promotions', label: 'Promotions', icon: Tag },
   { href: '/admin/delivery-zones', label: 'Delivery Zones', icon: MapPin },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },

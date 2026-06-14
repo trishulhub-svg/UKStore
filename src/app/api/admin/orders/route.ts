@@ -14,11 +14,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const search = searchParams.get('search')
+    const paymentMethod = searchParams.get('paymentMethod')
+    const bankTransferVerified = searchParams.get('bankTransferVerified')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
 
     const where: any = { storeId: STORE_ID }
     if (status) where.status = status
+    if (paymentMethod) where.paymentMethod = paymentMethod
+    if (bankTransferVerified !== null) where.bankTransferVerified = bankTransferVerified === 'true'
     if (search) {
       where.OR = [
         { id: { contains: search } },
@@ -71,6 +75,7 @@ export async function PATCH(request: NextRequest) {
     const data: any = {}
     if (status) data.status = status
     if (driverId !== undefined) data.driverId = driverId || null
+    if (body.bankTransferVerified !== undefined) data.bankTransferVerified = body.bankTransferVerified
 
     const order = await prisma.order.update({
       where: { id: orderId },

@@ -33,8 +33,31 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
+  // Protect picker routes — must be authenticated
+  // Role check happens inside the picker layout (needs DB access)
+  if (request.nextUrl.pathname.startsWith('/picker') && !user) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/auth/login'
+    redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  // Protect driver routes — must be authenticated
+  // Role check happens inside the driver layout (needs DB access)
+  if (request.nextUrl.pathname.startsWith('/driver') && !user) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/auth/login'
+    redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
+  }
+
   // Protect admin API routes — must be authenticated
   if (request.nextUrl.pathname.startsWith('/api/admin') && !user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
+
+  // Protect picker API routes — must be authenticated
+  if (request.nextUrl.pathname.startsWith('/api/picker') && !user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 

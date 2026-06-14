@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { CheckCircle2, MapPin, Clock, Package, ShoppingBag, Truck } from 'lucide-react'
+import { CheckCircle2, MapPin, Clock, Package, ShoppingBag, Truck, RotateCcw, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -41,7 +41,48 @@ export function OrderConfirmationClient({ order, orderItems, address, storeName 
   return (
     <CustomerLayout storeName={storeName}>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Refund Alert Banner */}
+        {order.payment_status === 'refunded' && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <RotateCcw className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-red-800">Order Refunded</h3>
+                <p className="text-sm text-red-700 mt-1">
+                  This order has been refunded. {formatPrice(order.total)} will be returned to your original payment method.
+                  {order.status === 'cancelled' && ' The order has been cancelled.'}
+                </p>
+                {order.notes?.includes('[REFUND]') && (
+                  <p className="text-xs text-red-600 mt-2">
+                    Reason: {order.notes.split('[REFUND]')[1]?.split('.').slice(1, -1).join('.').trim() || 'Not specified'}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancelled Alert Banner */}
+        {order.status === 'cancelled' && order.payment_status !== 'refunded' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-amber-800">Order Cancelled</h3>
+                <p className="text-sm text-amber-700 mt-1">
+                  This order has been cancelled. Please contact us if you have any questions.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Success Banner */}
+        {order.payment_status !== 'refunded' && order.status !== 'cancelled' && (
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-full bg-[#16a34a]/10 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="h-9 w-9 text-[#16a34a]" />
@@ -54,6 +95,7 @@ export function OrderConfirmationClient({ order, orderItems, address, storeName 
             </Badge>
           </div>
         </div>
+        )}
 
         {/* Order Status Card */}
         <Card className="mb-6">
@@ -65,7 +107,7 @@ export function OrderConfirmationClient({ order, orderItems, address, storeName 
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Status</p>
-                  <p className="font-medium text-sm capitalize">{order.status}</p>
+                  <p className="font-medium text-sm capitalize">{order.status === 'cancelled' ? 'Cancelled' : order.status.replace(/_/g, ' ')}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">

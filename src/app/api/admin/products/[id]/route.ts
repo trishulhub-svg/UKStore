@@ -63,10 +63,13 @@ export async function PATCH(
     if (body.barcode !== undefined) data.barcode = body.barcode || null
     if (body.unit !== undefined) data.unit = body.unit
     if (body.weightKg !== undefined) data.weightKg = body.weightKg ? parseFloat(body.weightKg) : null
+    if (body.aisle !== undefined) data.aisle = body.aisle || null
     if (body.isAvailable !== undefined) data.isAvailable = body.isAvailable
     if (body.stockQuantity !== undefined) data.stockQuantity = parseInt(body.stockQuantity)
     if (body.isFeatured !== undefined) data.isFeatured = body.isFeatured
     if (body.sortOrder !== undefined) data.sortOrder = parseInt(body.sortOrder)
+    if (body.minStockThreshold !== undefined) data.minStockThreshold = parseInt(body.minStockThreshold)
+    if (body.substituteProductId !== undefined) data.substituteProductId = body.substituteProductId || null
 
     const product = await prisma.product.update({
       where: { id },

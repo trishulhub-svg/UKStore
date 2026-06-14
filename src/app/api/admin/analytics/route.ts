@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -10,21 +10,24 @@ export async function GET() {
   if (error) return error
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
 
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
     // Revenue last 30 days (daily)
-    const ordersLast30 = await prisma.order.findMany({
-      where: {
-        storeId: STORE_ID,
-        createdAt: { gte: thirtyDaysAgo },
-        status: { not: 'cancelled' },
-      },
-      select: { total: true, createdAt: true, status: true },
-      orderBy: { createdAt: 'asc' },
-    })
+    const { data: ordersLast30, error: ordersError } = await supabase
+      .from('orders')
+      .select('total, created_at, status')
+      .eq('store_id', STORE_ID)
+      .gte('created_at', thirtyDaysAgo.toISOString())
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: true })
+
+    if (ordersError) {
+      console.error('[Admin Analytics GET] orders30 error:', ordersError)
+      return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 })
+    }
 
     // Group revenue by day
     const revenueByDay: Record<string, number> = {}
@@ -35,8 +38,8 @@ export async function GET() {
       const key = d.toISOString().split('T')[0]
       revenueByDay[key] = 0
     }
-    ordersLast30.forEach((o) => {
-      const key = o.createdAt.toISOString().split('T')[0]
+    ;(ordersLast30 || []).forEach((o: any) => {
+      const key = new Date(o.created_at).toISOString().split('T')[0]
       if (key in revenueByDay) {
         revenueByDay[key] += o.total
       }
@@ -48,12 +51,18 @@ export async function GET() {
     }))
 
     // Orders by status
-    const allOrders = await prisma.order.findMany({
-      where: { storeId: STORE_ID },
-      select: { status: true },
-    })
+    const { data: allOrders, error: allOrdersError } = await supabase
+      .from('orders')
+      .select('status')
+      .eq('store_id', STORE_ID)
+
+    if (allOrdersError) {
+      console.error('[Admin Analytics GET] allOrders error:', allOrdersError)
+      return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 })
+    }
+
     const ordersByStatus: Record<string, number> = {}
-    allOrders.forEach((o) => {
+    ;(allOrders || []).forEach((o: any) => {
       ordersByStatus[o.status] = (ordersByStatus[o.status] || 0) + 1
     })
 
@@ -63,56 +72,79 @@ export async function GET() {
     }))
 
     // Top selling products (by quantity in order items)
-    const topProductsRaw = await prisma.orderItem.groupBy({
-      by: ['productId', 'productName'],
-      _sum: { quantity: true, subtotal: true },
-      orderBy: { _sum: { quantity: 'desc' } },
-      take: 10,
+    const { data: topProductsRaw, error: topProductsError } = await supabase
+      .from('order_items')
+      .select('product_id, product_name, quantity, subtotal')
+
+    if (topProductsError) {
+      console.error('[Admin Analytics GET] topProducts error:', topProductsError)
+      return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 })
+    }
+
+    // Group by product and sum in JS
+    const productMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
+    ;(topProductsRaw || []).forEach((item: any) => {
+      const key = item.product_id
+      if (!productMap[key]) {
+        productMap[key] = { name: item.product_name, quantity: 0, revenue: 0 }
+      }
+      productMap[key].quantity += item.quantity || 0
+      productMap[key].revenue += item.subtotal || 0
     })
 
-    const topProductsChart = topProductsRaw.map((p) => ({
-      name: p.productName,
-      quantity: p._sum.quantity || 0,
-      revenue: p._sum.subtotal || 0,
-    }))
+    const topProductsChart = Object.values(productMap)
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 10)
 
     // Delivery performance
-    const deliveredOrders = await prisma.order.findMany({
-      where: { storeId: STORE_ID, status: 'delivered' },
-      select: { createdAt: true, updatedAt: true },
-    })
+    const { data: deliveredOrders, error: deliveredError } = await supabase
+      .from('orders')
+      .select('created_at, updated_at')
+      .eq('store_id', STORE_ID)
+      .eq('status', 'delivered')
 
-    const avgDeliveryMinutes = deliveredOrders.length > 0
-      ? deliveredOrders.reduce((sum, o) => {
-          const diff = o.updatedAt.getTime() - o.createdAt.getTime()
+    if (deliveredError) {
+      console.error('[Admin Analytics GET] delivered error:', deliveredError)
+      return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 })
+    }
+
+    const avgDeliveryMinutes = (deliveredOrders || []).length > 0
+      ? (deliveredOrders || []).reduce((sum: number, o: any) => {
+          const diff = new Date(o.updated_at).getTime() - new Date(o.created_at).getTime()
           return sum + diff / (1000 * 60)
-        }, 0) / deliveredOrders.length
+        }, 0) / (deliveredOrders || []).length
       : 0
 
-    // Summary stats
+    // Summary stats — run in parallel
     const [
-      totalProducts,
-      totalOrders,
-      totalCustomers,
-      totalRevenue,
+      { count: totalProducts, error: productsCountError },
+      { count: totalOrders, error: ordersCountError },
+      { count: totalCustomers, error: customersCountError },
+      { data: revenueData, error: revenueError },
     ] = await Promise.all([
-      prisma.product.count({ where: { storeId: STORE_ID } }),
-      prisma.order.count({ where: { storeId: STORE_ID } }),
-      prisma.user.count({ where: { role: 'CUSTOMER' } }),
-      prisma.order.aggregate({
-        where: { storeId: STORE_ID, status: { not: 'cancelled' } },
-        _sum: { total: true },
-      }),
+      supabase.from('products').select('*', { count: 'exact', head: true }).eq('store_id', STORE_ID),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('store_id', STORE_ID),
+      supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'CUSTOMER'),
+      supabase.from('orders').select('total').eq('store_id', STORE_ID).neq('status', 'cancelled'),
     ])
+
+    if (productsCountError || ordersCountError || customersCountError || revenueError) {
+      console.error('[Admin Analytics GET] summary stats error:', {
+        productsCountError, ordersCountError, customersCountError, revenueError,
+      })
+      return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 })
+    }
+
+    const totalRevenue = (revenueData || []).reduce((sum: number, r: any) => sum + (r.total || 0), 0)
 
     return NextResponse.json({
       summary: {
-        totalProducts,
-        totalOrders,
-        totalCustomers,
-        totalRevenue: totalRevenue._sum.total || 0,
+        totalProducts: totalProducts || 0,
+        totalOrders: totalOrders || 0,
+        totalCustomers: totalCustomers || 0,
+        totalRevenue,
         avgDeliveryMinutes: Math.round(avgDeliveryMinutes),
-        deliveredCount: deliveredOrders.length,
+        deliveredCount: (deliveredOrders || []).length,
       },
       revenueChart,
       statusPieChart,

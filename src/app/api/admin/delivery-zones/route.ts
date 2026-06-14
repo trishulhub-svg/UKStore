@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -10,11 +10,18 @@ export async function GET() {
   if (error) return error
 
   try {
-    const prisma = await getPrisma()
-    const zones = await prisma.deliveryZone.findMany({
-      where: { storeId: STORE_ID },
-      orderBy: { name: 'asc' },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: zones, error: dbError } = await supabase
+      .from('delivery_zones')
+      .select('*')
+      .eq('store_id', STORE_ID)
+      .order('name', { ascending: true })
+
+    if (dbError) {
+      console.error('[Admin Delivery Zones GET]', dbError)
+      return NextResponse.json({ error: 'Failed to fetch delivery zones' }, { status: 500 })
+    }
 
     return NextResponse.json({ zones })
   } catch (err) {
@@ -29,19 +36,26 @@ export async function POST(request: NextRequest) {
   if (error) return error
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const body = await request.json()
 
-    const zone = await prisma.deliveryZone.create({
-      data: {
-        storeId: STORE_ID,
+    const { data: zone, error: dbError } = await supabase
+      .from('delivery_zones')
+      .insert({
+        store_id: STORE_ID,
         name: body.name,
-        postcodes: body.postcodes, // JSON string
-        deliveryFee: parseFloat(body.deliveryFee || '0'),
-        minimumOrder: parseFloat(body.minimumOrder || '0'),
-        isActive: body.isActive !== false,
-      },
-    })
+        postcodes: body.postcodes, // JSONB
+        delivery_fee: parseFloat(body.deliveryFee || '0'),
+        minimum_order: parseFloat(body.minimumOrder || '0'),
+        is_active: body.isActive !== false,
+      })
+      .select()
+      .single()
+
+    if (dbError) {
+      console.error('[Admin Delivery Zones POST]', dbError)
+      return NextResponse.json({ error: 'Failed to create delivery zone' }, { status: 500 })
+    }
 
     return NextResponse.json({ zone }, { status: 201 })
   } catch (err) {

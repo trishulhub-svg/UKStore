@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getServerUser } from '@/lib/auth/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getDefaultStore } from '@/lib/supabase/queries'
 import { AccountClient } from '@/components/customer/account-client'
 import type { Order } from '@/types'
@@ -18,42 +18,42 @@ export default async function AccountPage() {
 
   const store = await getDefaultStore()
 
-  // Fetch user orders from Prisma
+  // Fetch user orders from Supabase
   let orders: Order[] = []
   try {
-    const prisma = await getPrisma()
-    const dbOrders = await prisma.order.findMany({
-      where: { customerId: user.id, storeId: STORE_ID },
-      include: {
-        items: {
-          include: {
-            product: { select: { name: true, imageUrl: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    })
+    const supabase = getSupabaseAdmin()
 
-    orders = dbOrders.map((o) => ({
-      id: o.id,
-      store_id: o.storeId,
-      customer_id: o.customerId,
-      driver_id: o.driverId,
-      address_id: o.addressId,
-      status: o.status as Order['status'],
-      subtotal: o.subtotal,
-      vat_amount: o.vatAmount,
-      delivery_fee: o.deliveryFee,
-      total: o.total,
-      stripe_session_id: o.stripeSessionId,
-      stripe_payment_intent_id: o.stripePaymentIntentId,
-      payment_status: o.paymentStatus as Order['payment_status'],
-      delivery_slot: o.deliverySlot?.toISOString() ?? null,
-      notes: o.notes,
-      created_at: o.createdAt.toISOString(),
-      updated_at: o.updatedAt.toISOString(),
-    }))
+    const { data: dbOrders, error } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*, product:products(name, image_url))')
+      .eq('customer_id', user.id)
+      .eq('store_id', STORE_ID)
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    if (error) {
+      console.warn('[Account Page] Failed to fetch orders:', error.message)
+    } else if (dbOrders) {
+      orders = dbOrders.map((o: any) => ({
+        id: o.id,
+        store_id: o.store_id,
+        customer_id: o.customer_id,
+        driver_id: o.driver_id,
+        address_id: o.address_id,
+        status: o.status as Order['status'],
+        subtotal: o.subtotal,
+        vat_amount: o.vat_amount,
+        delivery_fee: o.delivery_fee,
+        total: o.total,
+        stripe_session_id: o.stripe_session_id,
+        stripe_payment_intent_id: o.stripe_payment_intent_id,
+        payment_status: o.payment_status as Order['payment_status'],
+        delivery_slot: o.delivery_slot,
+        notes: o.notes,
+        created_at: o.created_at,
+        updated_at: o.updated_at,
+      }))
+    }
   } catch (err) {
     console.warn('[Account Page] Failed to fetch orders:', err)
   }

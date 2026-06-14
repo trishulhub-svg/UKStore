@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 // GET /api/user/favourites — list favourites
@@ -10,18 +10,17 @@ export async function GET() {
   }
 
   try {
-    const prisma = await getPrisma()
-    const favourites = await prisma.favourite.findMany({
-      where: { userId: user.id },
-      include: {
-        product: {
-          include: {
-            category: { select: { name: true, slug: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const supabase = getSupabaseAdmin()
+    const { data: favourites, error } = await supabase
+      .from('favourites')
+      .select('*, product:products(*, category:categories(name, slug))')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('[User Favourites GET]', error)
+      return NextResponse.json({ error: 'Failed to fetch favourites' }, { status: 500 })
+    }
 
     return NextResponse.json({ favourites })
   } catch (err) {
@@ -38,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { productId } = await request.json()
 
     if (!productId) {
@@ -46,18 +45,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already favourited
-    const existing = await prisma.favourite.findUnique({
-      where: { userId_productId: { userId: user.id, productId } },
-    })
+    const { data: existing, error: findError } = await supabase
+      .from('favourites')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('product_id', productId)
+      .maybeSingle()
+
+    if (findError) {
+      console.error('[User Favourites POST] find error', findError)
+      return NextResponse.json({ error: 'Failed to add favourite' }, { status: 500 })
+    }
 
     if (existing) {
       return NextResponse.json({ favourite: existing })
     }
 
-    const favourite = await prisma.favourite.create({
-      data: { userId: user.id, productId },
-      include: { product: true },
-    })
+    const { data: favourite, error } = await supabase
+      .from('favourites')
+      .insert({ user_id: user.id, product_id: productId })
+      .select('*, product:products(*)')
+      .single()
+
+    if (error) {
+      console.error('[User Favourites POST]', error)
+      return NextResponse.json({ error: 'Failed to add favourite' }, { status: 500 })
+    }
 
     return NextResponse.json({ favourite }, { status: 201 })
   } catch (err) {
@@ -74,19 +87,33 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
     const productId = searchParams.get('productId')
     const favouriteId = searchParams.get('favouriteId')
 
     if (favouriteId) {
-      await prisma.favourite.delete({
-        where: { id: favouriteId, userId: user.id },
-      })
+      const { error } = await supabase
+        .from('favourites')
+        .delete()
+        .eq('id', favouriteId)
+        .eq('user_id', user.id)
+
+      if (error) {
+        console.error('[User Favourites DELETE]', error)
+        return NextResponse.json({ error: 'Failed to remove favourite' }, { status: 500 })
+      }
     } else if (productId) {
-      await prisma.favourite.deleteMany({
-        where: { userId: user.id, productId },
-      })
+      const { error } = await supabase
+        .from('favourites')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('product_id', productId)
+
+      if (error) {
+        console.error('[User Favourites DELETE]', error)
+        return NextResponse.json({ error: 'Failed to remove favourite' }, { status: 500 })
+      }
     } else {
       return NextResponse.json({ error: 'productId or favouriteId required' }, { status: 400 })
     }

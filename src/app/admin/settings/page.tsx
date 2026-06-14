@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getServerUser } from '@/lib/auth/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { AdminSettingsClient } from '@/components/admin/admin-settings-client'
 import type { StoreSetting } from '@/types'
 
@@ -15,25 +15,30 @@ export default async function AdminSettingsPage() {
     redirect('/auth/login?redirect=/admin/settings')
   }
 
-  // Fetch settings from Prisma
+  // Fetch settings from Supabase
   let settings: StoreSetting[] = []
   try {
-    const prisma = await getPrisma()
-    const dbSettings = await prisma.storeSetting.findMany({
-      where: { storeId: STORE_ID },
-    })
+    const supabase = getSupabaseAdmin()
+    const { data: dbSettings, error: dbError } = await supabase
+      .from('store_settings')
+      .select('*')
+      .eq('store_id', STORE_ID)
 
-    settings = dbSettings.map((s) => ({
-      id: s.id,
-      store_id: s.storeId,
-      key: s.key,
-      value: s.value,
-      is_secret: s.isSecret,
-      category: s.category as StoreSetting['category'],
-      description: s.description,
-      created_at: s.createdAt.toISOString(),
-      updated_at: s.updatedAt.toISOString(),
-    }))
+    if (dbError) {
+      console.warn('[Admin Settings Page] Failed to fetch settings:', dbError)
+    } else {
+      settings = (dbSettings || []).map((s: any) => ({
+        id: s.id,
+        store_id: s.store_id,
+        key: s.key,
+        value: s.value,
+        is_secret: s.is_secret,
+        category: s.category as StoreSetting['category'],
+        description: s.description,
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+      }))
+    }
   } catch (err) {
     console.warn('[Admin Settings Page] Failed to fetch settings:', err)
   }

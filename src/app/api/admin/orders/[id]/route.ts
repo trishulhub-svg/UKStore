@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -13,24 +13,39 @@ export async function GET(
   if (error) return error
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { id } = await params
 
-    const order = await prisma.order.findFirst({
-      where: { id, storeId: STORE_ID },
-      include: {
-        customer: { select: { id: true, name: true, email: true, phone: true } },
-        driver: { select: { id: true, name: true, email: true, phone: true } },
-        address: true,
-        items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
-      },
-    })
+    const { data: order, error: dbError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        customer:profiles!customer_id(id, full_name, email, phone),
+        driver:profiles!driver_id(id, full_name, email, phone),
+        address:addresses(*),
+        items:order_items(*, product:products(id, name, image_url))
+      `)
+      .eq('id', id)
+      .eq('store_id', STORE_ID)
+      .maybeSingle()
+
+    if (dbError) {
+      console.error('[Admin Order GET]', dbError)
+      return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })
+    }
 
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ order })
+    // Map full_name to name for backward compatibility
+    const mapped = {
+      ...order,
+      customer: (order as any).customer ? { ...(order as any).customer, name: (order as any).customer.full_name } : null,
+      driver: (order as any).driver ? { ...(order as any).driver, name: (order as any).driver.full_name } : null,
+    }
+
+    return NextResponse.json({ order: mapped })
   } catch (err) {
     console.error('[Admin Order GET]', err)
     return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })

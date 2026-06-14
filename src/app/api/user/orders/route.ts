@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -12,35 +12,36 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
-    const where: Record<string, unknown> = { customerId: user.id, storeId: STORE_ID }
-    if (status) where.status = status
+    const from = (page - 1) * limit
+    const to = from + limit - 1
 
-    const [orders, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        include: {
-          items: {
-            include: {
-              product: { select: { name: true, imageUrl: true } },
-            },
-          },
-          driver: { select: { id: true, name: true } },
-          address: { select: { addressLine1: true, postcode: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.order.count({ where }),
-    ])
+    // Build query for orders with related data
+    let query = supabase
+      .from('orders')
+      .select('*, items:order_items(*, product:products(name, image_url)), driver:profiles!driver_id(id, full_name), address:addresses(address_line_1, postcode)', { count: 'exact' })
+      .eq('customer_id', user.id)
+      .eq('store_id', STORE_ID)
+      .order('created_at', { ascending: false })
+      .range(from, to)
 
-    return NextResponse.json({ orders, total, page, limit })
+    if (status) {
+      query = query.eq('status', status)
+    }
+
+    const { data: orders, count: total, error } = await query
+
+    if (error) {
+      console.error('[User Orders GET]', error)
+      return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
+    }
+
+    return NextResponse.json({ orders, total: total ?? 0, page, limit })
   } catch (err) {
     console.error('[User Orders GET]', err)
     return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 // GET /api/user/notifications — list notifications
@@ -10,34 +10,50 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
     const filter = searchParams.get('filter') || 'all'
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    const where: Record<string, unknown> = { userId: user.id }
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    // Build main query
+    let query = supabase
+      .from('notifications')
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.id)
 
     if (filter === 'unread') {
-      where.isRead = false
+      query = query.eq('is_read', false)
     } else if (filter === 'orders') {
-      where.type = 'order_update'
+      query = query.eq('type', 'order_update')
     } else if (filter === 'promotions') {
-      where.type = 'promotion'
+      query = query.eq('type', 'promotion')
     }
 
-    const [notifications, total, unreadCount] = await Promise.all([
-      prisma.notification.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.notification.count({ where }),
-      prisma.notification.count({ where: { userId: user.id, isRead: false } }),
-    ])
+    const { data: notifications, count: total, error } = await query
+      .order('created_at', { ascending: false })
+      .range(from, to)
 
-    return NextResponse.json({ notifications, total, unreadCount, page, limit })
+    if (error) {
+      console.error('[User Notifications GET]', error)
+      return NextResponse.json({ error: 'Failed to fetch notifications' }, { status: 500 })
+    }
+
+    // Get unread count
+    const { count: unreadCount, error: unreadError } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('is_read', false)
+
+    if (unreadError) {
+      console.error('[User Notifications GET] unread count error', unreadError)
+    }
+
+    return NextResponse.json({ notifications, total: total ?? 0, unreadCount: unreadCount ?? 0, page, limit })
   } catch (err) {
     console.error('[User Notifications GET]', err)
     return NextResponse.json({ error: 'Failed to fetch notifications' }, { status: 500 })

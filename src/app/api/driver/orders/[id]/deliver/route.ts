@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -18,14 +18,24 @@ export async function POST(
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { id } = await params
     const body = await request.json()
     const { photoUrl, signatureData } = body
 
-    const order = await prisma.order.findFirst({
-      where: { id, storeId: STORE_ID, driverId: user.id },
-    })
+    // Fetch the order
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', id)
+      .eq('store_id', STORE_ID)
+      .eq('driver_id', user.id)
+      .maybeSingle()
+
+    if (fetchError) {
+      console.error('[Driver Order Deliver POST] fetch error:', fetchError)
+      return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })
+    }
 
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
@@ -39,26 +49,33 @@ export async function POST(
     }
 
     // Update order status to delivered
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: { status: 'delivered' },
-      include: {
-        customer: { select: { id: true, name: true } },
-        address: true,
-        items: true,
-      },
-    })
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({ status: 'delivered' })
+      .eq('id', id)
+      .select('*, customer:profiles!orders_customer_id_fkey(id, full_name), address:addresses(*), items:order_items(*)')
+      .single()
+
+    if (updateError || !updatedOrder) {
+      console.error('[Driver Order Deliver POST] update error:', updateError)
+      return NextResponse.json({ error: 'Failed to update order' }, { status: 500 })
+    }
 
     // Create notification for customer
-    await prisma.notification.create({
-      data: {
-        userId: order.customerId,
+    const { error: notifError } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: order.customer_id,
         type: 'order_update',
         title: 'Order Delivered',
         message: `Your order #${id.slice(-8)} has been delivered successfully!`,
         link: `/orders/${id}/track`,
-      },
-    })
+      })
+
+    if (notifError) {
+      console.error('[Driver Order Deliver POST] notification error:', notifError)
+      // Don't fail the delivery confirmation if notification fails
+    }
 
     return NextResponse.json({
       order: updatedOrder,

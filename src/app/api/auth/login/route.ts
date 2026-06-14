@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
-import { verifyPassword, createSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
+import { createClient } from '@supabase/supabase-js'
+
+// ============================================================
+// Login Route — Supabase Auth
+// Uses Supabase Auth signInWithPassword for authentication.
+// Returns session tokens as cookies.
+// ============================================================
 
 function buildApiError(
   message: string,
   code: string,
   status: number,
   details?: string,
-  endpoint?: string,
 ) {
   return NextResponse.json(
     {
@@ -19,32 +23,27 @@ function buildApiError(
         status,
         details: details || '',
         timestamp: new Date().toISOString(),
-        endpoint: endpoint || '/api/auth/login',
+        endpoint: '/api/auth/login',
       },
     },
     { status }
   )
 }
 
-export async function POST(request: NextRequest) {
-  const endpoint = '/api/auth/login'
-  try {
-    const prisma = await getPrisma()
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) {
+    throw new Error('Supabase not configured')
+  }
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
 
-    // Check database connectivity first
-    try {
-      await prisma.$queryRaw`SELECT 1`
-    } catch (dbPingError) {
-      const dbErrMessage = dbPingError instanceof Error ? dbPingError.message : String(dbPingError)
-      console.error('[Auth] Database connectivity check failed:', dbPingError)
-      return buildApiError(
-        'Unable to connect to the database. Please try again later.',
-        'DATABASE_UNAVAILABLE',
-        503,
-        `Database connectivity check failed.\nError: ${dbErrMessage}\n\nDATABASE_URL is set: ${!!process.env.DATABASE_URL}\nDATABASE_URL value: ${process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/\/[^/]*$/, '/***') : 'NOT SET'}\n\nThis usually means:\n1. The DATABASE_URL environment variable is not configured\n2. The SQLite database file does not exist at the specified path\n3. The Prisma client was not generated (run: npx prisma generate)`,
-        endpoint,
-      )
-    }
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = getSupabaseAdmin()
 
     let body: { email?: string; password?: string }
     try {
@@ -54,108 +53,126 @@ export async function POST(request: NextRequest) {
         'Request body is not valid JSON.',
         'INVALID_BODY',
         400,
-        'The server could not parse the request body as JSON. Make sure the Content-Type header is set to application/json.',
-        endpoint,
+        'The server could not parse the request body as JSON.',
       )
     }
 
     const { email, password } = body
 
-    // Validate input
     if (!email || !password) {
       return buildApiError(
         'Email and password are required.',
         'MISSING_FIELDS',
         400,
         `Received: email=${email ? 'provided' : 'missing'}, password=${password ? 'provided' : 'missing'}`,
-        endpoint,
       )
     }
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+    // ─── Authenticate with Supabase Auth ─────────────────
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: email.toLowerCase(),
+      password,
     })
 
-    if (!user || !user.passwordHash) {
+    if (authError) {
+      // Map Supabase auth errors to user-friendly messages
+      if (authError.message.includes('Invalid login credentials') || authError.message.includes('Email not confirmed')) {
+        return buildApiError(
+          'Invalid email or password.',
+          'AUTH_INVALID_CREDENTIALS',
+          401,
+          authError.message,
+        )
+      }
+
       return buildApiError(
-        'Invalid email or password.',
-        'AUTH_INVALID_CREDENTIALS',
+        'Login failed. Please try again.',
+        'AUTH_ERROR',
         401,
-        `No user found with email "${email.toLowerCase()}" or the user has no password set. If you registered via OAuth, try signing in with that provider instead.`,
-        endpoint,
+        authError.message,
       )
     }
 
-    // Verify password
-    const isValid = await verifyPassword(password, user.passwordHash)
-    if (!isValid) {
+    if (!authData.user || !authData.session) {
       return buildApiError(
-        'Invalid email or password.',
-        'AUTH_INVALID_CREDENTIALS',
+        'Login failed. Please try again.',
+        'AUTH_NO_SESSION',
         401,
-        `Password verification failed for user "${email.toLowerCase()}". Check that you are using the correct password.`,
-        endpoint,
+        'Supabase auth succeeded but no session was returned.',
       )
     }
 
-    // Create session token
-    const token = createSessionToken({
-      uid: user.id,
-      email: user.email,
-      role: user.role,
-      name: user.name || '',
-    })
+    // ─── Fetch user profile for role info ─────────────────
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role, full_name, is_active')
+      .eq('id', authData.user.id)
+      .single()
 
-    // Build response with cookie
+    if (profileError || !profile) {
+      console.warn('[Auth] Profile not found for user:', authData.user.id, profileError?.message)
+      // Continue without profile — user exists in auth but profile may not be created yet
+    }
+
+    // Check if user is active
+    if (profile && !profile.is_active) {
+      return buildApiError(
+        'Your account has been deactivated. Please contact support.',
+        'ACCOUNT_DEACTIVATED',
+          403,
+        'User is_active is false.',
+      )
+    }
+
+    const userRole = profile?.role || 'customer'
+    const userName = profile?.full_name || authData.user.user_metadata?.full_name || ''
+
+    // ─── Build response with session cookies ─────────────
     const response = NextResponse.json({
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        createdAt: user.createdAt.toISOString(),
+        id: authData.user.id,
+        email: authData.user.email,
+        name: userName,
+        role: userRole,
+        createdAt: authData.user.created_at,
       },
     })
 
-    response.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS)
+    // Set Supabase auth cookies
+    // The access token is stored in a cookie for middleware to read
+    const cookieOptions = {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+    }
+
+    response.cookies.set('sb-access-token', authData.session.access_token, cookieOptions)
+    response.cookies.set('sb-refresh-token', authData.session.refresh_token, {
+      ...cookieOptions,
+      httpOnly: true,
+    })
 
     return response
   } catch (error) {
     const errMessage = error instanceof Error ? error.message : String(error)
-    const errStack = error instanceof Error ? error.stack || '' : ''
     console.error('[Auth] Login error:', error)
 
-    // Detect specific Prisma/database errors
-    let code = 'INTERNAL_ERROR'
-    let message = 'An internal server error occurred during login.'
-    let status = 500
-    let details = `Error: ${errMessage}\n${errStack}`
-
-    if (
-      errMessage.includes('P2021') ||
-      errMessage.includes('does not exist') ||
-      errMessage.includes('no such table') ||
-      errMessage.includes('SQLITE_ERROR')
-    ) {
-      code = 'DATABASE_SCHEMA_ERROR'
-      message = 'The database schema is not set up correctly. Please run database migrations.'
-      status = 500
-      details = `The User table may not exist in the database. Run "npx prisma db push" to create it.\nError: ${errMessage}\n${errStack}`
-    } else if (
-      errMessage.includes('ECONNREFUSED') ||
-      errMessage.includes('Connection refused') ||
-      errMessage.includes('P1001') ||
-      errMessage.includes("Can't reach database server") ||
-      errMessage.includes('Unable to open') ||
-      errMessage.includes('P1002')
-    ) {
-      code = 'DATABASE_UNAVAILABLE'
-      message = 'Unable to connect to the database. Please try again later.'
-      status = 503
-      details = `Database connection error.\nDATABASE_URL is set: ${!!process.env.DATABASE_URL}\nError: ${errMessage}\n${errStack}`
+    if (errMessage.includes('Supabase not configured')) {
+      return buildApiError(
+        'Authentication service is not configured. Please contact support.',
+        'AUTH_NOT_CONFIGURED',
+        503,
+        'NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set.',
+      )
     }
 
-    return buildApiError(message, code, status, details, endpoint)
+    return buildApiError(
+      'An internal server error occurred during login.',
+      'INTERNAL_ERROR',
+      500,
+      errMessage,
+    )
   }
 }

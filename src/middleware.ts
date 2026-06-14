@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { getUserFromCookies, SESSION_COOKIE_NAME } from '@/lib/auth/edge'
+import { getUserFromCookies } from '@/lib/auth/edge'
 
 export async function middleware(request: NextRequest) {
-  let user: { uid: string; email: string; role: string; name: string; authProvider: 'local' | 'supabase' } | null = null
+  let user: { uid: string; email: string; role: string; name: string; authProvider: 'supabase' } | null = null
 
   try {
     user = await getUserFromCookies(request.cookies)
@@ -11,7 +11,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protect authenticated routes (customer)
-  const protectedPaths = ['/checkout', '/account', '/orders']
+  const protectedPaths = ['/checkout', '/account', '/orders', '/favourites', '/addresses', '/notifications']
   const isProtected = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   )
@@ -23,18 +23,47 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Protect admin routes — must be authenticated
-  // Role check happens inside the admin layout (needs DB access for profile)
-  // Middleware only ensures user is logged in; layout verifies owner role
-  if (request.nextUrl.pathname.startsWith('/admin') && !user) {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/auth/login'
-    redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
+  // Protect admin routes — must be authenticated + owner/manager role
+  if (request.nextUrl.pathname.startsWith('/admin')) {
+    if (!user) {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/auth/login'
+      redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
+    }
+
+    // Role check — only owner and manager can access admin
+    if (!['owner', 'manager'].includes(user.role)) {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/'
+      return NextResponse.redirect(redirectUrl)
+    }
+  }
+
+  // Protect driver routes — must be authenticated + driver role
+  if (request.nextUrl.pathname.startsWith('/driver')) {
+    if (!user) {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/auth/login'
+      redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
+    }
+
+    // Role check — only driver can access driver app
+    if (user.role !== 'driver') {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/'
+      return NextResponse.redirect(redirectUrl)
+    }
   }
 
   // Protect admin API routes — must be authenticated
   if (request.nextUrl.pathname.startsWith('/api/admin') && !user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
+
+  // Protect driver API routes — must be authenticated
+  if (request.nextUrl.pathname.startsWith('/api/driver') && !user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 

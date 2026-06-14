@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -15,37 +15,21 @@ export async function GET(
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { id } = await params
 
-    const order = await prisma.order.findFirst({
-      where: { id, customerId: user.id, storeId: STORE_ID },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                imageUrl: true,
-                slug: true,
-                price: true,
-                category: { select: { name: true } },
-              },
-            },
-          },
-        },
-        driver: {
-          select: {
-            id: true,
-            name: true,
-            driverProfile: { select: { vehicleType: true, vehicleReg: true } },
-          },
-        },
-        address: true,
-        store: { select: { name: true } },
-      },
-    })
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*, product:products(id, name, image_url, slug, price, category:categories(name))), driver:profiles!driver_id(id, full_name, driver_profiles(vehicle_type, vehicle_reg)), address:addresses(*), store:stores(name)')
+      .eq('id', id)
+      .eq('customer_id', user.id)
+      .eq('store_id', STORE_ID)
+      .maybeSingle()
+
+    if (error) {
+      console.error('[User Order GET]', error)
+      return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })
+    }
 
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })

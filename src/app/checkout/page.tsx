@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getServerUser } from '@/lib/auth/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getDefaultStore } from '@/lib/supabase/queries'
 import { CheckoutClient } from '@/components/customer/checkout-client'
 import type { Address } from '@/types'
@@ -27,28 +27,36 @@ export default async function CheckoutPage() {
     )
   }
 
-  // Fetch user addresses from Prisma
+  // Fetch user addresses from Supabase
   let addresses: Address[] = []
   try {
-    const prisma = await getPrisma()
-    const dbAddresses = await prisma.address.findMany({
-      where: { userId: user.id },
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
-    })
+    const supabase = getSupabaseAdmin()
 
-    addresses = dbAddresses.map((a) => ({
-      id: a.id,
-      user_id: a.userId,
-      label: a.label,
-      address_line_1: a.addressLine1,
-      address_line_2: a.addressLine2,
-      city: a.city,
-      postcode: a.postcode,
-      latitude: a.latitude,
-      longitude: a.longitude,
-      is_default: a.isDefault,
-      created_at: a.createdAt.toISOString(),
-    }))
+    const { data: dbAddresses, error } = await supabase
+      .from('addresses')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.warn('[Checkout Page] Failed to fetch addresses:', error.message)
+    } else if (dbAddresses) {
+      // Supabase returns snake_case directly — map to Address type
+      addresses = dbAddresses.map((a: any) => ({
+        id: a.id,
+        user_id: a.user_id,
+        label: a.label,
+        address_line_1: a.address_line_1,
+        address_line_2: a.address_line_2,
+        city: a.city,
+        postcode: a.postcode,
+        latitude: a.latitude,
+        longitude: a.longitude,
+        is_default: a.is_default,
+        created_at: a.created_at,
+      }))
+    }
   } catch (err) {
     console.warn('[Checkout Page] Failed to fetch addresses:', err)
   }

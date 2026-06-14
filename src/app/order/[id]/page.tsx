@@ -1,4 +1,4 @@
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getDefaultStore } from '@/lib/supabase/queries'
 import { OrderConfirmationClient } from '@/components/customer/order-confirmation-client'
 import { notFound } from 'next/navigation'
@@ -14,73 +14,73 @@ export default async function OrderConfirmationPage({ params }: OrderPageProps) 
   const { id } = await params
   const store = await getDefaultStore()
 
-  // Fetch order from Prisma
+  // Fetch order from Supabase
   try {
-    const prisma = await getPrisma()
-    const order = await prisma.order.findUnique({
-      where: { id },
-      include: {
-        items: true,
-        address: true,
-      },
-    })
+    const supabase = getSupabaseAdmin()
 
-    if (!order) {
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*), address:addresses(*)')
+      .eq('id', id)
+      .single()
+
+    if (error || !order) {
+      console.error('[Order Page] Failed to fetch order:', error?.message)
       notFound()
     }
 
-    // Map Prisma order to frontend type
+    // Supabase returns snake_case directly — map to frontend Order type
     const mappedOrder: Order = {
       id: order.id,
-      store_id: order.storeId,
-      customer_id: order.customerId,
-      driver_id: order.driverId,
-      address_id: order.addressId,
+      store_id: order.store_id,
+      customer_id: order.customer_id,
+      driver_id: order.driver_id,
+      address_id: order.address_id,
       status: order.status as Order['status'],
       subtotal: order.subtotal,
-      vat_amount: order.vatAmount,
-      delivery_fee: order.deliveryFee,
+      vat_amount: order.vat_amount,
+      delivery_fee: order.delivery_fee,
       total: order.total,
-      stripe_session_id: order.stripeSessionId,
-      stripe_payment_intent_id: order.stripePaymentIntentId,
-      payment_status: order.paymentStatus as Order['payment_status'],
-      delivery_slot: order.deliverySlot?.toISOString() ?? null,
+      stripe_session_id: order.stripe_session_id,
+      stripe_payment_intent_id: order.stripe_payment_intent_id,
+      payment_status: order.payment_status as Order['payment_status'],
+      delivery_slot: order.delivery_slot,
       notes: order.notes,
-      created_at: order.createdAt.toISOString(),
-      updated_at: order.updatedAt.toISOString(),
+      created_at: order.created_at,
+      updated_at: order.updated_at,
     }
 
-    // Map Prisma order items to frontend type
-    const mappedItems: OrderItem[] = order.items.map((item) => ({
+    // Supabase returns snake_case directly — map order items
+    const mappedItems: OrderItem[] = (order.items || []).map((item: any) => ({
       id: item.id,
-      order_id: item.orderId,
-      product_id: item.productId,
-      product_name: item.productName,
+      order_id: item.order_id,
+      product_id: item.product_id,
+      product_name: item.product_name,
       quantity: item.quantity,
-      unit_price: item.unitPrice,
-      vat_rate: item.vatRate,
-      vat_amount: item.vatAmount,
+      unit_price: item.unit_price,
+      vat_rate: item.vat_rate,
+      vat_amount: item.vat_amount,
       subtotal: item.subtotal,
-      substitute_preference: item.substitutePreference,
-      substituted_with: item.substitutedWith,
+      substitute_preference: item.substitute_preference,
+      substituted_with: item.substituted_with,
       picked: item.picked,
     }))
 
-    // Map Prisma address to frontend type
+    // Map address to frontend type
     let mappedAddress: Address | null = null
     if (order.address) {
       mappedAddress = {
         id: order.address.id,
-        user_id: order.address.userId,
+        user_id: order.address.user_id,
         label: order.address.label,
-        address_line_1: order.address.addressLine1,
-        address_line_2: order.address.addressLine2,
+        address_line_1: order.address.address_line_1,
+        address_line_2: order.address.address_line_2,
         city: order.address.city,
         postcode: order.address.postcode,
         latitude: order.address.latitude,
         longitude: order.address.longitude,
-        is_default: order.address.isDefault,
-        created_at: order.address.createdAt.toISOString(),
+        is_default: order.address.is_default,
+        created_at: order.address.created_at,
       }
     }
 

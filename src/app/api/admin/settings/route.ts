@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { invalidateSettingsCache } from '@/lib/settings'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -69,29 +69,34 @@ export async function GET() {
       )
     }
 
-    // Fetch settings from Prisma
+    // Fetch settings from Supabase
     try {
-      const prisma = await getPrisma()
-      const settings = await prisma.storeSetting.findMany({
-        where: { storeId: STORE_ID },
-      })
+      const supabase = getSupabaseAdmin()
+      const { data: settings, error: dbError } = await supabase
+        .from('store_settings')
+        .select('*')
+        .eq('store_id', STORE_ID)
 
-      // Map to frontend snake_case format
-      const mappedSettings = settings.map((s) => ({
-        id: s.id,
-        store_id: s.storeId,
-        key: s.key,
-        value: s.value,
-        is_secret: s.isSecret,
-        category: s.category,
-        description: s.description,
-        created_at: s.createdAt.toISOString(),
-        updated_at: s.updatedAt.toISOString(),
-      }))
+      if (dbError) {
+        console.error('[Admin Settings GET] Supabase error:', dbError)
+      } else {
+        // Map to frontend snake_case format
+        const mappedSettings = (settings || []).map((s: any) => ({
+          id: s.id,
+          store_id: s.store_id,
+          key: s.key,
+          value: s.value,
+          is_secret: s.is_secret,
+          category: s.category,
+          description: s.description,
+          created_at: s.created_at,
+          updated_at: s.updated_at,
+        }))
 
-      return NextResponse.json({ settings: mappedSettings })
+        return NextResponse.json({ settings: mappedSettings })
+      }
     } catch (err) {
-      console.error('[Admin Settings GET] Prisma error:', err)
+      console.error('[Admin Settings GET] Supabase error:', err)
     }
 
     // Fallback: return empty settings
@@ -179,9 +184,9 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Update settings in Prisma using upsert
+    // Update settings in Supabase using upsert
     try {
-      const prisma = await getPrisma()
+      const supabase = getSupabaseAdmin()
       const results: Array<{ key: string; success: boolean }> = []
 
       for (const item of settings) {
@@ -207,19 +212,50 @@ export async function PUT(request: NextRequest) {
           const category = (categoryMap[item.key] || 'general') as 'integrations' | 'delivery' | 'notifications' | 'general'
           const isSecret = secretKeys.has(item.key)
 
-          await prisma.storeSetting.upsert({
-            where: {
-              storeId_key: { storeId: STORE_ID, key: item.key },
-            },
-            update: { value: item.value },
-            create: {
-              storeId: STORE_ID,
-              key: item.key,
-              value: item.value,
-              isSecret,
-              category,
-            },
-          })
+          // Check if setting exists, then upsert
+          const { data: existing, error: fetchError } = await supabase
+            .from('store_settings')
+            .select('id')
+            .eq('store_id', STORE_ID)
+            .eq('key', item.key)
+            .maybeSingle()
+
+          if (fetchError) {
+            console.error(`Failed to check setting ${item.key}:`, fetchError)
+            results.push({ key: item.key, success: false })
+            continue
+          }
+
+          if (existing) {
+            // Update existing
+            const { error: updateError } = await supabase
+              .from('store_settings')
+              .update({ value: item.value })
+              .eq('id', (existing as any).id)
+
+            if (updateError) {
+              console.error(`Failed to update setting ${item.key}:`, updateError)
+              results.push({ key: item.key, success: false })
+              continue
+            }
+          } else {
+            // Insert new
+            const { error: insertError } = await supabase
+              .from('store_settings')
+              .insert({
+                store_id: STORE_ID,
+                key: item.key,
+                value: item.value,
+                is_secret: isSecret,
+                category,
+              })
+
+            if (insertError) {
+              console.error(`Failed to insert setting ${item.key}:`, insertError)
+              results.push({ key: item.key, success: false })
+              continue
+            }
+          }
 
           results.push({ key: item.key, success: true })
         } catch (err) {
@@ -240,7 +276,7 @@ export async function PUT(request: NextRequest) {
           : 'Some settings failed to update',
       })
     } catch (err) {
-      console.error('[Admin Settings PUT] Prisma error:', err)
+      console.error('[Admin Settings PUT] Supabase error:', err)
     }
 
     // No database available - settings cannot be persisted

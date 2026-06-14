@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 // PATCH /api/user/notifications/[id] — mark as read
@@ -13,31 +13,48 @@ export async function PATCH(
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { id } = await params
     const body = await request.json()
     const { isRead, markAllRead } = body
 
     if (markAllRead) {
-      await prisma.notification.updateMany({
-        where: { userId: user.id, isRead: false },
-        data: { isRead: true },
-      })
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false)
+
+      if (error) {
+        console.error('[User Notification PATCH] mark all read error', error)
+        return NextResponse.json({ error: 'Failed to mark all as read' }, { status: 500 })
+      }
+
       return NextResponse.json({ success: true })
     }
 
-    const existing = await prisma.notification.findFirst({
-      where: { id, userId: user.id },
-    })
+    const { data: existing, error: findError } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    if (!existing) {
+    if (findError || !existing) {
       return NextResponse.json({ error: 'Notification not found' }, { status: 404 })
     }
 
-    const notification = await prisma.notification.update({
-      where: { id },
-      data: { isRead: isRead !== undefined ? isRead : true },
-    })
+    const { data: notification, error } = await supabase
+      .from('notifications')
+      .update({ is_read: isRead !== undefined ? isRead : true })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[User Notification PATCH]', error)
+      return NextResponse.json({ error: 'Failed to update notification' }, { status: 500 })
+    }
 
     return NextResponse.json({ notification })
   } catch (err) {

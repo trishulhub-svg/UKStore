@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -10,11 +10,18 @@ export async function GET() {
   if (error) return error
 
   try {
-    const prisma = await getPrisma()
-    const promotions = await prisma.promotion.findMany({
-      where: { storeId: STORE_ID },
-      orderBy: { createdAt: 'desc' },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: promotions, error: dbError } = await supabase
+      .from('promotions')
+      .select('*')
+      .eq('store_id', STORE_ID)
+      .order('created_at', { ascending: false })
+
+    if (dbError) {
+      console.error('[Admin Promotions GET]', dbError)
+      return NextResponse.json({ error: 'Failed to fetch promotions' }, { status: 500 })
+    }
 
     return NextResponse.json({ promotions })
   } catch (err) {
@@ -29,24 +36,31 @@ export async function POST(request: NextRequest) {
   if (error) return error
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const body = await request.json()
 
-    const promotion = await prisma.promotion.create({
-      data: {
-        storeId: STORE_ID,
+    const { data: promotion, error: dbError } = await supabase
+      .from('promotions')
+      .insert({
+        store_id: STORE_ID,
         name: body.name,
         description: body.description || null,
-        discountType: body.discountType,
-        discountValue: parseFloat(body.discountValue),
-        startDate: new Date(body.startDate),
-        endDate: new Date(body.endDate),
-        appliesToCategoryIds: body.appliesToCategoryIds || null,
-        excludesHfss: body.excludesHfss || false,
-        isActive: body.isActive !== false,
+        discount_type: body.discountType,
+        discount_value: parseFloat(body.discountValue),
+        start_date: body.startDate,
+        end_date: body.endDate,
+        applies_to_category_ids: body.appliesToCategoryIds || null,
+        excludes_hfss: body.excludesHfss || false,
+        is_active: body.isActive !== false,
         code: body.code || null,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (dbError) {
+      console.error('[Admin Promotions POST]', dbError)
+      return NextResponse.json({ error: 'Failed to create promotion' }, { status: 500 })
+    }
 
     return NextResponse.json({ promotion }, { status: 201 })
   } catch (err) {

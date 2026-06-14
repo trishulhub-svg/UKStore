@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 
 /**
  * Create a Supabase server client with user session context (for authenticated requests)
+ * This uses the anon key + user cookies for RLS-aware queries.
  */
 export async function createClient() {
   const cookieStore = await cookies()
@@ -34,17 +35,19 @@ export async function createClient() {
 
 /**
  * Create a Supabase admin client using the service role key.
- * This bypasses RLS and is used for public-facing data fetching
- * (e.g., product catalog, store info) where no user auth is needed.
+ * This bypasses RLS and is used for:
+ * - Public-facing data fetching (product catalog, store info)
+ * - Admin operations
+ * - Cross-user queries
  *
- * Returns null if env vars are not configured, so callers can fall back
- * to mock data instead of crashing the entire page.
+ * Since we've migrated to Supabase, this always returns a valid client.
  */
 export function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!url || !key) {
+    console.error('[Supabase] Missing env vars: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
     return null
   }
 

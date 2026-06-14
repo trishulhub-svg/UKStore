@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
 
 // GET /api/admin/customers — list customers
@@ -8,49 +8,47 @@ export async function GET(request: NextRequest) {
   if (error) return error
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    const where: any = { role: 'CUSTOMER' }
+    // Build query for customer profiles with their orders
+    let query = supabase
+      .from('profiles')
+      .select('id, full_name, email, phone, is_active, created_at, orders:orders(id, total, status, created_at)', { count: 'exact' })
+      .eq('role', 'CUSTOMER')
+
     if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } },
-      ]
+      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
     }
 
-    const customers = await prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        isActive: true,
-        createdAt: true,
-        orders: {
-          select: { id: true, total: true, status: true, createdAt: true },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    })
+    query = query
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, (page - 1) * limit + limit - 1)
 
-    const total = await prisma.user.count({ where })
+    const { data: customers, error: dbError, count } = await query
+
+    if (dbError) {
+      console.error('[Admin Customers GET]', dbError)
+      return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 })
+    }
 
     // Compute aggregated stats for each customer
-    const enriched = customers.map((c) => {
-      const orderCount = c.orders.length
-      const totalSpent = c.orders.reduce((sum: number, o: any) => sum + o.total, 0)
-      return { ...c, orderCount, totalSpent }
+    const enriched = (customers || []).map((c: any) => {
+      const orders = c.orders || []
+      const orderCount = orders.length
+      const totalSpent = orders.reduce((sum: number, o: any) => sum + (o.total || 0), 0)
+      return {
+        ...c,
+        name: c.full_name, // backward compatibility
+        orderCount,
+        totalSpent,
+      }
     })
 
-    return NextResponse.json({ customers: enriched, total, page, limit })
+    return NextResponse.json({ customers: enriched, total: count, page, limit })
   } catch (err) {
     console.error('[Admin Customers GET]', err)
     return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 })

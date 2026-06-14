@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
-import { hashPassword, createSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
+import { createClient } from '@supabase/supabase-js'
+
+// ============================================================
+// Register Route — Supabase Auth
+// Uses Supabase Auth signUp for user registration.
+// The handle_new_user trigger auto-creates a profile row.
+// ============================================================
 
 function buildApiError(
   message: string,
   code: string,
   status: number,
   details?: string,
-  endpoint?: string,
 ) {
   return NextResponse.json(
     {
@@ -19,34 +23,29 @@ function buildApiError(
         status,
         details: details || '',
         timestamp: new Date().toISOString(),
-        endpoint: endpoint || '/api/auth/register',
+        endpoint: '/api/auth/register',
       },
     },
     { status }
   )
 }
 
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) {
+    throw new Error('Supabase not configured')
+  }
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
+
 export async function POST(request: NextRequest) {
-  const endpoint = '/api/auth/register'
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
 
-    // Check database connectivity first
-    try {
-      await prisma.$queryRaw`SELECT 1`
-    } catch (dbPingError) {
-      const dbErrMessage = dbPingError instanceof Error ? dbPingError.message : String(dbPingError)
-      console.error('[Auth] Database connectivity check failed:', dbPingError)
-      return buildApiError(
-        'Unable to connect to the database. Please try again later.',
-        'DATABASE_UNAVAILABLE',
-        503,
-        `Database connectivity check failed.\nError: ${dbErrMessage}\n\nDATABASE_URL is set: ${!!process.env.DATABASE_URL}\nDATABASE_URL value: ${process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/\/[^/]*$/, '/***') : 'NOT SET'}\n\nThis usually means:\n1. The DATABASE_URL environment variable is not configured\n2. The SQLite database file does not exist at the specified path\n3. The Prisma client was not generated (run: npx prisma generate)`,
-        endpoint,
-      )
-    }
-
-    let body: { email?: string; password?: string; fullName?: string }
+    let body: { email?: string; password?: string; fullName?: string; role?: string }
     try {
       body = await request.json()
     } catch {
@@ -54,12 +53,11 @@ export async function POST(request: NextRequest) {
         'Request body is not valid JSON.',
         'INVALID_BODY',
         400,
-        'The server could not parse the request body as JSON. Make sure the Content-Type header is set to application/json.',
-        endpoint,
+        'The server could not parse the request body as JSON.',
       )
     }
 
-    const { email, password, fullName } = body
+    const { email, password, fullName, role } = body
 
     // Validate input
     if (!email || !password) {
@@ -68,7 +66,6 @@ export async function POST(request: NextRequest) {
         'MISSING_FIELDS',
         400,
         `Received: email=${email ? 'provided' : 'missing'}, password=${password ? 'provided' : 'missing'}, fullName=${fullName ? 'provided' : 'missing'}`,
-        endpoint,
       )
     }
 
@@ -78,7 +75,6 @@ export async function POST(request: NextRequest) {
         'PASSWORD_TOO_SHORT',
         400,
         `Provided password length: ${password.length}. Minimum required: 8.`,
-        endpoint,
       )
     }
 
@@ -89,98 +85,132 @@ export async function POST(request: NextRequest) {
         'INVALID_EMAIL',
         400,
         `The provided email "${email}" does not match the required format.`,
-        endpoint,
       )
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    })
-
-    if (existingUser) {
+    // Validate role (only allow customer or driver for self-registration)
+    const requestedRole = role || 'customer'
+    if (!['customer', 'driver'].includes(requestedRole)) {
       return buildApiError(
-        'An account with this email already exists.',
-        'AUTH_EMAIL_EXISTS',
-        409,
-        `A user with email "${email.toLowerCase()}" already exists (user ID: ${existingUser.id}, created: ${existingUser.createdAt.toISOString()}). Try logging in instead, or use a different email address.`,
-        endpoint,
+        'Invalid role specified.',
+        'INVALID_ROLE',
+        400,
+        `Role "${requestedRole}" is not allowed for self-registration. Only "customer" and "driver" are permitted.`,
       )
     }
 
-    // Hash password and create user
-    const passwordHash = await hashPassword(password)
-    const user = await prisma.user.create({
-      data: {
-        email: email.toLowerCase(),
-        name: fullName || null,
-        passwordHash,
-        role: 'CUSTOMER',
+    // ─── Register with Supabase Auth ─────────────────────
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: email.toLowerCase(),
+      password,
+      options: {
+        data: {
+          full_name: fullName || '',
+          role: requestedRole,
+        },
+        // Auto-confirm email for development (in production, use email confirmation)
+        emailConfirm: true,
       },
     })
 
-    // Create session token
-    const token = createSessionToken({
-      uid: user.id,
-      email: user.email,
-      role: user.role,
-      name: user.name || '',
-    })
+    if (authError) {
+      if (authError.message.includes('already registered') || authError.message.includes('already been registered')) {
+        return buildApiError(
+          'An account with this email already exists.',
+          'AUTH_EMAIL_EXISTS',
+          409,
+          `A user with email "${email.toLowerCase()}" already exists. Try logging in instead.`,
+        )
+      }
 
-    // Build response with cookie
+      if (authError.message.includes('Password') && authError.message.includes('weak')) {
+        return buildApiError(
+          'Password is too weak. Please use a stronger password.',
+          'WEAK_PASSWORD',
+          400,
+          authError.message,
+        )
+      }
+
+      return buildApiError(
+        'Registration failed. Please try again.',
+        'AUTH_ERROR',
+        400,
+        authError.message,
+      )
+    }
+
+    if (!authData.user) {
+      return buildApiError(
+        'Registration failed. Please try again.',
+        'AUTH_NO_USER',
+        500,
+        'Supabase signUp succeeded but no user was returned.',
+      )
+    }
+
+    // ─── Wait for the profile trigger to complete ────────
+    // The handle_new_user trigger should auto-create a profile
+    // Give it a moment, then fetch
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', authData.user.id)
+      .single()
+
+    const userRole = profile?.role || requestedRole
+    const userName = profile?.full_name || fullName || ''
+
+    // ─── Build response with session cookies ─────────────
     const response = NextResponse.json({
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        createdAt: user.createdAt.toISOString(),
+        id: authData.user.id,
+        email: authData.user.email,
+        name: userName,
+        role: userRole,
+        createdAt: authData.user.created_at,
       },
     }, { status: 201 })
 
-    response.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS)
+    // Set session cookies if session is available
+    // (Supabase may require email confirmation before issuing a session)
+    if (authData.session) {
+      const cookieOptions = {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax' as const,
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60,
+      }
+
+      response.cookies.set('sb-access-token', authData.session.access_token, cookieOptions)
+      response.cookies.set('sb-refresh-token', authData.session.refresh_token, {
+        ...cookieOptions,
+        httpOnly: true,
+      })
+    }
 
     return response
   } catch (error) {
     const errMessage = error instanceof Error ? error.message : String(error)
-    const errStack = error instanceof Error ? error.stack || '' : ''
     console.error('[Auth] Register error:', error)
 
-    // Detect specific Prisma/database errors
-    let code = 'INTERNAL_ERROR'
-    let message = 'An internal server error occurred during registration.'
-    let status = 500
-    let details = `Error: ${errMessage}\n${errStack}`
-
-    if (errMessage.includes('Unique constraint') || errMessage.includes('P2002')) {
-      code = 'AUTH_EMAIL_EXISTS'
-      message = 'An account with this email already exists.'
-      status = 409
-      details = `Prisma unique constraint violation. A user with this email already exists in the database.\n${errMessage}`
-    } else if (
-      errMessage.includes('P2021') ||
-      errMessage.includes('does not exist') ||
-      errMessage.includes('no such table') ||
-      errMessage.includes('SQLITE_ERROR')
-    ) {
-      code = 'DATABASE_SCHEMA_ERROR'
-      message = 'The database schema is not set up correctly. Please run database migrations.'
-      status = 500
-      details = `The User table may not exist in the database. Run "npx prisma db push" to create it.\nError: ${errMessage}\n${errStack}`
-    } else if (
-      errMessage.includes('ECONNREFUSED') ||
-      errMessage.includes('Connection refused') ||
-      errMessage.includes('P1001') ||
-      errMessage.includes("Can't reach database server") ||
-      errMessage.includes('Unable to open') ||
-      errMessage.includes('P1002')
-    ) {
-      code = 'DATABASE_UNAVAILABLE'
-      message = 'Unable to connect to the database. Please try again later.'
-      status = 503
-      details = `Database connection error during user creation.\nDATABASE_URL is set: ${!!process.env.DATABASE_URL}\nError: ${errMessage}\n${errStack}`
+    if (errMessage.includes('Supabase not configured')) {
+      return buildApiError(
+        'Authentication service is not configured. Please contact support.',
+        'AUTH_NOT_CONFIGURED',
+        503,
+        'NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set.',
+      )
     }
 
-    return buildApiError(message, code, status, details, endpoint)
+    return buildApiError(
+      'An internal server error occurred during registration.',
+      'INTERNAL_ERROR',
+      500,
+      errMessage,
+    )
   }
 }

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
+
+const orderDetailSelect = '*, customer:profiles!orders_customer_id_fkey(id, full_name, phone, email), driver:profiles!orders_driver_id_fkey(id, full_name), address:addresses(*), items:order_items(*, product:products(id, name, image_url, barcode, category:categories(name)))'
 
 // GET /api/driver/orders/[id] — order detail with pick list
 export async function GET(
@@ -18,37 +20,27 @@ export async function GET(
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { id } = await params
 
-    const order = await prisma.order.findFirst({
-      where: { id, storeId: STORE_ID },
-      include: {
-        customer: { select: { id: true, name: true, phone: true, email: true } },
-        driver: { select: { id: true, name: true } },
-        address: true,
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                imageUrl: true,
-                barcode: true,
-                category: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-    })
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select(orderDetailSelect)
+      .eq('id', id)
+      .eq('store_id', STORE_ID)
+      .maybeSingle()
+
+    if (error) {
+      console.error('[Driver Order GET] fetch error:', error)
+      return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })
+    }
 
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
     // Only allow if assigned to this driver or available (no driver)
-    if (order.driverId && order.driverId !== user.id) {
+    if (order.driver_id && order.driver_id !== user.id) {
       return NextResponse.json({ error: 'Not assigned to you' }, { status: 403 })
     }
 
@@ -73,33 +65,52 @@ export async function PATCH(
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { id } = await params
     const body = await request.json()
     const { itemId, picked, status, assignToMe } = body
 
-    const order = await prisma.order.findFirst({
-      where: { id, storeId: STORE_ID },
-    })
+    // Fetch the order first
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', id)
+      .eq('store_id', STORE_ID)
+      .maybeSingle()
+
+    if (fetchError) {
+      console.error('[Driver Order PATCH] fetch error:', fetchError)
+      return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })
+    }
 
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
     // Assign order to driver
-    if (assignToMe && !order.driverId) {
-      await prisma.order.update({
-        where: { id },
-        data: { driverId: user.id },
-      })
+    if (assignToMe && !order.driver_id) {
+      const { error: assignError } = await supabase
+        .from('orders')
+        .update({ driver_id: user.id })
+        .eq('id', id)
+
+      if (assignError) {
+        console.error('[Driver Order PATCH] assign error:', assignError)
+        return NextResponse.json({ error: 'Failed to assign order' }, { status: 500 })
+      }
     }
 
     // Update item picked status
     if (itemId !== undefined) {
-      await prisma.orderItem.update({
-        where: { id: itemId },
-        data: { picked: !!picked },
-      })
+      const { error: itemError } = await supabase
+        .from('order_items')
+        .update({ picked: !!picked })
+        .eq('id', itemId)
+
+      if (itemError) {
+        console.error('[Driver Order PATCH] item update error:', itemError)
+        return NextResponse.json({ error: 'Failed to update item' }, { status: 500 })
+      }
     }
 
     // Update order status
@@ -119,36 +130,31 @@ export async function PATCH(
         )
       }
 
-      await prisma.order.update({
-        where: { id },
-        data: {
+      const { error: statusError } = await supabase
+        .from('orders')
+        .update({
           status,
-          driverId: order.driverId || user.id,
-        },
-      })
+          driver_id: order.driver_id || user.id,
+        })
+        .eq('id', id)
+
+      if (statusError) {
+        console.error('[Driver Order PATCH] status update error:', statusError)
+        return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 })
+      }
     }
 
     // Return updated order
-    const updatedOrder = await prisma.order.findFirst({
-      where: { id },
-      include: {
-        customer: { select: { id: true, name: true, phone: true } },
-        address: true,
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                imageUrl: true,
-                barcode: true,
-                category: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-    })
+    const { data: updatedOrder, error: refreshError } = await supabase
+      .from('orders')
+      .select('*, customer:profiles!orders_customer_id_fkey(id, full_name, phone), address:addresses(*), items:order_items(*, product:products(id, name, image_url, barcode, category:categories(name)))')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (refreshError) {
+      console.error('[Driver Order PATCH] refresh error:', refreshError)
+      return NextResponse.json({ error: 'Failed to fetch updated order' }, { status: 500 })
+    }
 
     return NextResponse.json({ order: updatedOrder })
   } catch (err) {

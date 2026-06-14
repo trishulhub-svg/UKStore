@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 // GET /api/user/addresses — list addresses
@@ -10,11 +10,18 @@ export async function GET() {
   }
 
   try {
-    const prisma = await getPrisma()
-    const addresses = await prisma.address.findMany({
-      where: { userId: user.id },
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
-    })
+    const supabase = getSupabaseAdmin()
+    const { data: addresses, error } = await supabase
+      .from('addresses')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('[User Addresses GET]', error)
+      return NextResponse.json({ error: 'Failed to fetch addresses' }, { status: 500 })
+    }
 
     return NextResponse.json({ addresses })
   } catch (err) {
@@ -31,7 +38,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const body = await request.json()
     const { label, addressLine1, addressLine2, city, postcode, latitude, longitude, isDefault } = body
 
@@ -44,25 +51,37 @@ export async function POST(request: NextRequest) {
 
     // If this is set as default, unset other defaults
     if (isDefault) {
-      await prisma.address.updateMany({
-        where: { userId: user.id, isDefault: true },
-        data: { isDefault: false },
-      })
+      const { error: updateError } = await supabase
+        .from('addresses')
+        .update({ is_default: false })
+        .eq('user_id', user.id)
+        .eq('is_default', true)
+
+      if (updateError) {
+        console.error('[User Addresses POST] unset defaults error', updateError)
+      }
     }
 
-    const address = await prisma.address.create({
-      data: {
-        userId: user.id,
+    const { data: address, error } = await supabase
+      .from('addresses')
+      .insert({
+        user_id: user.id,
         label: label || null,
-        addressLine1,
-        addressLine2: addressLine2 || null,
+        address_line_1: addressLine1,
+        address_line_2: addressLine2 || null,
         city,
         postcode,
         latitude: latitude || null,
         longitude: longitude || null,
-        isDefault: isDefault || false,
-      },
-    })
+        is_default: isDefault || false,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[User Addresses POST]', error)
+      return NextResponse.json({ error: 'Failed to add address' }, { status: 500 })
+    }
 
     return NextResponse.json({ address }, { status: 201 })
   } catch (err) {
@@ -79,7 +98,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const body = await request.json()
     const { addressId, label, addressLine1, addressLine2, city, postcode, latitude, longitude, isDefault } = body
 
@@ -87,36 +106,51 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'addressId is required' }, { status: 400 })
     }
 
-    const existing = await prisma.address.findFirst({
-      where: { id: addressId, userId: user.id },
-    })
+    const { data: existing, error: findError } = await supabase
+      .from('addresses')
+      .select('*')
+      .eq('id', addressId)
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    if (!existing) {
+    if (findError || !existing) {
       return NextResponse.json({ error: 'Address not found' }, { status: 404 })
     }
 
     // If setting as default, unset other defaults
     if (isDefault) {
-      await prisma.address.updateMany({
-        where: { userId: user.id, isDefault: true },
-        data: { isDefault: false },
-      })
+      const { error: updateError } = await supabase
+        .from('addresses')
+        .update({ is_default: false })
+        .eq('user_id', user.id)
+        .eq('is_default', true)
+
+      if (updateError) {
+        console.error('[User Addresses PATCH] unset defaults error', updateError)
+      }
     }
 
     const data: Record<string, unknown> = {}
     if (label !== undefined) data.label = label
-    if (addressLine1 !== undefined) data.addressLine1 = addressLine1
-    if (addressLine2 !== undefined) data.addressLine2 = addressLine2
+    if (addressLine1 !== undefined) data.address_line_1 = addressLine1
+    if (addressLine2 !== undefined) data.address_line_2 = addressLine2
     if (city !== undefined) data.city = city
     if (postcode !== undefined) data.postcode = postcode
     if (latitude !== undefined) data.latitude = latitude
     if (longitude !== undefined) data.longitude = longitude
-    if (isDefault !== undefined) data.isDefault = isDefault
+    if (isDefault !== undefined) data.is_default = isDefault
 
-    const address = await prisma.address.update({
-      where: { id: addressId },
-      data,
-    })
+    const { data: address, error } = await supabase
+      .from('addresses')
+      .update(data)
+      .eq('id', addressId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[User Addresses PATCH]', error)
+      return NextResponse.json({ error: 'Failed to update address' }, { status: 500 })
+    }
 
     return NextResponse.json({ address })
   } catch (err) {
@@ -133,7 +167,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
     const addressId = searchParams.get('addressId')
 
@@ -141,15 +175,26 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'addressId is required' }, { status: 400 })
     }
 
-    const existing = await prisma.address.findFirst({
-      where: { id: addressId, userId: user.id },
-    })
+    const { data: existing, error: findError } = await supabase
+      .from('addresses')
+      .select('*')
+      .eq('id', addressId)
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    if (!existing) {
+    if (findError || !existing) {
       return NextResponse.json({ error: 'Address not found' }, { status: 404 })
     }
 
-    await prisma.address.delete({ where: { id: addressId } })
+    const { error } = await supabase
+      .from('addresses')
+      .delete()
+      .eq('id', addressId)
+
+    if (error) {
+      console.error('[User Addresses DELETE]', error)
+      return NextResponse.json({ error: 'Failed to delete address' }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { getServerUser } from '@/lib/auth/server'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
@@ -15,45 +15,37 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const prisma = await getPrisma()
+    const supabase = getSupabaseAdmin()
+
+    const orderSelect = '*, customer:profiles!orders_customer_id_fkey(id, full_name, phone), address:addresses(*), items:order_items(*, product:products(id, name, image_url, category:categories(name)))'
 
     // Orders assigned to this driver
-    const assignedOrders = await prisma.order.findMany({
-      where: {
-        storeId: STORE_ID,
-        driverId: user.id,
-        status: { in: ['picking', 'ready', 'out_for_delivery'] },
-      },
-      include: {
-        customer: { select: { id: true, name: true, phone: true } },
-        address: true,
-        items: {
-          include: {
-            product: { select: { id: true, name: true, imageUrl: true, category: { select: { name: true } } } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    })
+    const { data: assignedOrders, error: assignedError } = await supabase
+      .from('orders')
+      .select(orderSelect)
+      .eq('store_id', STORE_ID)
+      .eq('driver_id', user.id)
+      .in('status', ['picking', 'ready', 'out_for_delivery'])
+      .order('created_at', { ascending: true })
+
+    if (assignedError) {
+      console.error('[Driver Orders GET] assigned error:', assignedError)
+      return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
+    }
 
     // Available orders (ready but no driver assigned)
-    const availableOrders = await prisma.order.findMany({
-      where: {
-        storeId: STORE_ID,
-        driverId: null,
-        status: { in: ['picking', 'ready'] },
-      },
-      include: {
-        customer: { select: { id: true, name: true, phone: true } },
-        address: true,
-        items: {
-          include: {
-            product: { select: { id: true, name: true, imageUrl: true, category: { select: { name: true } } } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    })
+    const { data: availableOrders, error: availableError } = await supabase
+      .from('orders')
+      .select(orderSelect)
+      .eq('store_id', STORE_ID)
+      .is('driver_id', null)
+      .in('status', ['picking', 'ready'])
+      .order('created_at', { ascending: true })
+
+    if (availableError) {
+      console.error('[Driver Orders GET] available error:', availableError)
+      return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
+    }
 
     // Quick stats
     const today = new Date()
@@ -62,39 +54,36 @@ export async function GET(request: NextRequest) {
     const startOfWeek = new Date(today)
     startOfWeek.setDate(today.getDate() - today.getDay() + 1) // Monday
 
-    const completedToday = await prisma.order.count({
-      where: {
-        storeId: STORE_ID,
-        driverId: user.id,
-        status: 'delivered',
-        updatedAt: { gte: today },
-      },
-    })
-
-    const completedThisWeek = await prisma.order.count({
-      where: {
-        storeId: STORE_ID,
-        driverId: user.id,
-        status: 'delivered',
-        updatedAt: { gte: startOfWeek },
-      },
-    })
-
-    const pickingCount = await prisma.order.count({
-      where: {
-        storeId: STORE_ID,
-        driverId: user.id,
-        status: 'picking',
-      },
-    })
+    const [completedTodayResult, completedThisWeekResult, pickingCountResult] = await Promise.all([
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', STORE_ID)
+        .eq('driver_id', user.id)
+        .eq('status', 'delivered')
+        .gte('updated_at', today.toISOString()),
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', STORE_ID)
+        .eq('driver_id', user.id)
+        .eq('status', 'delivered')
+        .gte('updated_at', startOfWeek.toISOString()),
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', STORE_ID)
+        .eq('driver_id', user.id)
+        .eq('status', 'picking'),
+    ])
 
     return NextResponse.json({
-      assignedOrders,
-      availableOrders,
+      assignedOrders: assignedOrders || [],
+      availableOrders: availableOrders || [],
       stats: {
-        completedToday,
-        completedThisWeek,
-        pickingCount,
+        completedToday: completedTodayResult.count || 0,
+        completedThisWeek: completedThisWeekResult.count || 0,
+        pickingCount: pickingCountResult.count || 0,
       },
     })
   } catch (err) {

@@ -1,10 +1,10 @@
 // ============================================================
 // UK Grocery Store - Server-side Settings Utility
-// Reads API keys from Prisma (SQLite) first, falls back to env vars
+// Reads API keys from Supabase first, falls back to env vars
 // Only accessible by owner/manager roles via API auth checks
 // ============================================================
 
-import { getPrisma } from '@/lib/auth/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
@@ -29,14 +29,19 @@ async function getSettingsFromDB(): Promise<Record<string, string>> {
   }
 
   try {
-    const prisma = await getPrisma()
-    const settings = await prisma.storeSetting.findMany({
-      where: { storeId: STORE_ID },
-      select: { key: true, value: true },
-    })
+    const supabase = getSupabaseAdmin()
+    const { data: settings, error } = await supabase
+      .from('store_settings')
+      .select('key, value')
+      .eq('store_id', STORE_ID)
+
+    if (error) {
+      console.warn('Settings DB fetch error:', error)
+      return settingsCache?.data || {}
+    }
 
     const settingsMap: Record<string, string> = {}
-    for (const row of settings) {
+    for (const row of settings || []) {
       if (row.value) {
         settingsMap[row.key] = row.value
       }

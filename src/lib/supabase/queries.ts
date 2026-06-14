@@ -1,444 +1,610 @@
-import { getPrisma } from '@/lib/auth/prisma'
 import { createServiceClient } from '@/lib/supabase/server'
 import type { Store, Category, ProductWithCategory } from '@/types'
-import { mockData } from './mock-data'
 
-// ─── Mappers: Prisma camelCase → Frontend snake_case ──────────
+// ============================================================
+// Data Queries — Supabase Only
+// All data is fetched from Supabase PostgreSQL.
+// No Prisma fallback, no mock data fallback.
+// ============================================================
 
-function mapPrismaStoreToStore(s: any): Store {
-  return {
-    id: s.id,
-    name: s.name,
-    slug: s.slug,
-    address: s.address,
-    latitude: s.latitude,
-    longitude: s.longitude,
-    phone: s.phone,
-    email: s.email,
-    base_delivery_fee: s.baseDeliveryFee,
-    per_km_charge: s.perKmCharge,
-    free_delivery_threshold: s.freeDeliveryThreshold,
-    delivery_radius_km: s.deliveryRadiusKm,
-    is_active: s.isActive,
-    created_at: s.createdAt?.toISOString?.() ?? s.created_at ?? '',
-    updated_at: s.updatedAt?.toISOString?.() ?? s.updated_at ?? '',
-  }
-}
-
-function mapPrismaCategoryToCategory(c: any): Category {
-  return {
-    id: c.id,
-    store_id: c.storeId,
-    name: c.name,
-    slug: c.slug,
-    description: c.description,
-    image_url: c.imageUrl,
-    parent_id: c.parentId,
-    sort_order: c.sortOrder,
-    is_active: c.isActive,
-    created_at: c.createdAt?.toISOString?.() ?? c.created_at ?? '',
-  }
-}
-
-function mapPrismaProductToProductWithCategory(p: any): ProductWithCategory {
-  return {
-    id: p.id,
-    store_id: p.storeId,
-    category_id: p.categoryId,
-    name: p.name,
-    slug: p.slug,
-    description: p.description,
-    price: p.price,
-    vat_rate: p.vatRate,
-    is_hfss: p.isHfss,
-    image_url: p.imageUrl,
-    barcode: p.barcode,
-    unit: p.unit,
-    weight_kg: p.weightKg,
-    is_available: p.isAvailable,
-    stock_quantity: p.stockQuantity,
-    is_featured: p.isFeatured,
-    sort_order: p.sortOrder,
-    created_at: p.createdAt?.toISOString?.() ?? p.created_at ?? '',
-    updated_at: p.updatedAt?.toISOString?.() ?? p.updated_at ?? '',
-    category: p.category ? mapPrismaCategoryToCategory(p.category) : ({} as Category),
-  }
-}
-
-// ─── Supabase reachability cache ──────────────────────────────
-
-// Cache whether Supabase is reachable to avoid repeated timeouts
-let supabaseReachable: boolean | null = null
-let lastCheckTime = 0
-const CHECK_INTERVAL = 60_000 // Re-check every 60 seconds
-
-async function isSupabaseReachable(): Promise<boolean> {
-  const now = Date.now()
-  if (supabaseReachable !== null && now - lastCheckTime < CHECK_INTERVAL) {
-    return supabaseReachable
-  }
-
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 2000)
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!url || !key) {
-      supabaseReachable = false
-      lastCheckTime = now
-      return false
-    }
-    const response = await fetch(`${url}/rest/v1/`, {
-      signal: controller.signal,
-      headers: {
-        apikey: key,
-      },
-    })
-    clearTimeout(timeoutId)
-    supabaseReachable = response.ok || response.status === 401 // 401 means server is reachable
-    lastCheckTime = now
-    return supabaseReachable
-  } catch {
-    supabaseReachable = false
-    lastCheckTime = now
-    return false
-  }
-}
-
-/**
- * Try Supabase query — returns null if Supabase is not available or query fails
- */
-async function trySupabase<T>(fetcher: () => Promise<T>): Promise<T | null> {
-  const reachable = await isSupabaseReachable()
-  if (!reachable) return null
-
-  try {
-    return await fetcher()
-  } catch {
-    return null
-  }
-}
-
-// ─── Query functions ──────────────────────────────────────────
-// Pattern: 1. Try Prisma → 2. Try Supabase → 3. Mock data fallback
+// ─── Store Queries ──────────────────────────────────────────
 
 /**
  * Get store by ID
  */
 export async function getStore(storeId: string): Promise<Store | null> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const store = await prisma.store.findUnique({ where: { id: storeId } })
-    if (store) return mapPrismaStoreToStore(store)
-  } catch (err) {
-    console.warn('[queries] Prisma getStore failed, trying fallback:', err)
+  const supabase = createServiceClient()
+  if (!supabase) {
+    console.error('[queries] Supabase service client not available')
+    return null
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('stores')
-      .select('*')
-      .eq('id', storeId)
-      .single()
-    if (error || !data) return null
-    return data as Store
-  })
-  if (supabaseResult) return supabaseResult
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .eq('id', storeId)
+    .single()
 
-  // 3. Mock data fallback
-  return mockData.store
+  if (error || !data) {
+    console.warn('[queries] getStore error:', error?.message)
+    return null
+  }
+
+  return data as Store
 }
 
 /**
  * Get the first active store (for single-store MVP)
  */
 export async function getDefaultStore(): Promise<Store | null> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const store = await prisma.store.findFirst({
-      where: { isActive: true },
-    })
-    if (store) return mapPrismaStoreToStore(store)
-  } catch (err) {
-    console.warn('[queries] Prisma getDefaultStore failed, trying fallback:', err)
+  const supabase = createServiceClient()
+  if (!supabase) {
+    console.error('[queries] Supabase service client not available')
+    return null
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('stores')
-      .select('*')
-      .eq('is_active', true)
-      .limit(1)
-      .single()
-    if (error || !data) return null
-    return data as Store
-  })
-  if (supabaseResult) return supabaseResult
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .eq('is_active', true)
+    .limit(1)
+    .single()
 
-  // 3. Mock data fallback
-  return mockData.store
+  if (error || !data) {
+    console.warn('[queries] getDefaultStore error:', error?.message)
+    return null
+  }
+
+  return data as Store
 }
+
+// ─── Category Queries ───────────────────────────────────────
 
 /**
  * Get all active categories for a store, ordered by sort_order
  */
 export async function getCategories(storeId: string): Promise<Category[]> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const categories = await prisma.category.findMany({
-      where: { storeId, isActive: true },
-      orderBy: { sortOrder: 'asc' },
-    })
-    if (categories.length > 0) return categories.map(mapPrismaCategoryToCategory)
-  } catch (err) {
-    console.warn('[queries] Prisma getCategories failed, trying fallback:', err)
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+
+  if (error || !data) {
+    console.warn('[queries] getCategories error:', error?.message)
+    return []
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .eq('store_id', storeId)
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as Category[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.categories
-}
-
-/**
- * Get all available products for a store, with category relation
- */
-export async function getProducts(storeId: string): Promise<ProductWithCategory[]> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const products = await prisma.product.findMany({
-      where: { storeId, isAvailable: true },
-      include: { category: true },
-      orderBy: { sortOrder: 'asc' },
-    })
-    if (products.length > 0) return products.map(mapPrismaProductToProductWithCategory)
-  } catch (err) {
-    console.warn('[queries] Prisma getProducts failed, trying fallback:', err)
-  }
-
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('is_available', true)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as ProductWithCategory[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products
-}
-
-/**
- * Get products filtered by category
- */
-export async function getProductsByCategory(storeId: string, categoryId: string): Promise<ProductWithCategory[]> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const products = await prisma.product.findMany({
-      where: { storeId, categoryId, isAvailable: true },
-      include: { category: true },
-      orderBy: { sortOrder: 'asc' },
-    })
-    if (products.length > 0) return products.map(mapPrismaProductToProductWithCategory)
-  } catch (err) {
-    console.warn('[queries] Prisma getProductsByCategory failed, trying fallback:', err)
-  }
-
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('category_id', categoryId)
-      .eq('is_available', true)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as ProductWithCategory[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products.filter((p) => p.category_id === categoryId)
-}
-
-/**
- * Get featured products only (is_featured = true)
- */
-export async function getFeaturedProducts(storeId: string): Promise<ProductWithCategory[]> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const products = await prisma.product.findMany({
-      where: { storeId, isAvailable: true, isFeatured: true },
-      include: { category: true },
-      orderBy: { sortOrder: 'asc' },
-    })
-    if (products.length > 0) return products.map(mapPrismaProductToProductWithCategory)
-  } catch (err) {
-    console.warn('[queries] Prisma getFeaturedProducts failed, trying fallback:', err)
-  }
-
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('is_available', true)
-      .eq('is_featured', true)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as ProductWithCategory[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products.filter((p) => p.is_featured)
-}
-
-/**
- * Get single product by slug
- */
-export async function getProductBySlug(storeId: string, slug: string): Promise<ProductWithCategory | null> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const product = await prisma.product.findFirst({
-      where: { storeId, slug },
-      include: { category: true },
-    })
-    if (product) return mapPrismaProductToProductWithCategory(product)
-  } catch (err) {
-    console.warn('[queries] Prisma getProductBySlug failed, trying fallback:', err)
-  }
-
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('slug', slug)
-      .single()
-    if (error || !data) return null
-    return data as ProductWithCategory
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products.find((p) => p.slug === slug) || null
-}
-
-/**
- * Text search using contains on name
- */
-export async function searchProducts(storeId: string, query: string): Promise<ProductWithCategory[]> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const products = await prisma.product.findMany({
-      where: {
-        storeId,
-        isAvailable: true,
-        name: { contains: query },
-      },
-      include: { category: true },
-      orderBy: { sortOrder: 'asc' },
-    })
-    if (products.length > 0) return products.map(mapPrismaProductToProductWithCategory)
-  } catch (err) {
-    console.warn('[queries] Prisma searchProducts failed, trying fallback:', err)
-  }
-
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, category:categories(*)')
-      .eq('store_id', storeId)
-      .eq('is_available', true)
-      .ilike('name', `%${query}%`)
-      .order('sort_order', { ascending: true })
-    if (error || !data) return null
-    return data as ProductWithCategory[]
-  })
-  if (supabaseResult) return supabaseResult
-
-  // 3. Mock data fallback
-  return mockData.products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+  return data as Category[]
 }
 
 /**
  * Get category by slug
  */
 export async function getCategoryBySlug(storeId: string, slug: string): Promise<Category | null> {
-  // 1. Try Prisma
-  try {
-    const prisma = await getPrisma()
-    const category = await prisma.category.findFirst({
-      where: { storeId, slug, isActive: true },
-    })
-    if (category) return mapPrismaCategoryToCategory(category)
-  } catch (err) {
-    console.warn('[queries] Prisma getCategoryBySlug failed, trying fallback:', err)
+  const supabase = createServiceClient()
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('slug', slug)
+    .eq('is_active', true)
+    .single()
+
+  if (error || !data) {
+    console.warn('[queries] getCategoryBySlug error:', error?.message)
+    return null
   }
 
-  // 2. Try Supabase
-  const supabaseResult = await trySupabase(async () => {
-    const supabase = createServiceClient()
-    if (!supabase) return null
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .eq('store_id', storeId)
-      .eq('slug', slug)
-      .eq('is_active', true)
-      .single()
-    if (error || !data) return null
-    return data as Category
-  })
-  if (supabaseResult) return supabaseResult
+  return data as Category
+}
 
-  // 3. Mock data fallback
-  return mockData.categories.find((c) => c.slug === slug) || null
+// ─── Product Queries ────────────────────────────────────────
+
+/**
+ * Get all available products for a store, with category relation
+ */
+export async function getProducts(storeId: string): Promise<ProductWithCategory[]> {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*, category:categories(*)')
+    .eq('store_id', storeId)
+    .eq('is_available', true)
+    .order('sort_order', { ascending: true })
+
+  if (error || !data) {
+    console.warn('[queries] getProducts error:', error?.message)
+    return []
+  }
+
+  return data as ProductWithCategory[]
+}
+
+/**
+ * Get products filtered by category
+ */
+export async function getProductsByCategory(storeId: string, categoryId: string): Promise<ProductWithCategory[]> {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*, category:categories(*)')
+    .eq('store_id', storeId)
+    .eq('category_id', categoryId)
+    .eq('is_available', true)
+    .order('sort_order', { ascending: true })
+
+  if (error || !data) {
+    console.warn('[queries] getProductsByCategory error:', error?.message)
+    return []
+  }
+
+  return data as ProductWithCategory[]
+}
+
+/**
+ * Get featured products only
+ */
+export async function getFeaturedProducts(storeId: string): Promise<ProductWithCategory[]> {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*, category:categories(*)')
+    .eq('store_id', storeId)
+    .eq('is_available', true)
+    .eq('is_featured', true)
+    .order('sort_order', { ascending: true })
+
+  if (error || !data) {
+    console.warn('[queries] getFeaturedProducts error:', error?.message)
+    return []
+  }
+
+  return data as ProductWithCategory[]
+}
+
+/**
+ * Get single product by slug
+ */
+export async function getProductBySlug(storeId: string, slug: string): Promise<ProductWithCategory | null> {
+  const supabase = createServiceClient()
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*, category:categories(*)')
+    .eq('store_id', storeId)
+    .eq('slug', slug)
+    .single()
+
+  if (error || !data) {
+    console.warn('[queries] getProductBySlug error:', error?.message)
+    return null
+  }
+
+  return data as ProductWithCategory
+}
+
+/**
+ * Get product by ID
+ */
+export async function getProductById(productId: string): Promise<ProductWithCategory | null> {
+  const supabase = createServiceClient()
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*, category:categories(*)')
+    .eq('id', productId)
+    .single()
+
+  if (error || !data) {
+    console.warn('[queries] getProductById error:', error?.message)
+    return null
+  }
+
+  return data as ProductWithCategory
+}
+
+/**
+ * Get multiple products by IDs (for cart/order display)
+ */
+export async function getProductsByIds(productIds: string[]): Promise<ProductWithCategory[]> {
+  if (productIds.length === 0) return []
+
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*, category:categories(*)')
+    .in('id', productIds)
+
+  if (error || !data) {
+    console.warn('[queries] getProductsByIds error:', error?.message)
+    return []
+  }
+
+  return data as ProductWithCategory[]
+}
+
+/**
+ * Text search using ilike on name (uses pg_trgm index if available)
+ */
+export async function searchProducts(storeId: string, query: string): Promise<ProductWithCategory[]> {
+  if (!query || query.trim().length === 0) return []
+
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*, category:categories(*)')
+    .eq('store_id', storeId)
+    .eq('is_available', true)
+    .ilike('name', `%${query}%`)
+    .order('sort_order', { ascending: true })
+    .limit(50)
+
+  if (error || !data) {
+    console.warn('[queries] searchProducts error:', error?.message)
+    return []
+  }
+
+  return data as ProductWithCategory[]
+}
+
+// ─── User Profile Queries ───────────────────────────────────
+
+/**
+ * Get user profile by ID
+ */
+export async function getProfile(userId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single()
+
+  if (error || !data) {
+    console.warn('[queries] getProfile error:', error?.message)
+    return null
+  }
+
+  return data
+}
+
+// ─── Address Queries ────────────────────────────────────────
+
+/**
+ * Get all addresses for a user
+ */
+export async function getAddresses(userId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('addresses')
+    .select('*')
+    .eq('user_id', userId)
+    .order('is_default', { ascending: false })
+
+  if (error || !data) {
+    console.warn('[queries] getAddresses error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+// ─── Favourites Queries ─────────────────────────────────────
+
+/**
+ * Get favourite products for a user
+ */
+export async function getFavourites(userId: string): Promise<ProductWithCategory[]> {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('favourites')
+    .select('product_id, products(*, category:categories(*))')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    console.warn('[queries] getFavourites error:', error?.message)
+    return []
+  }
+
+  // Extract products from the join
+  return data
+    .map((f: any) => f.products)
+    .filter(Boolean) as ProductWithCategory[]
+}
+
+/**
+ * Check if a product is in user's favourites
+ */
+export async function isFavourite(userId: string, productId: string): Promise<boolean> {
+  const supabase = createServiceClient()
+  if (!supabase) return false
+
+  const { data, error } = await supabase
+    .from('favourites')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('product_id', productId)
+    .single()
+
+  return !error && !!data
+}
+
+// ─── Order Queries ──────────────────────────────────────────
+
+/**
+ * Get orders for a customer
+ */
+export async function getCustomerOrders(customerId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, items:order_items(*)')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    console.warn('[queries] getCustomerOrders error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+/**
+ * Get orders for a driver
+ */
+export async function getDriverOrders(driverId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, items:order_items(*), customer:profiles!orders_customer_id_fkey(full_name, phone), address:addresses(*)')
+    .eq('driver_id', driverId)
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    console.warn('[queries] getDriverOrders error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+/**
+ * Get all orders for a store (admin view)
+ */
+export async function getStoreOrders(storeId: string, status?: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  let query = supabase
+    .from('orders')
+    .select('*, items:order_items(*), customer:profiles!orders_customer_id_fkey(full_name, email, phone), driver:profiles!orders_driver_id_fkey(full_name, phone), address:addresses(*)')
+    .eq('store_id', storeId)
+    .order('created_at', { ascending: false })
+
+  if (status) {
+    query = query.eq('status', status)
+  }
+
+  const { data, error } = await query
+
+  if (error || !data) {
+    console.warn('[queries] getStoreOrders error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+// ─── Notifications Queries ──────────────────────────────────
+
+/**
+ * Get notifications for a user
+ */
+export async function getNotifications(userId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error || !data) {
+    console.warn('[queries] getNotifications error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+/**
+ * Get unread notification count
+ */
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  const supabase = createServiceClient()
+  if (!supabase) return 0
+
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('is_read', false)
+
+  if (error) {
+    console.warn('[queries] getUnreadNotificationCount error:', error?.message)
+    return 0
+  }
+
+  return count || 0
+}
+
+// ─── Delivery Zone Queries ──────────────────────────────────
+
+/**
+ * Get delivery zones for a store
+ */
+export async function getDeliveryZones(storeId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('delivery_zones')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('is_active', true)
+
+  if (error || !data) {
+    console.warn('[queries] getDeliveryZones error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+// ─── Promotion Queries ──────────────────────────────────────
+
+/**
+ * Get active promotions for a store
+ */
+export async function getActivePromotions(storeId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const now = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from('promotions')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('is_active', true)
+    .lte('start_date', now)
+    .gte('end_date', now)
+
+  if (error || !data) {
+    console.warn('[queries] getActivePromotions error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+// ─── Admin Queries ──────────────────────────────────────────
+
+/**
+ * Get all profiles for a store (admin)
+ */
+export async function getStoreProfiles(storeId: string, role?: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  let query = supabase
+    .from('profiles')
+    .select('*')
+    .eq('store_id', storeId)
+    .order('created_at', { ascending: false })
+
+  if (role) {
+    query = query.eq('role', role)
+  }
+
+  const { data, error } = await query
+
+  if (error || !data) {
+    console.warn('[queries] getStoreProfiles error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+/**
+ * Get driver profiles for a store
+ */
+export async function getStoreDrivers(storeId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*, driver:driver_profiles(*)')
+    .eq('store_id', storeId)
+    .eq('role', 'driver')
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    console.warn('[queries] getStoreDrivers error:', error?.message)
+    return []
+  }
+
+  return data
+}
+
+// ─── Dashboard Stats ────────────────────────────────────────
+
+/**
+ * Get dashboard statistics for a store
+ */
+export async function getStoreStats(storeId: string) {
+  const supabase = createServiceClient()
+  if (!supabase) return null
+
+  const [
+    ordersToday,
+    revenueToday,
+    totalCustomers,
+    totalProducts,
+    pendingOrders,
+    activeDrivers,
+  ] = await Promise.all([
+    supabase.from('orders').select('*', { count: 'exact', head: true }).eq('store_id', storeId).gte('created_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
+    supabase.from('orders').select('total').eq('store_id', storeId).eq('payment_status', 'paid').gte('created_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
+    supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('role', 'customer'),
+    supabase.from('products').select('*', { count: 'exact', head: true }).eq('store_id', storeId).eq('is_available', true),
+    supabase.from('orders').select('*', { count: 'exact', head: true }).eq('store_id', storeId).in('status', ['placed', 'confirmed', 'picking']),
+    supabase.from('driver_profiles').select('*', { count: 'exact', head: true }).eq('is_on_duty', true),
+  ])
+
+  const todayRevenue = revenueToday.data?.reduce((sum: number, o: any) => sum + (o.total || 0), 0) || 0
+
+  return {
+    ordersToday: ordersToday.count || 0,
+    revenueToday: todayRevenue,
+    totalCustomers: totalCustomers.count || 0,
+    totalProducts: totalProducts.count || 0,
+    pendingOrders: pendingOrders.count || 0,
+    activeDrivers: activeDrivers.count || 0,
+  }
 }

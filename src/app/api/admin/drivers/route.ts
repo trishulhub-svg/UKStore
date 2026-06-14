@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { mapDriver } from '@/lib/supabase/mappers'
 
 // GET /api/admin/drivers — list drivers
 export async function GET(request: NextRequest) {
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
         driverProfile:driver_profiles(*),
         drivenOrders:orders!driver_id(id, status)
       `)
-      .eq('role', 'DRIVER')
+      .eq('role', 'driver')
 
     if (search) {
       query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
@@ -40,13 +41,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch drivers' }, { status: 500 })
     }
 
-    // Map for backward compatibility
-    const mapped = (drivers || []).map((d: any) => ({
-      ...d,
-      name: d.full_name,
-      driverProfile: d.driverProfile?.[0] || d.driverProfile || null,
-      _count: { drivenOrders: d.drivenOrders?.length || 0 },
-    }))
+    // Map each driver to camelCase
+    const mapped = (drivers || []).map(mapDriver)
 
     return NextResponse.json({ drivers: mapped })
   } catch (err) {
@@ -74,7 +70,7 @@ export async function PATCH(request: NextRequest) {
       .from('profiles')
       .select('id, driverProfile:driver_profiles(*)')
       .eq('id', driverId)
-      .eq('role', 'DRIVER')
+      .eq('role', 'driver')
       .maybeSingle()
 
     if (fetchError) {
@@ -134,14 +130,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update driver' }, { status: 500 })
     }
 
-    const mapped = {
-      ...updated,
-      name: (updated as any)?.full_name,
-      driverProfile: (updated as any)?.driverProfile?.[0] || (updated as any)?.driverProfile || null,
-      _count: { drivenOrders: (updated as any)?.drivenOrders?.length || 0 },
-    }
-
-    return NextResponse.json({ driver: mapped })
+    return NextResponse.json({ driver: mapDriver(updated) })
   } catch (err) {
     console.error('[Admin Drivers PATCH]', err)
     return NextResponse.json({ error: 'Failed to update driver' }, { status: 500 })

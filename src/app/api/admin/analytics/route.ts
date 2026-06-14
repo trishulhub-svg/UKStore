@@ -41,7 +41,7 @@ export async function GET() {
     ;(ordersLast30 || []).forEach((o: any) => {
       const key = new Date(o.created_at).toISOString().split('T')[0]
       if (key in revenueByDay) {
-        revenueByDay[key] += o.total
+        revenueByDay[key] += Number(o.total) || 0
       }
     })
 
@@ -89,7 +89,7 @@ export async function GET() {
         productMap[key] = { name: item.product_name, quantity: 0, revenue: 0 }
       }
       productMap[key].quantity += item.quantity || 0
-      productMap[key].revenue += item.subtotal || 0
+      productMap[key].revenue += Number(item.subtotal) || 0
     })
 
     const topProductsChart = Object.values(productMap)
@@ -135,7 +135,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 })
     }
 
-    const totalRevenue = (revenueData || []).reduce((sum: number, r: any) => sum + (r.total || 0), 0)
+    const totalRevenue = (revenueData || []).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0)
 
     return NextResponse.json({
       summary: {

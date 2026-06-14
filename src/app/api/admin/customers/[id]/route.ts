@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { snakeToCamel } from '@/lib/supabase/mappers'
 
 // GET /api/admin/customers/[id] — customer detail
 export async function GET(
@@ -22,7 +23,7 @@ export async function GET(
         orders:orders(*, items:order_items(product_name, quantity, unit_price))
       `)
       .eq('id', id)
-      .eq('role', 'CUSTOMER')
+      .eq('role', 'customer')
       .maybeSingle()
 
     if (dbError) {
@@ -34,15 +35,15 @@ export async function GET(
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
     }
 
-    const totalSpent = (customer.orders || []).reduce((sum: number, o: any) => sum + (o.total || 0), 0)
+    // Convert entire row to camelCase
+    const mapped = snakeToCamel(customer)
 
-    return NextResponse.json({
-      customer: {
-        ...customer,
-        name: customer.full_name, // backward compatibility
-        totalSpent,
-      },
-    })
+    // Add computed fields
+    const totalSpent = (customer.orders || []).reduce((sum: number, o: any) => sum + (Number(o.total) || 0), 0)
+    mapped.name = customer.full_name
+    mapped.totalSpent = totalSpent
+
+    return NextResponse.json({ customer: mapped })
   } catch (err) {
     console.error('[Admin Customer GET]', err)
     return NextResponse.json({ error: 'Failed to fetch customer' }, { status: 500 })

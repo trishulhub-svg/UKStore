@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { mapOrder } from '@/lib/supabase/mappers'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
@@ -27,8 +28,7 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
     if (search) {
-      // Search by order ID or customer name/email
-      query = query.or(`id.ilike.%${search}%,customer.full_name.ilike.%${search}%,customer.email.ilike.%${search}%`)
+      query = query.or(`id.ilike.%${search}%`)
     }
 
     query = query
@@ -42,12 +42,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
     }
 
-    // Map customer full_name to name for backward compatibility
-    const mapped = (orders || []).map((o: any) => ({
-      ...o,
-      customer: o.customer ? { ...o.customer, name: o.customer.full_name } : null,
-      driver: o.driver ? { ...o.driver, name: o.driver.full_name } : null,
-    }))
+    // Map snake_case DB rows to camelCase for frontend
+    const mapped = (orders || []).map(mapOrder)
 
     return NextResponse.json({ orders: mapped, total: count, page, limit })
   } catch (err) {
@@ -56,7 +52,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH /api/admin/orders — update order status
+// PATCH /api/admin/orders — update order status or assign driver
 export async function PATCH(request: NextRequest) {
   const { error } = await requireAdmin()
   if (error) return error
@@ -102,14 +98,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update order' }, { status: 500 })
     }
 
-    // Map full_name to name for backward compatibility
-    const mapped = {
-      ...order,
-      customer: (order as any).customer ? { ...(order as any).customer, name: (order as any).customer.full_name } : null,
-      driver: (order as any).driver ? { ...(order as any).driver, name: (order as any).driver.full_name } : null,
-    }
-
-    return NextResponse.json({ order: mapped })
+    return NextResponse.json({ order: mapOrder(order) })
   } catch (err) {
     console.error('[Admin Orders PATCH]', err)
     return NextResponse.json({ error: 'Failed to update order' }, { status: 500 })

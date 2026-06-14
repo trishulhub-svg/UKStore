@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { mapOrder } from '@/lib/supabase/mappers'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
@@ -38,14 +39,7 @@ export async function GET(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    // Map full_name to name for backward compatibility
-    const mapped = {
-      ...order,
-      customer: (order as any).customer ? { ...(order as any).customer, name: (order as any).customer.full_name } : null,
-      driver: (order as any).driver ? { ...(order as any).driver, name: (order as any).driver.full_name } : null,
-    }
-
-    return NextResponse.json({ order: mapped })
+    return NextResponse.json({ order: mapOrder(order) })
   } catch (err) {
     console.error('[Admin Order GET]', err)
     return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })

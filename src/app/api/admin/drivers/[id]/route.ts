@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { mapDriver, snakeToCamel } from '@/lib/supabase/mappers'
 
 // GET /api/admin/drivers/[id] — driver detail
 export async function GET(
@@ -22,7 +23,7 @@ export async function GET(
         drivenOrders:orders!driver_id(id, status, total, created_at, customer:profiles!customer_id(full_name))
       `)
       .eq('id', id)
-      .eq('role', 'DRIVER')
+      .eq('role', 'driver')
       .maybeSingle()
 
     if (dbError) {
@@ -34,18 +35,19 @@ export async function GET(
       return NextResponse.json({ error: 'Driver not found' }, { status: 404 })
     }
 
-    // Map for backward compatibility
-    const mapped = {
-      ...driver,
-      name: (driver as any).full_name,
-      driverProfile: (driver as any).driverProfile?.[0] || (driver as any).driverProfile || null,
-      drivenOrders: ((driver as any).drivenOrders || []).map((o: any) => ({
-        ...o,
-        customer: o.customer ? { name: o.customer.full_name } : null,
-      })),
-    }
+    // Use the mapper for the base driver object
+    const mapped = mapDriver(driver)
 
-    return NextResponse.json({ driver: mapped })
+    // Add drivenOrders with camelCase mapping
+    const drivenOrders = ((driver as any).drivenOrders || []).map((o: any) => ({
+      id: o.id,
+      status: o.status,
+      total: Number(o.total) || 0,
+      createdAt: o.created_at,
+      customer: o.customer ? { name: o.customer.full_name } : null,
+    }))
+
+    return NextResponse.json({ driver: { ...mapped, drivenOrders } })
   } catch (err) {
     console.error('[Admin Driver GET]', err)
     return NextResponse.json({ error: 'Failed to fetch driver' }, { status: 500 })

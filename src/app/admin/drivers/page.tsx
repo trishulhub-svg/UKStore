@@ -58,7 +58,7 @@ interface Driver {
     rejectionReason: string | null
     verifiedAt: string | null
   } | null
-  _count: { drivenOrders: number }
+  orderCount: number
 }
 
 interface DriverDetail {
@@ -246,7 +246,7 @@ export default function AdminDriversPage() {
                             {d.driverProfile?.verificationStatus || 'pending'}
                           </Badge>
                         </td>
-                        <td className="py-3 px-4">{d._count.drivenOrders}</td>
+                        <td className="py-3 px-4">{d.orderCount}</td>
                         <td className="py-3 px-4">
                           <Badge variant={d.isActive ? 'default' : 'secondary'} className="text-xs">
                             {d.isActive ? 'Active' : 'Inactive'}

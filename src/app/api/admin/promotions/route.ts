@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { mapPromotion } from '@/lib/supabase/mappers'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
@@ -23,7 +24,10 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to fetch promotions' }, { status: 500 })
     }
 
-    return NextResponse.json({ promotions })
+    // Map to camelCase
+    const mapped = (promotions || []).map(mapPromotion)
+
+    return NextResponse.json({ promotions: mapped })
   } catch (err) {
     console.error('[Admin Promotions GET]', err)
     return NextResponse.json({ error: 'Failed to fetch promotions' }, { status: 500 })
@@ -62,7 +66,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create promotion' }, { status: 500 })
     }
 
-    return NextResponse.json({ promotion }, { status: 201 })
+    return NextResponse.json({ promotion: mapPromotion(promotion) }, { status: 201 })
   } catch (err) {
     console.error('[Admin Promotions POST]', err)
     return NextResponse.json({ error: 'Failed to create promotion' }, { status: 500 })

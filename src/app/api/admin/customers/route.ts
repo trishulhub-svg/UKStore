@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { mapCustomer, snakeToCamel } from '@/lib/supabase/mappers'
 
 // GET /api/admin/customers — list customers
 export async function GET(request: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('profiles')
       .select('id, full_name, email, phone, is_active, created_at, orders:orders(id, total, status, created_at)', { count: 'exact' })
-      .eq('role', 'CUSTOMER')
+      .eq('role', 'customer')
 
     if (search) {
       query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
@@ -35,18 +36,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 })
     }
 
-    // Compute aggregated stats for each customer
-    const enriched = (customers || []).map((c: any) => {
-      const orders = c.orders || []
-      const orderCount = orders.length
-      const totalSpent = orders.reduce((sum: number, o: any) => sum + (o.total || 0), 0)
-      return {
-        ...c,
-        name: c.full_name, // backward compatibility
-        orderCount,
-        totalSpent,
-      }
-    })
+    // Map each customer to camelCase
+    const enriched = (customers || []).map(mapCustomer)
 
     return NextResponse.json({ customers: enriched, total: count, page, limit })
   } catch (err) {

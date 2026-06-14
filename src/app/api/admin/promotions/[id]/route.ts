@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { mapPromotion } from '@/lib/supabase/mappers'
 
 const STORE_ID = 'a1b2c3d4-e5f6-4a90-bcd1-ef1234567890'
 
@@ -32,7 +33,7 @@ export async function GET(
       return NextResponse.json({ error: 'Promotion not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ promotion })
+    return NextResponse.json({ promotion: mapPromotion(promotion) })
   } catch (err) {
     console.error('[Admin Promotion GET]', err)
     return NextResponse.json({ error: 'Failed to fetch promotion' }, { status: 500 })
@@ -92,7 +93,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Failed to update promotion' }, { status: 500 })
     }
 
-    return NextResponse.json({ promotion })
+    return NextResponse.json({ promotion: mapPromotion(promotion) })
   } catch (err) {
     console.error('[Admin Promotion PATCH]', err)
     return NextResponse.json({ error: 'Failed to update promotion' }, { status: 500 })

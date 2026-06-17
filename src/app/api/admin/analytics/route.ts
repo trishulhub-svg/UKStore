@@ -105,6 +105,66 @@ export async function GET() {
       }),
     ])
 
+    // ─── Wastage analytics ────────────────────────────────────────────────
+    // 1. Wastage by reason (pie chart)
+    // 2. Wastage cost over last 30 days (line chart)
+    // 3. Top 10 products by total wastage cost (bar chart)
+    const wastageLogs = await prisma.wastageLog.findMany({
+      where: { product: { storeId: STORE_ID } },
+      include: { product: { select: { name: true, price: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    const wastageByReason: Record<string, { count: number; cost: number }> = {}
+    const wastageByDay: Record<string, number> = {}
+    const wastageByProduct: Record<string, { name: string; count: number; cost: number }> = {}
+
+    // Initialize last 30 days
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now)
+      d.setDate(d.getDate() - i)
+      const key = d.toISOString().split('T')[0]
+      wastageByDay[key] = 0
+    }
+
+    for (const log of wastageLogs) {
+      const reason = log.reason || 'other'
+      const cost = (log.product?.price ?? 0) * log.quantity
+      if (!wastageByReason[reason]) wastageByReason[reason] = { count: 0, cost: 0 }
+      wastageByReason[reason].count += log.quantity
+      wastageByReason[reason].cost += cost
+
+      const dayKey = log.createdAt.toISOString().split('T')[0]
+      if (dayKey in wastageByDay) wastageByDay[dayKey] += cost
+
+      const productName = log.product?.name ?? 'Unknown'
+      if (!wastageByProduct[productName]) wastageByProduct[productName] = { name: productName, count: 0, cost: 0 }
+      wastageByProduct[productName].count += log.quantity
+      wastageByProduct[productName].cost += cost
+    }
+
+    const wastageReasonChart = Object.entries(wastageByReason).map(([reason, data]) => ({
+      reason,
+      count: data.count,
+      cost: Math.round(data.cost * 100) / 100,
+    }))
+
+    const wastageTrendChart = Object.entries(wastageByDay).map(([date, cost]) => ({
+      date,
+      cost: Math.round(cost * 100) / 100,
+    }))
+
+    const wastageTopProductsChart = Object.values(wastageByProduct)
+      .sort((a, b) => b.cost - a.cost)
+      .slice(0, 10)
+      .map((p) => ({
+        name: p.name,
+        quantity: p.count,
+        cost: Math.round(p.cost * 100) / 100,
+      }))
+
+    const totalWastageCost = wastageLogs.reduce((sum, l) => sum + (l.product?.price ?? 0) * l.quantity, 0)
+
     return NextResponse.json({
       summary: {
         totalProducts,
@@ -113,10 +173,15 @@ export async function GET() {
         totalRevenue: totalRevenue._sum.total || 0,
         avgDeliveryMinutes: Math.round(avgDeliveryMinutes),
         deliveredCount: deliveredOrders.length,
+        totalWastageCost: Math.round(totalWastageCost * 100) / 100,
+        wastageEntryCount: wastageLogs.length,
       },
       revenueChart,
       statusPieChart,
       topProductsChart,
+      wastageReasonChart,
+      wastageTrendChart,
+      wastageTopProductsChart,
     })
   } catch (err) {
     console.error('[Admin Analytics GET]', err)

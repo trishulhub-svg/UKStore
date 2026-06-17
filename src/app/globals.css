@@ -120,3 +120,137 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ============================================================
+   Fresh Mart — Modern Grocery Theme Layer
+   Adds emerald gradients, glassmorphism touches, and rounded
+   card surfaces across the customer and admin surfaces.
+   These classes are additive — they don't override the shadcn
+   variables above, so existing components keep working.
+   ============================================================ */
+
+/* Subtle fresh gradient backdrop — apply to the customer app's
+   outermost wrapper via `<div className="fm-gradient-bg">`. */
+.fm-gradient-bg {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(16, 185, 129, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(245, 158, 11, 0.06), transparent 55%),
+    #ffffff;
+}
+
+/* Glassmorphism panel — used on sticky navbars and floating cart bar */
+.fm-glass {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid rgba(229, 231, 235, 0.6);
+}
+
+/* Hero gradient text — used in section headings on the customer homepage */
+.fm-gradient-text {
+  background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Modern card with soft shadow + hover lift */
+.fm-card {
+  background: #ffffff;
+  border-radius: 1rem;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 4px 16px -8px rgba(15, 23, 42, 0.08);
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.fm-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 8px rgba(15, 23, 42, 0.06),
+    0 12px 24px -10px rgba(16, 185, 129, 0.18);
+}
+
+/* CTA button — emerald gradient with subtle glow */
+.fm-btn-cta {
+  background: linear-gradient(135deg, #10b981 0%, #16a34a 100%);
+  color: white;
+  border: 0;
+  box-shadow: 0 4px 14px -4px rgba(16, 185, 129, 0.5);
+  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+.fm-btn-cta:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -4px rgba(16, 185, 129, 0.6);
+}
+.fm-btn-cta:active {
+  transform: translateY(0);
+}
+
+/* Soft chip / badge */
+.fm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.06));
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* Stat block — for admin summary cards */
+.fm-stat {
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+  border-radius: 0.875rem;
+  padding: 1.25rem;
+  border: 1px solid #f1f5f9;
+}
+.fm-stat::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04), transparent 50%);
+  pointer-events: none;
+}
+
+/* Admin sidebar gradient strip — adds a subtle brand presence */
+.fm-sidebar-strip {
+  background: linear-gradient(135deg, #10b981 0%, #16a34a 60%, #15803d 100%);
+  height: 4px;
+  width: 100%;
+}
+
+/* Smooth focus rings on interactive elements */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(16, 185, 129, 0.55);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Hide scrollbar on horizontal sliders (e.g., category-product-slider) */
+.fm-no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.fm-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Subtle slide-up entrance for toasts, banners, and modals */
+@keyframes fm-slide-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.fm-slide-up {
+  animation: fm-slide-up 250ms ease-out;
+}

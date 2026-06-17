@@ -6,6 +6,7 @@ import { LayoutDashboard, DollarSign, User, Truck, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
+import { StoreLogo } from '@/components/layout/store-logo'
 import { ClockInOutButton } from '@/components/shared/clock-in-out-button'
 import { useEffect, useState } from 'react'
 import type { AuthUser } from '@/lib/auth-client'
@@ -19,8 +20,11 @@ const navItems = [
 export function DriverLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const { store } = useStoreInfo()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const storeName = store?.name || 'Fresh Mart'
 
   useEffect(() => {
     import('@/lib/auth-client').then(({ authGetSession }) => {
@@ -73,8 +77,8 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 bg-[#16a34a] text-white shadow-md">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Truck className="h-5 w-5" />
-            <span className="font-bold text-base">{useStoreInfo().store?.name || 'Fresh Mart'} Driver</span>
+            <StoreLogo size={28} />
+            <span className="font-bold text-base text-white">{storeName} Driver</span>
           </div>
           <div className="flex items-center gap-2">
             <ClockInOutButton variant="compact" />

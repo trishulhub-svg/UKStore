@@ -39,10 +39,8 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords: ["grocery delivery", "UK grocery", "fresh food", "online supermarket", "same-day delivery"],
     authors: [{ name: storeName }],
     manifest: "/manifest.json",
-    icons: {
-      icon: "/logo.svg",
-      apple: "/icon-192.png",
-    },
+    // Favicon is served dynamically by /src/app/icon.tsx — uses the store's
+    // uploaded logo if present, otherwise a green gradient letter-mark.
     appleWebApp: {
       capable: true,
       statusBarStyle: "default",

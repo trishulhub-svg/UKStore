@@ -72,6 +72,12 @@ export async function PATCH(
     if (body.sortOrder !== undefined) data.sortOrder = parseInt(body.sortOrder)
     if (body.minStockThreshold !== undefined) data.minStockThreshold = parseInt(body.minStockThreshold)
     if (body.substituteProductId !== undefined) data.substituteProductId = body.substituteProductId || null
+    if (body.expiryDate !== undefined) {
+      data.expiryDate = body.expiryDate ? new Date(body.expiryDate) : null
+    }
+    if (body.bestBeforeDate !== undefined) {
+      data.bestBeforeDate = body.bestBeforeDate ? new Date(body.bestBeforeDate) : null
+    }
 
     const product = await prisma.product.update({
       where: { id },

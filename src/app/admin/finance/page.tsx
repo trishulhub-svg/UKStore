@@ -2,6 +2,7 @@ import { getPrisma } from '@/lib/auth/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PoundSterling, TrendingUp, TrendingDown, Receipt, ShoppingBag } from 'lucide-react'
+import { FinanceClient } from '@/components/admin/finance-client'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,8 +15,12 @@ export default async function AdminFinancePage() {
   let totalExpenses = 0
   let orderCount = 0
   let recentExpenses: any[] = []
+  let storeName = 'Fresh Mart'
 
   try {
+    const store = await prisma.store.findUnique({ where: { id: STORE_ID } })
+    if (store?.name) storeName = store.name
+
     // Calculate revenue from paid orders
     const revenueResult = await prisma.order.aggregate({
       where: {
@@ -51,7 +56,16 @@ export default async function AdminFinancePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Finance</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Finance</h1>
+          <p className="text-gray-500 text-sm">Revenue, expenses, and profit overview</p>
+        </div>
+        <FinanceClient
+          initialSummary={{ totalRevenue, totalExpenses, profit, orderCount }}
+          storeName={storeName}
+        />
+      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

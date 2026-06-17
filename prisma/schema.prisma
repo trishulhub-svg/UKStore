@@ -95,6 +95,7 @@ model Store {
   longitude            Float
   phone                String?
   email                String?
+  logoUrl              String?  // Custom store logo (data URL or external URL). Used in navbar, footer, favicon, admin shell.
   baseDeliveryFee      Float    @default(3.50)
   perKmCharge          Float    @default(0.50)
   freeDeliveryThreshold Float   @default(20.00)
@@ -172,6 +173,8 @@ model Product {
   rating                Float    @default(0)    // Average rating (0-5)
   reviewCount           Int      @default(0)    // Total number of reviews
   sortOrder             Int      @default(0)
+  expiryDate            DateTime?  // Hard expiry — product is unsafe to sell after this date (auto-moves to wastage)
+  bestBeforeDate        DateTime?  // Best-before — quality degrades but still saleable; advisory only
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -401,8 +404,9 @@ model Shift {
   id          String   @id @default(cuid())
   userId      String
   date        DateTime
-  startTime   String   // "08:00"
-  endTime     String   // "16:00"
+  startTime   String   // "08:00" — required if manualHours is null
+  endTime     String   // "16:00" — required if manualHours is null
+  manualHours Float?   // Optional total hours (alternative to start/end). When set, takes precedence for payroll.
   role        String   // 'picker', 'driver', 'manager'
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

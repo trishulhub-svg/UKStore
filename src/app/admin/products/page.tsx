@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, ArrowUpDown, Pencil, Trash2, ToggleLeft, ToggleRight, AlertTriangle } from 'lucide-react'
+import { Plus, Search, ArrowUpDown, Pencil, Trash2, ToggleLeft, ToggleRight, AlertTriangle, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice, getVatRateLabel } from '@/lib/vat'
 import { CsvImportExport } from '@/components/admin/csv-import-export'
+import { exportTableToPdf } from '@/lib/client-pdf'
 
 interface Category {
   id: string
@@ -64,6 +65,8 @@ interface Product {
   stockQuantity: number
   isFeatured: boolean
   sortOrder: number
+  expiryDate: string | null
+  bestBeforeDate: string | null
   category: { id: string; name: string }
   substituteProduct?: { id: string; name: string } | null
 }
@@ -74,6 +77,7 @@ const emptyProduct = {
   description: '',
   price: '',
   vatRate: '0',
+  vatRateCustom: '', // When non-empty, used instead of the preset select
   isHfss: false,
   isAgeRestricted: false,
   minimumAge: '0',
@@ -88,6 +92,8 @@ const emptyProduct = {
   stockQuantity: '0',
   isFeatured: false,
   sortOrder: '0',
+  expiryDate: '',
+  bestBeforeDate: '',
 }
 
 export default function AdminProductsPage() {
@@ -156,12 +162,17 @@ export default function AdminProductsPage() {
 
   const handleOpenEdit = (p: Product) => {
     setEditingId(p.id)
+    // Detect custom VAT rate (not one of the standard presets)
+    const standardRates = ['0', '0.05', '0.2']
+    const vatStr = String(p.vatRate)
+    const isCustomVat = !standardRates.includes(vatStr)
     setForm({
       name: p.name,
       categoryId: p.category.id,
       description: p.description || '',
       price: String(p.price),
-      vatRate: String(p.vatRate),
+      vatRate: isCustomVat ? 'custom' : vatStr,
+      vatRateCustom: isCustomVat ? vatStr : '',
       isHfss: p.isHfss,
       isAgeRestricted: p.isAgeRestricted,
       minimumAge: String(p.minimumAge || 0),
@@ -176,6 +187,8 @@ export default function AdminProductsPage() {
       stockQuantity: String(p.stockQuantity),
       isFeatured: p.isFeatured,
       sortOrder: String(p.sortOrder),
+      expiryDate: p.expiryDate ? p.expiryDate.split('T')[0] : '',
+      bestBeforeDate: p.bestBeforeDate ? p.bestBeforeDate.split('T')[0] : '',
     })
     setDialogOpen(true)
   }
@@ -185,14 +198,22 @@ export default function AdminProductsPage() {
       toast.error('Name, category, and price are required')
       return
     }
+    // Resolve final VAT rate: custom input takes precedence over select
+    const finalVatRate = form.vatRate === 'custom'
+      ? (form.vatRateCustom || '0')
+      : form.vatRate
+
     setSaving(true)
     try {
       const url = editingId ? `/api/admin/products/${editingId}` : '/api/admin/products'
       const method = editingId ? 'PATCH' : 'POST'
+      const payload = { ...form, vatRate: finalVatRate }
+      // Don't send vatRateCustom to backend — backend only knows vatRate
+      const { vatRateCustom, ...bodyToSend } = payload
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(bodyToSend),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -251,6 +272,36 @@ export default function AdminProductsPage() {
     }
   }
 
+  const handleExportPdf = async () => {
+    if (products.length === 0) {
+      toast.error('No products to export')
+      return
+    }
+    try {
+      await exportTableToPdf({
+        title: 'Products',
+        subtitle: `${total} product${total === 1 ? '' : 's'}`,
+        filename: `products-${new Date().toISOString().split('T')[0]}.pdf`,
+        columns: ['Name', 'Category', 'Price', 'VAT', 'Stock', 'Available', 'Expiry', 'HFSS', 'Age 18+'],
+        rows: products.map((p) => [
+          p.name,
+          p.category?.name || '—',
+          formatPrice(p.price),
+          getVatRateLabel(p.vatRate),
+          p.stockQuantity,
+          p.isAvailable ? 'Yes' : 'No',
+          p.expiryDate ? new Date(p.expiryDate).toLocaleDateString('en-GB') : '—',
+          p.isHfss ? 'Yes' : 'No',
+          p.isAgeRestricted ? 'Yes' : 'No',
+        ]),
+        footer: `Total inventory value: ${formatPrice(products.reduce((s, p) => s + p.price * p.stockQuantity, 0))}`,
+      })
+      toast.success('PDF exported')
+    } catch {
+      toast.error('Failed to export PDF')
+    }
+  }
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -258,9 +309,19 @@ export default function AdminProductsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-500 text-sm">{total} products total</p>
         </div>
-        <Button onClick={handleOpenCreate} className="bg-[#16a34a] hover:bg-[#15803d]">
-          <Plus className="h-4 w-4 mr-1" /> Add Product
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExportPdf}
+            disabled={products.length === 0}
+            className="border-gray-300"
+          >
+            <FileDown className="h-4 w-4 mr-1" /> Export PDF
+          </Button>
+          <Button onClick={handleOpenCreate} className="bg-[#16a34a] hover:bg-[#15803d]">
+            <Plus className="h-4 w-4 mr-1" /> Add Product
+          </Button>
+        </div>
       </div>
 
       {/* CSV Import/Export */}
@@ -527,8 +588,50 @@ export default function AdminProductsPage() {
                     <SelectItem value="0">Zero-rated (0%)</SelectItem>
                     <SelectItem value="0.05">Reduced (5%)</SelectItem>
                     <SelectItem value="0.2">Standard (20%)</SelectItem>
+                    <SelectItem value="custom">Custom…</SelectItem>
                   </SelectContent>
                 </Select>
+                {form.vatRate === 'custom' && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={form.vatRateCustom}
+                      onChange={(e) => setForm({ ...form, vatRateCustom: e.target.value })}
+                      placeholder="e.g., 0.125 for 12.5%"
+                    />
+                    <span className="text-xs text-gray-500 whitespace-nowrap">decimal (0–1)</span>
+                  </div>
+                )}
+                {form.vatRate === 'custom' && form.vatRateCustom && (
+                  <p className="text-xs text-gray-500">
+                    = {Math.round(parseFloat(form.vatRateCustom || '0') * 100)}% VAT
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="expiryDate">Expiry Date</Label>
+                <Input
+                  id="expiryDate"
+                  type="date"
+                  value={form.expiryDate}
+                  onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
+                />
+                <p className="text-xs text-gray-500">Hard expiry — unsafe to sell after this date. Auto-moves to wastage.</p>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="bestBeforeDate">Best Before Date</Label>
+                <Input
+                  id="bestBeforeDate"
+                  type="date"
+                  value={form.bestBeforeDate}
+                  onChange={(e) => setForm({ ...form, bestBeforeDate: e.target.value })}
+                />
+                <p className="text-xs text-gray-500">Advisory — quality degrades but still saleable.</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

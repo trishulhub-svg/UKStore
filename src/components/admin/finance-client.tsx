@@ -1,645 +1,249 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import {
-  TrendingUp, TrendingDown, DollarSign, ShoppingCart, Receipt, Calculator,
-  Download, Trash2, Plus, Loader2, PoundSterling, AlertTriangle, CheckCircle2,
-} from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
+import { FileDown, Mail, Loader2, PoundSterling } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatPrice } from '@/lib/vat'
+import { exportTableToPdf } from '@/lib/client-pdf'
 
-// ─── Types ────────────────────────────────────────────────────
-
-interface RevenueData {
-  grossSales: { today: number; week: number; month: number }
-  expenses: { today: number; week: number; month: number }
-  stripeFees: { today: number; week: number; month: number }
-  netProfit: { today: number; week: number; month: number }
-  aov: number
-  completedOrders: number
-}
-
-interface ExpenseRecord {
-  id: string
-  category: string
-  description: string
-  amount: number
-  date: string
-  createdAt: string
-}
-
-interface VatBreakdown {
-  [rate: number]: {
-    netSales: number
-    vatAmount: number
-    grossSales: number
-    itemCount: number
+interface FinanceClientProps {
+  initialSummary: {
+    totalRevenue: number
+    totalExpenses: number
+    profit: number
+    orderCount: number
   }
+  storeName: string
 }
 
-interface VatReport {
-  period: string
-  startDate: string
-  vatBreakdown: VatBreakdown
-  totals: {
-    netSales: number
-    vatAmount: number
-    grossSales: number
+interface FinanceReport {
+  period: { startDate: string; endDate: string }
+  summary: {
+    totalRevenue: number
+    totalExpenses: number
+    profit: number
+    profitMargin: number
+    totalVat: number
+    totalDeliveryFees: number
+    totalSubtotal: number
+    orderCount: number
+    paidOrdersCount: number
+    expenseCount: number
   }
+  dailyChart: Array<{ date: string; revenue: number; expenses: number }>
+  expenseBreakdown: Array<{ category: string; amount: number; percentage: number }>
+  paymentByMethod: Array<{ method: string; count: number; total: number }>
+  topOrders: Array<{ id: string; total: number; paymentMethod: string | null; paymentStatus: string; date: string }>
+  topExpenses: Array<{ id: string; description: string; category: string; amount: number; date: string }>
 }
 
-interface BankTransferOrder {
-  id: string
-  total: number
-  customer: { name: string; email: string }
-  bankTransferRef: string | null
-  bankTransferVerified: boolean
-  createdAt: string
-}
+const fmt = (n: number) => `£${n.toFixed(2)}`
+const fmtDate = (s: string) => new Date(s).toLocaleDateString('en-GB')
 
-const EXPENSE_CATEGORIES = [
-  { value: 'electricity', label: 'Electricity' },
-  { value: 'rent', label: 'Rent' },
-  { value: 'packaging', label: 'Packaging' },
-  { value: 'fuel', label: 'Fuel' },
-  { value: 'other', label: 'Other' },
-]
+export function FinanceClient({ initialSummary, storeName }: FinanceClientProps) {
+  const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [sendingEmail, setSendingEmail] = useState(false)
 
-const VAT_LABELS: Record<number, string> = {
-  0: '0% (Zero-rated)',
-  0.05: '5% (Reduced)',
-  0.2: '20% (Standard)',
-}
-
-// ─── Finance Client Component ─────────────────────────────────
-
-export function FinanceClient() {
-  const [revenue, setRevenue] = useState<RevenueData | null>(null)
-  const [revenueLoading, setRevenueLoading] = useState(true)
-
-  const [expenses, setExpenses] = useState<ExpenseRecord[]>([])
-  const [expensesLoading, setExpensesLoading] = useState(true)
-
-  const [vatReport, setVatReport] = useState<VatReport | null>(null)
-  const [vatLoading, setVatLoading] = useState(true)
-  const [vatPeriod, setVatPeriod] = useState('month')
-
-  const [bankTransfers, setBankTransfers] = useState<BankTransferOrder[]>([])
-  const [bankLoading, setBankLoading] = useState(true)
-
-  // Expense form state
-  const [expCategory, setExpCategory] = useState('')
-  const [expDescription, setExpDescription] = useState('')
-  const [expAmount, setExpAmount] = useState('')
-  const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0])
-  const [expSubmitting, setExpSubmitting] = useState(false)
-
-  const fetchRevenue = useCallback(async () => {
+  const handleGeneratePdf = async () => {
+    setGeneratingPdf(true)
     try {
-      const res = await fetch('/api/admin/finance/revenue')
+      // Fetch the full report for the last 30 days
+      const res = await fetch('/api/admin/finance/report')
       if (!res.ok) throw new Error()
-      const data = await res.json()
-      setRevenue(data)
-    } catch {
-      toast.error('Failed to load revenue data')
+      const report: FinanceReport = await res.json()
+
+      // Build a multi-section PDF: cover, summary, daily table, expense breakdown, top orders
+      const { jsPDF } = await import('jspdf')
+      const { default: autoTable } = await import('jspdf-autotable')
+      const doc = new jsPDF()
+
+      const periodLabel = `${fmtDate(report.period.startDate)} – ${fmtDate(report.period.endDate)}`
+
+      // ─── Cover ────────────────────────────────────────────────────
+      doc.setFillColor(22, 163, 74) // emerald-600
+      doc.rect(0, 0, 210, 50, 'F')
+      doc.setTextColor(255)
+      doc.setFontSize(22)
+      doc.text(storeName, 14, 22)
+      doc.setFontSize(13)
+      doc.text('Finance Report', 14, 32)
+      doc.setFontSize(10)
+      doc.text(`Period: ${periodLabel}`, 14, 40)
+      doc.text(`Generated: ${new Date().toLocaleString('en-GB')}`, 14, 46)
+
+      // ─── Summary cards (text) ────────────────────────────────────
+      doc.setTextColor(0)
+      doc.setFontSize(14)
+      doc.text('Summary', 14, 62)
+
+      const s = report.summary
+      doc.setFontSize(10)
+      const summaryRows: [string, string][] = [
+        ['Total Revenue', fmt(s.totalRevenue)],
+        ['Total Expenses', fmt(s.totalExpenses)],
+        ['Net Profit', fmt(s.profit)],
+        ['Profit Margin', `${s.profitMargin}%`],
+        ['VAT Collected', fmt(s.totalVat)],
+        ['Delivery Fees', fmt(s.totalDeliveryFees)],
+        ['Subtotal (ex-VAT)', fmt(s.totalSubtotal)],
+        ['Orders', `${s.orderCount} (${s.paidOrdersCount} paid)`],
+        ['Expenses Logged', `${s.expenseCount}`],
+      ]
+      summaryRows.forEach(([label, value], i) => {
+        const y = 70 + i * 6
+        doc.setTextColor(100)
+        doc.text(label, 14, y)
+        doc.setTextColor(0)
+        doc.text(value, 80, y)
+      })
+
+      // ─── Daily revenue vs expenses table ─────────────────────────
+      autoTable(doc, {
+        startY: 130,
+        head: [['Date', 'Revenue', 'Expenses', 'Net']],
+        body: report.dailyChart.map((d) => [
+          fmtDate(d.date),
+          fmt(d.revenue),
+          fmt(d.expenses),
+          fmt(d.revenue - d.expenses),
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [22, 163, 74] },
+        didDrawPage: (data) => {
+          doc.setFontSize(12)
+          doc.setTextColor(0)
+          doc.text('Daily Revenue & Expenses', 14, data.settings.startY - 6)
+        },
+      })
+
+      // ─── Expense breakdown by category ───────────────────────────
+      const afterDailyY = (doc as any).lastAutoTable?.finalY || 200
+      autoTable(doc, {
+        startY: afterDailyY + 14,
+        head: [['Category', 'Amount', '% of Total']],
+        body: report.expenseBreakdown.map((e) => [
+          e.category,
+          fmt(e.amount),
+          `${e.percentage}%`,
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [220, 38, 38] },
+        didDrawPage: (data) => {
+          doc.setFontSize(12)
+          doc.setTextColor(0)
+          doc.text('Expense Breakdown by Category', 14, data.settings.startY - 6)
+        },
+      })
+
+      // ─── Top orders + expenses on a new page ─────────────────────
+      doc.addPage()
+      doc.setFontSize(14)
+      doc.setTextColor(0)
+      doc.text('Top Orders (by value)', 14, 20)
+      autoTable(doc, {
+        startY: 26,
+        head: [['Order ID', 'Date', 'Payment', 'Status', 'Total']],
+        body: report.topOrders.map((o) => [
+          o.id.substring(0, 8),
+          fmtDate(o.date),
+          o.paymentMethod || '—',
+          o.paymentStatus,
+          fmt(o.total),
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [22, 163, 74] },
+      })
+
+      const afterOrdersY = (doc as any).lastAutoTable?.finalY || 80
+      doc.setFontSize(14)
+      doc.setTextColor(0)
+      doc.text('Top Expense Line Items', 14, afterOrdersY + 14)
+      autoTable(doc, {
+        startY: afterOrdersY + 20,
+        head: [['Description', 'Category', 'Date', 'Amount']],
+        body: report.topExpenses.map((e) => [
+          e.description,
+          e.category,
+          fmtDate(e.date),
+          fmt(e.amount),
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [220, 38, 38] },
+      })
+
+      // ─── Footer on every page ────────────────────────────────────
+      const pageCount = doc.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        doc.setFontSize(8)
+        doc.setTextColor(150)
+        doc.text(
+          `${storeName} — Finance Report — Page ${i} of ${pageCount}`,
+          14,
+          290
+        )
+      }
+
+      doc.save(`${storeName.toLowerCase().replace(/\s+/g, '-')}-finance-${new Date().toISOString().split('T')[0]}.pdf`)
+      toast.success('Finance PDF generated')
+    } catch (err) {
+      console.error(err)
+      toast.error('Failed to generate PDF')
     } finally {
-      setRevenueLoading(false)
+      setGeneratingPdf(false)
     }
-  }, [])
+  }
 
-  const fetchExpenses = useCallback(async () => {
+  const handleEmailReport = async () => {
+    setSendingEmail(true)
     try {
-      const res = await fetch('/api/admin/expenses?limit=50')
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      setExpenses(data.expenses || [])
-    } catch {
-      toast.error('Failed to load expenses')
-    } finally {
-      setExpensesLoading(false)
-    }
-  }, [])
-
-  const fetchVatReport = useCallback(async () => {
-    setVatLoading(true)
-    try {
-      const res = await fetch(`/api/admin/finance/vat-report?period=${vatPeriod}`)
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      setVatReport(data)
-    } catch {
-      toast.error('Failed to load VAT report')
-    } finally {
-      setVatLoading(false)
-    }
-  }, [vatPeriod])
-
-  const fetchBankTransfers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/orders?paymentMethod=bank_transfer&bankTransferVerified=false&limit=100')
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      setBankTransfers(data.orders || [])
-    } catch {
-      toast.error('Failed to load bank transfers')
-    } finally {
-      setBankLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchRevenue()
-    fetchExpenses()
-    fetchBankTransfers()
-  }, [fetchRevenue, fetchExpenses, fetchBankTransfers])
-
-  useEffect(() => {
-    fetchVatReport()
-  }, [fetchVatReport])
-
-  const handleAddExpense = async () => {
-    if (!expCategory || !expDescription || !expAmount || !expDate) {
-      toast.error('Please fill in all fields')
-      return
-    }
-    setExpSubmitting(true)
-    try {
-      const res = await fetch('/api/admin/expenses', {
+      const res = await fetch('/api/admin/finance/email-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: expCategory,
-          description: expDescription,
-          amount: parseFloat(expAmount),
-          date: expDate,
-        }),
+        body: JSON.stringify({}),
       })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed')
       }
-      toast.success('Expense added')
-      setExpCategory('')
-      setExpDescription('')
-      setExpAmount('')
-      setExpDate(new Date().toISOString().split('T')[0])
-      fetchExpenses()
-      fetchRevenue()
+      const data = await res.json()
+      if (data.emailSent) {
+        toast.success(`Report emailed to ${data.recipient}`)
+      } else {
+        toast.info(data.message || 'Report saved as in-app notification (SMTP not configured)')
+      }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to add expense')
+      toast.error(err.message || 'Failed to send email')
     } finally {
-      setExpSubmitting(false)
+      setSendingEmail(false)
     }
-  }
-
-  const handleDeleteExpense = async (id: string) => {
-    try {
-      const res = await fetch(`/api/admin/expenses/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error()
-      toast.success('Expense deleted')
-      fetchExpenses()
-      fetchRevenue()
-    } catch {
-      toast.error('Failed to delete expense')
-    }
-  }
-
-  const handleVerifyBankTransfer = async (orderId: string) => {
-    try {
-      const res = await fetch('/api/admin/orders', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, bankTransferVerified: true }),
-      })
-      if (!res.ok) throw new Error()
-      toast.success('Bank transfer verified')
-      fetchBankTransfers()
-      fetchRevenue()
-    } catch {
-      toast.error('Failed to verify transfer')
-    }
-  }
-
-  const handleExportVatCsv = () => {
-    if (!vatReport) return
-
-    const rows: string[][] = []
-    rows.push(['VAT Rate', 'Net Sales', 'VAT Amount', 'Gross Sales', 'Item Count'])
-
-    for (const [rate, data] of Object.entries(vatReport.vatBreakdown)) {
-      rows.push([
-        VAT_LABELS[parseFloat(rate)] || `${rate}%`,
-        data.netSales.toFixed(2),
-        data.vatAmount.toFixed(2),
-        data.grossSales.toFixed(2),
-        String(data.itemCount),
-      ])
-    }
-
-    rows.push([])
-    rows.push(['TOTALS', vatReport.totals.netSales.toFixed(2), vatReport.totals.vatAmount.toFixed(2), vatReport.totals.grossSales.toFixed(2), ''])
-
-    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `vat-report-${vatReport.period}-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   return (
-    <div>
-      {/* Page Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <PoundSterling className="h-6 w-6 text-[#16a34a]" />
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Finance & Ledger</h1>
-        </div>
-        <p className="text-gray-500">Revenue tracking, expense management, VAT reporting & bank transfer verification</p>
-      </div>
-
-      {/* ─── Revenue Widgets ──────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        {revenueLoading ? (
-          Array.from({ length: 5 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-5"><Skeleton className="h-20 w-full" /></CardContent></Card>
-          ))
-        ) : revenue ? (
-          <>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Sales Today</p>
-                    <p className="text-xl font-bold text-gray-900 mt-1">{formatPrice(revenue.grossSales.today)}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-                    <DollarSign className="h-5 w-5 text-green-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Sales This Week</p>
-                    <p className="text-xl font-bold text-gray-900 mt-1">{formatPrice(revenue.grossSales.week)}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-                    <TrendingUp className="h-5 w-5 text-green-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Sales This Month</p>
-                    <p className="text-xl font-bold text-gray-900 mt-1">{formatPrice(revenue.grossSales.month)}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-                    <TrendingUp className="h-5 w-5 text-green-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Avg Order Value</p>
-                    <p className="text-xl font-bold text-gray-900 mt-1">{formatPrice(revenue.aov)}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                    <ShoppingCart className="h-5 w-5 text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Completed Orders</p>
-                    <p className="text-xl font-bold text-gray-900 mt-1">{revenue.completedOrders}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center">
-                    <CheckCircle2 className="h-5 w-5 text-purple-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </>
-        ) : null}
-      </div>
-
-      {/* ─── Net Profit Calculator ────────────────────────────── */}
-      {revenue && (
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Calculator className="h-5 w-5 text-gray-600" />
-              Net Profit Calculator
-            </CardTitle>
-            <CardDescription>Revenue minus expenses minus Stripe fees</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {(['today', 'week', 'month'] as const).map((period) => {
-                const label = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month'
-                const profit = revenue.netProfit[period]
-                const sales = revenue.grossSales[period]
-                const exp = revenue.expenses[period]
-                const stripe = revenue.stripeFees[period]
-                const isPositive = profit >= 0
-
-                return (
-                  <div key={period} className="border rounded-lg p-4 space-y-3">
-                    <h4 className="font-medium text-gray-700">{label}</h4>
-                    <div className="space-y-1.5 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Gross Sales</span>
-                        <span className="font-medium">{formatPrice(sales)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Expenses</span>
-                        <span className="text-red-600">-{formatPrice(exp)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Stripe Fees (est.)</span>
-                        <span className="text-red-600">-{formatPrice(stripe)}</span>
-                      </div>
-                      <Separator />
-                      <div className="flex justify-between font-bold">
-                        <span>Net Profit</span>
-                        <span className={isPositive ? 'text-green-600' : 'text-red-600'}>
-                          {isPositive ? '+' : ''}{formatPrice(profit)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className={`flex items-center gap-1.5 text-xs font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                      {isPositive ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                      {isPositive ? 'Profitable' : 'Loss'}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* ─── Manual Expense Tracker ─────────────────────────── */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Receipt className="h-5 w-5 text-gray-600" />
-              Expense Tracker
-            </CardTitle>
-            <CardDescription>Add and manage business expenses</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Add Expense Form */}
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-              <h4 className="font-medium text-sm text-gray-700">Add New Expense</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Category</Label>
-                  <Select value={expCategory} onValueChange={setExpCategory}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EXPENSE_CATEGORIES.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Amount</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={expAmount}
-                    onChange={(e) => setExpAmount(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Description</Label>
-                  <Input
-                    placeholder="What was this for..."
-                    value={expDescription}
-                    onChange={(e) => setExpDescription(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Date</Label>
-                  <Input
-                    type="date"
-                    value={expDate}
-                    onChange={(e) => setExpDate(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                </div>
-              </div>
-              <Button
-                onClick={handleAddExpense}
-                disabled={expSubmitting}
-                className="w-full h-9 bg-[#16a34a] hover:bg-[#15803d] text-white text-sm"
-              >
-                {expSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
-                Add Expense
-              </Button>
-            </div>
-
-            {/* Expense List */}
-            <div className="space-y-2 max-h-96 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-              {expensesLoading ? (
-                Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)
-              ) : expenses.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-6">No expenses recorded yet</p>
-              ) : (
-                expenses.map((exp) => (
-                  <div key={exp.id} className="flex items-center justify-between border rounded-lg p-3 hover:bg-gray-50">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px] shrink-0">
-                          {exp.category}
-                        </Badge>
-                        <span className="text-sm font-medium truncate">{exp.description}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {new Date(exp.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 ml-2">
-                      <span className="font-medium text-sm text-red-600">{formatPrice(exp.amount)}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-gray-400 hover:text-red-600 shrink-0"
-                        onClick={() => handleDeleteExpense(exp.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ─── HMRC UK VAT Report ─────────────────────────────── */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Calculator className="h-5 w-5 text-gray-600" />
-                  HMRC UK VAT Report
-                </CardTitle>
-                <CardDescription>VAT breakdown by rate</CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Select value={vatPeriod} onValueChange={setVatPeriod}>
-                  <SelectTrigger className="w-28 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="week">This Week</SelectItem>
-                    <SelectItem value="month">This Month</SelectItem>
-                    <SelectItem value="quarter">This Quarter</SelectItem>
-                    <SelectItem value="year">This Year</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleExportVatCsv} disabled={!vatReport}>
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  CSV
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {vatLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-              </div>
-            ) : vatReport && Object.keys(vatReport.vatBreakdown).length > 0 ? (
-              <div className="space-y-3">
-                {/* Table Header */}
-                <div className="grid grid-cols-5 gap-2 text-xs font-medium text-gray-500 pb-2 border-b">
-                  <span>VAT Rate</span>
-                  <span className="text-right">Net Sales</span>
-                  <span className="text-right">VAT Amount</span>
-                  <span className="text-right">Gross Sales</span>
-                  <span className="text-right">Items</span>
-                </div>
-                {/* Rows */}
-                {Object.entries(vatReport.vatBreakdown).map(([rate, data]) => (
-                  <div key={rate} className="grid grid-cols-5 gap-2 text-sm py-2 border-b border-gray-100">
-                    <span className="font-medium">{VAT_LABELS[parseFloat(rate)] || `${rate}%`}</span>
-                    <span className="text-right">{formatPrice(data.netSales)}</span>
-                    <span className="text-right font-medium text-amber-700">{formatPrice(data.vatAmount)}</span>
-                    <span className="text-right">{formatPrice(data.grossSales)}</span>
-                    <span className="text-right text-gray-500">{data.itemCount}</span>
-                  </div>
-                ))}
-                {/* Totals */}
-                <div className="grid grid-cols-5 gap-2 text-sm font-bold pt-2 bg-gray-50 rounded px-2 py-3">
-                  <span>TOTAL</span>
-                  <span className="text-right">{formatPrice(vatReport.totals.netSales)}</span>
-                  <span className="text-right text-amber-700">{formatPrice(vatReport.totals.vatAmount)}</span>
-                  <span className="text-right">{formatPrice(vatReport.totals.grossSales)}</span>
-                  <span />
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <Receipt className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                <p className="text-sm">No VAT data for this period</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ─── Bank Transfer Verification Queue ─────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <AlertTriangle className="h-5 w-5 text-amber-600" />
-            Bank Transfer Verification Queue
-          </CardTitle>
-          <CardDescription>Orders paid by bank transfer awaiting verification</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {bankLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
-            </div>
-          ) : bankTransfers.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-400" />
-              <p className="text-sm">No pending bank transfers to verify</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {/* Desktop Header */}
-              <div className="hidden sm:grid grid-cols-5 gap-2 text-xs font-medium text-gray-500 pb-2 border-b">
-                <span>Order ID</span>
-                <span>Customer</span>
-                <span>Amount</span>
-                <span>Reference</span>
-                <span className="text-right">Action</span>
-              </div>
-              {bankTransfers.map((order) => (
-                <div key={order.id} className="grid grid-cols-1 sm:grid-cols-5 gap-2 sm:gap-2 items-center border rounded-lg p-3 hover:bg-gray-50">
-                  <span className="font-mono text-xs">#{order.id.substring(0, 8).toUpperCase()}</span>
-                  <span className="text-sm">{order.customer?.name || 'N/A'}</span>
-                  <span className="font-medium text-sm">{formatPrice(order.total)}</span>
-                  <span className="text-xs text-gray-500">{order.bankTransferRef || 'No ref'}</span>
-                  <div className="sm:text-right">
-                    <Button
-                      size="sm"
-                      className="h-8 text-xs bg-[#16a34a] hover:bg-[#15803d] text-white"
-                      onClick={() => handleVerifyBankTransfer(order.id)}
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                      Approve Payment
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+    <div className="flex flex-wrap gap-2">
+      <Button
+        onClick={handleGeneratePdf}
+        disabled={generatingPdf}
+        className="bg-[#16a34a] hover:bg-[#15803d] text-white"
+      >
+        {generatingPdf ? (
+          <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Generating…</>
+        ) : (
+          <><FileDown className="h-4 w-4 mr-1" /> Generate PDF Report</>
+        )}
+      </Button>
+      <Button
+        onClick={handleEmailReport}
+        disabled={sendingEmail}
+        variant="outline"
+        className="border-[#16a34a] text-[#16a34a] hover:bg-[#16a34a] hover:text-white"
+      >
+        {sendingEmail ? (
+          <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Sending…</>
+        ) : (
+          <><Mail className="h-4 w-4 mr-1" /> Email to Owner</>
+        )}
+      </Button>
     </div>
   )
 }

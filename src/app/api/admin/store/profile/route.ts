@@ -12,6 +12,7 @@ const EDITABLE_FIELDS = new Set([
   'longitude',
   'phone',
   'email',
+  'logoUrl',
 ])
 
 /**
@@ -48,6 +49,7 @@ export async function GET() {
         longitude: store.longitude,
         phone: store.phone,
         email: store.email,
+        logoUrl: store.logoUrl,
         isActive: store.isActive,
         isOpen: store.isOpen,
         baseDeliveryFee: store.baseDeliveryFee,
@@ -129,6 +131,10 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Email must be a string' }, { status: 400 })
       }
 
+      if (key === 'logoUrl' && value !== null && typeof value !== 'string') {
+        return NextResponse.json({ error: 'Logo URL must be a string' }, { status: 400 })
+      }
+
       updateData[key] = value
     }
 
@@ -153,6 +159,7 @@ export async function PUT(request: NextRequest) {
         longitude: updated.longitude,
         phone: updated.phone,
         email: updated.email,
+        logoUrl: updated.logoUrl,
       },
       message: 'Store profile updated successfully',
     })

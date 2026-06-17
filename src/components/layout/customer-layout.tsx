@@ -14,7 +14,7 @@ interface CustomerLayoutProps {
 
 export function CustomerLayout({ children, storeName, store }: CustomerLayoutProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col fm-gradient-bg">
       {/* Enhanced Navbar with search, delivery timer, cart widget */}
       <Navbar />
 

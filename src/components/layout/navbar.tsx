@@ -34,6 +34,7 @@ import { AuthModal } from '@/components/auth/auth-modal'
 import { PredictiveSearch } from '@/components/customer/predictive-search'
 import { useStoreInfo } from '@/lib/store-info'
 import { useDeliveryLocation, geocodePostcode, requestBrowserLocation } from '@/lib/delivery-location'
+import { StoreLogo } from '@/components/layout/store-logo'
 import { toast } from 'sonner'
 
 const UK_POSTCODE_REGEX = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i
@@ -258,7 +259,7 @@ export function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+      <header className="sticky top-0 z-50 fm-glass shadow-sm">
         {/* Top bar: Postcode + Delivery Timer + Auth + Cart */}
         <div className="bg-gray-50 border-b border-gray-100">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -430,8 +431,7 @@ export function Navbar() {
 
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0">
-              <Store className="h-6 w-6 text-[#16a34a]" />
-              <span className="font-bold text-lg text-gray-900 hidden sm:inline">{storeName}</span>
+              <StoreLogo size={32} showName />
             </Link>
 
             {/* Delivery Timer (mobile) */}

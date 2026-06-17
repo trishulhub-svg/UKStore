@@ -2,9 +2,10 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { Leaf, ShoppingBag, ShoppingCart, Truck, Instagram, Linkedin, MapPin, Phone, Mail } from 'lucide-react'
+import { ShoppingBag, ShoppingCart, Truck, Instagram, Linkedin, MapPin, Phone, Mail } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { useStoreInfo } from '@/lib/store-info'
+import { StoreLogo } from '@/components/layout/store-logo'
 
 interface FooterCategory {
   id: string
@@ -165,7 +166,7 @@ export function Footer() {
           {/* Column 1: Brand */}
           <div className="space-y-4">
             <div className="flex items-center gap-1.5">
-              <Leaf className="size-5 text-[#16a34a]" />
+              <StoreLogo size={28} />
               <span className="text-lg font-bold text-[#16a34a]">{storeName}</span>
             </div>
             <p className="text-sm text-gray-400 leading-relaxed">

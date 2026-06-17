@@ -11,6 +11,7 @@ export interface StoreInfo {
   longitude: number
   phone: string | null
   email: string | null
+  logoUrl: string | null
   base_delivery_fee: number
   per_km_charge: number
   free_delivery_threshold: number

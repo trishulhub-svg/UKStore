@@ -3,9 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Store, Settings, LayoutDashboard, ChevronRight, User as UserIcon, LogOut, ArrowLeft,
+  Settings, LayoutDashboard, ChevronRight, User as UserIcon, LogOut, ArrowLeft,
   Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3, Menu, PoundSterling,
-  Clock, CalendarDays, Trash2, Image, UserCog,
+  CalendarDays, Trash2, Image, UserCog,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { Profile } from '@/types'
 import { useStoreInfo } from '@/lib/store-info'
+import { StoreLogo } from '@/components/layout/store-logo'
 
 interface AdminShellProps {
   children: React.ReactNode
@@ -31,7 +32,6 @@ const navItems = [
   { href: '/admin/drivers', label: 'Drivers', icon: Truck },
   { href: '/admin/employees', label: 'Employees', icon: UserCog },
   { href: '/admin/banners', label: 'Banners', icon: Image },
-  { href: '/admin/attendance', label: 'Attendance', icon: Clock },
   { href: '/admin/shifts', label: 'Shifts', icon: CalendarDays },
   { href: '/admin/finance', label: 'Finance', icon: PoundSterling },
   { href: '/admin/wastage', label: 'Wastage', icon: Trash2 },
@@ -67,12 +67,14 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
       <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-gray-200">
         {/* Logo */}
         <div className="flex items-center gap-2 px-6 h-16 border-b border-gray-200">
-          <Store className="h-6 w-6 text-[#16a34a]" />
+          <StoreLogo size={32} />
           <div>
             <p className="font-bold text-gray-900 text-sm">{storeName} Admin</p>
             <p className="text-xs text-gray-500">Store Management</p>
           </div>
         </div>
+        {/* Fresh gradient strip under the logo — brand presence */}
+        <div className="fm-sidebar-strip" aria-hidden="true" />
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-4 space-y-1">
@@ -136,7 +138,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
         <header className="lg:hidden sticky top-0 z-40 bg-white border-b border-gray-200">
           <div className="flex items-center justify-between px-4 h-14">
             <div className="flex items-center gap-2">
-              <Store className="h-5 w-5 text-[#16a34a]" />
+              <StoreLogo size={28} />
               <span className="font-bold text-sm text-gray-900">Admin</span>
               <Separator orientation="vertical" className="h-5 mx-1" />
               <span className="text-sm text-gray-600">{getPageTitle(pathname)}</span>
@@ -150,7 +152,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
               <SheetContent side="left" className="w-[280px] sm:max-w-[280px] p-0 flex flex-col">
                 <SheetHeader className="px-6 h-16 flex flex-row items-center gap-2 border-b border-gray-200 p-0 mx-0 mb-0">
                   <div className="flex items-center gap-2 px-6 w-full h-16">
-                    <Store className="h-6 w-6 text-[#16a34a]" />
+                    <StoreLogo size={32} />
                     <div>
                       <SheetTitle className="font-bold text-gray-900 text-sm leading-tight">{storeName} Admin</SheetTitle>
                       <SheetDescription className="text-xs text-gray-500 leading-tight">Store Management</SheetDescription>

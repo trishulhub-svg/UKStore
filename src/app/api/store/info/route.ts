@@ -25,6 +25,7 @@ export async function GET() {
       longitude: store.longitude,
       phone: store.phone,
       email: store.email,
+      logoUrl: store.logoUrl,
       base_delivery_fee: store.baseDeliveryFee,
       per_km_charge: store.perKmCharge,
       free_delivery_threshold: store.freeDeliveryThreshold,

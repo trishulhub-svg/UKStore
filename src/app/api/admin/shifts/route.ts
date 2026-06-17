@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
       date: s.date.toISOString(),
       startTime: s.startTime,
       endTime: s.endTime,
+      manualHours: s.manualHours,
       role: s.role,
       createdAt: s.createdAt.toISOString(),
     }))
@@ -92,11 +93,21 @@ export async function POST(request: NextRequest) {
   try {
     const prisma = await getPrisma()
     const body = await request.json()
-    const { userId, date, startTime, endTime, shiftRole } = body
+    const { userId, date, startTime, endTime, shiftRole, manualHours } = body
 
-    if (!userId || !date || !startTime || !endTime || !shiftRole) {
+    if (!userId || !date || !shiftRole) {
       return NextResponse.json(
-        { error: 'Missing required fields: userId, date, startTime, endTime, shiftRole' },
+        { error: 'Missing required fields: userId, date, shiftRole' },
+        { status: 400 }
+      )
+    }
+
+    // Either (startTime + endTime) OR manualHours must be provided
+    const hasTimeRange = startTime && endTime
+    const hasManualHours = manualHours !== undefined && manualHours !== null && manualHours !== ''
+    if (!hasTimeRange && !hasManualHours) {
+      return NextResponse.json(
+        { error: 'Provide either start/end time or manual hours' },
         { status: 400 }
       )
     }
@@ -110,34 +121,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Check for overlapping shifts
     const shiftDate = new Date(date)
     shiftDate.setHours(0, 0, 0, 0)
     const nextDay = new Date(shiftDate)
     nextDay.setDate(nextDay.getDate() + 1)
 
-    const overlapping = await prisma.shift.findFirst({
-      where: {
-        userId,
-        date: { gte: shiftDate, lt: nextDay },
-        startTime: { lt: endTime },
-        endTime: { gt: startTime },
-      },
-    })
+    // Only check overlap when we have actual start/end times (manual-hours shifts skip this)
+    if (hasTimeRange) {
+      const overlapping = await prisma.shift.findFirst({
+        where: {
+          userId,
+          date: { gte: shiftDate, lt: nextDay },
+          startTime: { lt: endTime },
+          endTime: { gt: startTime },
+        },
+      })
 
-    if (overlapping) {
-      return NextResponse.json(
-        { error: 'This employee already has an overlapping shift on this day' },
-        { status: 409 }
-      )
+      if (overlapping) {
+        return NextResponse.json(
+          { error: 'This employee already has an overlapping shift on this day' },
+          { status: 409 }
+        )
+      }
     }
+
+    // For manual-hours shifts, store the hours value and use a sentinel start/end
+    // so the existing calendar grid (which keys on startTime/endTime) still groups them.
+    const finalStartTime = hasTimeRange ? startTime : '00:00'
+    const finalEndTime = hasTimeRange ? endTime : '00:00'
+    const finalManualHours = hasManualHours ? parseFloat(manualHours) : null
 
     const shift = await prisma.shift.create({
       data: {
         userId,
         date: shiftDate,
-        startTime,
-        endTime,
+        startTime: finalStartTime,
+        endTime: finalEndTime,
+        manualHours: finalManualHours,
         role: shiftRole,
       },
       include: {
@@ -161,6 +181,7 @@ export async function POST(request: NextRequest) {
         date: shift.date.toISOString(),
         startTime: shift.startTime,
         endTime: shift.endTime,
+        manualHours: shift.manualHours,
         role: shift.role,
         createdAt: shift.createdAt.toISOString(),
       },

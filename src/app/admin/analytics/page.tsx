@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Package, ShoppingBag, Users, DollarSign, Truck, TrendingUp } from 'lucide-react'
+import { Package, ShoppingBag, Users, DollarSign, Truck, TrendingUp, Trash2 } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -29,10 +29,15 @@ interface AnalyticsData {
     totalRevenue: number
     avgDeliveryMinutes: number
     deliveredCount: number
+    totalWastageCost?: number
+    wastageEntryCount?: number
   }
   revenueChart: Array<{ date: string; revenue: number }>
   statusPieChart: Array<{ status: string; count: number }>
   topProductsChart: Array<{ name: string; quantity: number; revenue: number }>
+  wastageReasonChart?: Array<{ reason: string; count: number; cost: number }>
+  wastageTrendChart?: Array<{ date: string; cost: number }>
+  wastageTopProductsChart?: Array<{ name: string; quantity: number; cost: number }>
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -42,6 +47,20 @@ const STATUS_COLORS: Record<string, string> = {
   out_for_delivery: '#f97316',
   delivered: '#16a34a',
   cancelled: '#ef4444',
+}
+
+const WASTAGE_REASON_COLORS: Record<string, string> = {
+  expired: '#dc2626',
+  damaged: '#ea580c',
+  spoiled: '#ca8a04',
+  other: '#64748b',
+}
+
+const WASTAGE_REASON_LABELS: Record<string, string> = {
+  expired: 'Expired',
+  damaged: 'Damaged',
+  spoiled: 'Spoiled',
+  other: 'Other',
 }
 
 export default function AdminAnalyticsPage() {
@@ -92,7 +111,7 @@ export default function AdminAnalyticsPage() {
     )
   }
 
-  const { summary, revenueChart, statusPieChart, topProductsChart } = data
+  const { summary, revenueChart, statusPieChart, topProductsChart, wastageReasonChart = [], wastageTrendChart = [], wastageTopProductsChart = [] } = data
 
   return (
     <div>
@@ -253,7 +272,7 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {/* Top Products Bar Chart */}
-      <Card>
+      <Card className="mb-6">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <ShoppingBag className="h-5 w-5 text-amber-600" />
@@ -282,6 +301,186 @@ export default function AdminAnalyticsPage() {
                 <Legend wrapperStyle={{ fontSize: isMobile ? 10 : 12 }} />
                 <Bar dataKey="quantity" fill="#16a34a" name="Quantity" radius={[0, 4, 4, 0]} />
                 <Bar dataKey="revenue" fill="#3b82f6" name="Revenue (£)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── Wastage Analytics Section ────────────────────────────────── */}
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+          <Trash2 className="h-5 w-5 text-red-600" />
+          Wastage Analytics
+        </h2>
+        <p className="text-gray-500 text-sm mt-1">
+          Track product losses by reason, trend, and top contributors
+        </p>
+      </div>
+
+      {/* Wastage summary card */}
+      <Card className="mb-6">
+        <CardContent className="p-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div>
+              <p className="text-sm text-gray-500">Total Wastage Cost</p>
+              <p className="text-xl sm:text-2xl font-bold text-red-600 mt-1">
+                {formatPrice(summary.totalWastageCost ?? 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Wastage Entries</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
+                {summary.wastageEntryCount ?? 0}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Wastage / Revenue</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
+                {summary.totalRevenue > 0
+                  ? `${(((summary.totalWastageCost ?? 0) / summary.totalRevenue) * 100).toFixed(1)}%`
+                  : '—'}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Wastage charts grid */}
+      <div className="grid gap-6 lg:grid-cols-2 mb-6">
+        {/* Wastage by Reason */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-600" />
+              Wastage by Reason
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-hidden">
+            {wastageReasonChart.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 text-sm">No wastage recorded yet</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={isMobile ? 220 : 300}>
+                <PieChart>
+                  <Pie
+                    data={wastageReasonChart}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={isMobile ? 40 : 60}
+                    outerRadius={isMobile ? 70 : 100}
+                    paddingAngle={3}
+                    dataKey="cost"
+                    nameKey="reason"
+                    label={({ reason, cost }) => {
+                      const label = WASTAGE_REASON_LABELS[reason] || reason
+                      return isMobile ? label.substring(0, 7) : `${label}: ${formatPrice(cost)}`
+                    }}
+                  >
+                    {wastageReasonChart.map((entry) => (
+                      <Cell
+                        key={entry.reason}
+                        fill={WASTAGE_REASON_COLORS[entry.reason] || '#94a3b8'}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number, name: string) => [
+                      formatPrice(value),
+                      WASTAGE_REASON_LABELS[name] || name,
+                    ]}
+                  />
+                  <Legend
+                    formatter={(value: string) => WASTAGE_REASON_LABELS[value] || value}
+                    wrapperStyle={{ fontSize: isMobile ? 10 : 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Wastage Trend */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-red-600" />
+              Wastage Cost (Last 30 Days)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-hidden">
+            {wastageTrendChart.length === 0 || wastageTrendChart.every((d) => d.cost === 0) ? (
+              <div className="text-center py-8 text-gray-500 text-sm">No wastage in the last 30 days</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={isMobile ? 220 : 300}>
+                <LineChart data={wastageTrendChart}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: isMobile ? 9 : 11 }}
+                    tickFormatter={(v: string) => {
+                      const d = new Date(v)
+                      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                    }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: isMobile ? 9 : 11 }}
+                    width={isMobile ? 40 : 60}
+                    tickFormatter={(v: number) => `£${v}`}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => [formatPrice(value), 'Wastage']}
+                    labelFormatter={(label: string) => new Date(label).toLocaleDateString('en-GB', {
+                      weekday: 'short', day: 'numeric', month: 'short',
+                    })}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cost"
+                    stroke="#dc2626"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Top Wastage Products */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Trash2 className="h-5 w-5 text-red-600" />
+            Top Products by Wastage Cost
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-hidden">
+          {wastageTopProductsChart.length === 0 ? (
+            <div className="text-center py-8 text-gray-500 text-sm">No wastage data yet</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={isMobile ? 260 : 350}>
+              <BarChart data={wastageTopProductsChart} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: isMobile ? 9 : 11 }}
+                  tickFormatter={(v: number) => `£${v}`}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: isMobile ? 9 : 11 }}
+                  width={isMobile ? 70 : 120}
+                  tickFormatter={(v: string) => {
+                    const maxLen = isMobile ? 8 : 15
+                    return v.length > maxLen ? v.substring(0, maxLen) + '…' : v
+                  }}
+                />
+                <Tooltip formatter={(value: number, name: string) => [name === 'cost' ? formatPrice(value) : value, name === 'cost' ? 'Cost' : name]} />
+                <Legend formatter={(value: string) => value === 'cost' ? 'Cost (£)' : value} wrapperStyle={{ fontSize: isMobile ? 10 : 12 }} />
+                <Bar dataKey="cost" fill="#dc2626" name="cost" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}

@@ -48,6 +48,7 @@ interface ShiftData {
   date: string
   startTime: string
   endTime: string
+  manualHours: number | null
   role: string
   createdAt: string
 }
@@ -56,6 +57,7 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const SHIFTS = [
   { key: 'morning', label: 'Morning', startTime: '06:00', endTime: '14:00' },
   { key: 'evening', label: 'Evening', startTime: '14:00', endTime: '22:00' },
+  { key: 'custom', label: 'Custom hours', startTime: '', endTime: '' },
 ]
 
 const roleColors: Record<string, string> = {
@@ -111,9 +113,12 @@ export function ShiftsClient() {
 
   // New shift form
   const [selectedDate, setSelectedDate] = useState('')
-  const [selectedShift, setSelectedShift] = useState<'morning' | 'evening'>('morning')
+  const [selectedShift, setSelectedShift] = useState<'morning' | 'evening' | 'custom'>('morning')
   const [selectedEmployee, setSelectedEmployee] = useState('')
   const [selectedRole, setSelectedRole] = useState('DRIVER')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
+  const [manualHours, setManualHours] = useState('')
   const [creating, setCreating] = useState(false)
 
   const weekDates = getWeekDates(weekOffset)
@@ -151,17 +156,33 @@ export function ShiftsClient() {
 
     setCreating(true)
     try {
-      const shiftDef = SHIFTS.find((s) => s.key === selectedShift)!
+      // Resolve the payload based on which shift mode is selected
+      const payload: any = {
+        userId: selectedEmployee,
+        date: selectedDate,
+        shiftRole: selectedRole,
+      }
+
+      if (selectedShift === 'morning' || selectedShift === 'evening') {
+        const shiftDef = SHIFTS.find((s) => s.key === selectedShift)!
+        payload.startTime = shiftDef.startTime
+        payload.endTime = shiftDef.endTime
+      } else if (selectedShift === 'custom') {
+        // For custom: prefer manualHours if provided, else require start+end
+        if (manualHours) {
+          payload.manualHours = manualHours
+        } else if (customStart && customEnd) {
+          payload.startTime = customStart
+          payload.endTime = customEnd
+        } else {
+          throw new Error('Provide either manual hours or start/end times')
+        }
+      }
+
       const res = await fetch('/api/admin/shifts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: selectedEmployee,
-          date: selectedDate,
-          startTime: shiftDef.startTime,
-          endTime: shiftDef.endTime,
-          shiftRole: selectedRole,
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (res.ok) {
@@ -169,6 +190,9 @@ export function ShiftsClient() {
         setSelectedDate('')
         setSelectedEmployee('')
         setSelectedShift('morning')
+        setCustomStart('')
+        setCustomEnd('')
+        setManualHours('')
         fetchData()
       } else {
         const data = await res.json()
@@ -204,13 +228,20 @@ export function ShiftsClient() {
   }
 
   const isShiftTimeMatch = (shift: ShiftData, shiftKey: string): boolean => {
+    // Manual-hours shifts (manualHours != null) are bucketed into the "custom" row
+    if (shift.manualHours !== null && shift.manualHours !== undefined) {
+      return shiftKey === 'custom'
+    }
     const def = SHIFTS.find((s) => s.key === shiftKey)!
+    if (!def.startTime) return false // the 'custom' template has no preset times
     return shift.startTime === def.startTime && shift.endTime === def.endTime
   }
 
   const openAddDialog = (date?: string, shiftKey?: string) => {
     if (date) setSelectedDate(date)
-    if (shiftKey) setSelectedShift(shiftKey as 'morning' | 'evening')
+    if (shiftKey && (shiftKey === 'morning' || shiftKey === 'evening' || shiftKey === 'custom')) {
+      setSelectedShift(shiftKey)
+    }
     setDialogOpen(true)
   }
 
@@ -293,19 +324,69 @@ export function ShiftsClient() {
                 </div>
                 <div>
                   <Label>Shift</Label>
-                  <Select value={selectedShift} onValueChange={(v) => setSelectedShift(v as 'morning' | 'evening')}>
+                  <Select value={selectedShift} onValueChange={(v) => setSelectedShift(v as 'morning' | 'evening' | 'custom')}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {SHIFTS.map((s) => (
-                        <SelectItem key={s.key} value={s.key}>
-                          {s.label} ({s.startTime} - {s.endTime})
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="morning">Morning (06:00 - 14:00)</SelectItem>
+                      <SelectItem value="evening">Evening (14:00 - 22:00)</SelectItem>
+                      <SelectItem value="custom">Custom hours…</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Custom shift fields — shown only when "Custom hours…" is selected */}
+                {selectedShift === 'custom' && (
+                  <div className="space-y-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs text-gray-600">
+                      Enter either a total hours figure (e.g. 4.5 for a 4.5-hour shift) <em>or</em> specific start/end times.
+                    </p>
+                    <div>
+                      <Label>Total Hours (manual)</Label>
+                      <Input
+                        type="number"
+                        step="0.25"
+                        min="0"
+                        max="24"
+                        value={manualHours}
+                        onChange={(e) => setManualHours(e.target.value)}
+                        placeholder="e.g., 4.5"
+                        className="mt-1"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        Use this for shifts where exact start/end don't matter (e.g., salaried or per-task work).
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span>OR</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Start Time</Label>
+                        <Input
+                          type="time"
+                          value={customStart}
+                          onChange={(e) => setCustomStart(e.target.value)}
+                          className="mt-1"
+                          disabled={!!manualHours}
+                        />
+                      </div>
+                      <div>
+                        <Label>End Time</Label>
+                        <Input
+                          type="time"
+                          value={customEnd}
+                          onChange={(e) => setCustomEnd(e.target.value)}
+                          className="mt-1"
+                          disabled={!!manualHours}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <Label>Employee</Label>
                   <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
@@ -389,7 +470,11 @@ export function ShiftsClient() {
               <div key={shiftDef.key} className="grid grid-cols-8 gap-1 mb-1">
                 <div className="p-2 flex flex-col justify-center">
                   <span className="text-xs font-medium text-gray-700">{shiftDef.label}</span>
-                  <span className="text-[10px] text-gray-400">{shiftDef.startTime}-{shiftDef.endTime}</span>
+                  <span className="text-[10px] text-gray-400">
+                    {shiftDef.startTime && shiftDef.endTime
+                      ? `${shiftDef.startTime}-${shiftDef.endTime}`
+                      : 'manual hrs'}
+                  </span>
                 </div>
                 {weekDates.map((date, i) => {
                   const cellShifts = getShiftsForCell(date, shiftDef.key)
@@ -415,10 +500,20 @@ export function ShiftsClient() {
                           className={`text-[10px] leading-tight rounded px-1.5 py-1 mb-0.5 border ${
                             roleColors[s.role] || 'bg-gray-100 border-gray-200'
                           } flex items-center justify-between group`}
+                          title={
+                            s.manualHours !== null && s.manualHours !== undefined
+                              ? `${s.userName} — ${s.manualHours}h (manual)`
+                              : `${s.userName} — ${s.startTime}-${s.endTime}`
+                          }
                         >
                           <div className="flex items-center gap-1 min-w-0 truncate">
                             <User className="h-2.5 w-2.5 shrink-0" />
                             <span className="truncate font-medium">{s.userName}</span>
+                            {s.manualHours !== null && s.manualHours !== undefined && (
+                              <span className="ml-0.5 text-[9px] font-semibold text-gray-600">
+                                {s.manualHours}h
+                              </span>
+                            )}
                           </div>
                           <button
                             onClick={(e) => {
@@ -458,13 +553,24 @@ export function ShiftsClient() {
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {Object.entries(roleDotColors).map(([role, color]) => {
-              const count = shifts.filter((s) => s.role === role).length
+              const roleShifts = shifts.filter((s) => s.role === role)
+              const count = roleShifts.length
+              // Sum hours: prefer manualHours when set, else compute from start/end
+              const totalHours = roleShifts.reduce((sum, s) => {
+                if (s.manualHours !== null && s.manualHours !== undefined) return sum + s.manualHours
+                const [sh, sm] = s.startTime.split(':').map(Number)
+                const [eh, em] = s.endTime.split(':').map(Number)
+                if (isNaN(sh) || isNaN(eh)) return sum
+                return sum + ((eh * 60 + em) - (sh * 60 + sm)) / 60
+              }, 0)
               return (
                 <div key={role} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
                   <div className={`w-3 h-3 rounded-full ${color}`} />
                   <div>
                     <p className="text-lg font-bold text-gray-900">{count}</p>
-                    <p className="text-[10px] text-gray-500">{role.charAt(0) + role.slice(1).toLowerCase()} shifts</p>
+                    <p className="text-[10px] text-gray-500">
+                      {role.charAt(0) + role.slice(1).toLowerCase()} shifts · {totalHours.toFixed(1)}h
+                    </p>
                   </div>
                 </div>
               )

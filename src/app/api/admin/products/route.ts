@@ -83,6 +83,8 @@ export async function POST(request: NextRequest) {
         stockQuantity: parseInt(body.stockQuantity || '0'),
         isFeatured: body.isFeatured || false,
         sortOrder: parseInt(body.sortOrder || '0'),
+        expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
+        bestBeforeDate: body.bestBeforeDate ? new Date(body.bestBeforeDate) : null,
       },
       include: { category: { select: { id: true, name: true } } },
     })

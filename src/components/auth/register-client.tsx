@@ -15,6 +15,8 @@ import { useStoreInfo } from '@/lib/store-info'
 
 export function RegisterClient() {
   const router = useRouter()
+  const { store } = useStoreInfo()
+  const storeName = store?.name || 'Fresh Mart'
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -112,7 +114,7 @@ export function RegisterClient() {
         <CardHeader className="text-center">
           <Link href="/" className="flex items-center justify-center gap-2 mb-4 hover:opacity-80 transition-opacity">
             <Store className="h-7 w-7 text-[#16a34a]" />
-            <span className="font-bold text-xl text-gray-900">{useStoreInfo().store?.name || 'Fresh Mart'}</span>
+            <span className="font-bold text-xl text-gray-900">{storeName}</span>
           </Link>
           <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
           <CardDescription>Register to start ordering fresh groceries</CardDescription>

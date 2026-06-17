@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { MapPin, Phone, Mail, Building2, Save, Loader2 } from 'lucide-react'
+import { MapPin, Phone, Mail, Building2, Save, Loader2, ImagePlus, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { validateImageFile, fileToDataUrl } from '@/lib/upload'
 
 interface StoreProfile {
   name: string
@@ -15,6 +16,7 @@ interface StoreProfile {
   longitude: number | null
   phone: string | null
   email: string | null
+  logoUrl: string | null
 }
 
 export function StoreProfileEditor() {
@@ -25,9 +27,11 @@ export function StoreProfileEditor() {
     longitude: null,
     phone: '',
     email: '',
+    logoUrl: null,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
 
   useEffect(() => {
     fetchProfile()
@@ -46,6 +50,7 @@ export function StoreProfileEditor() {
             longitude: data.store.longitude ?? null,
             phone: data.store.phone || '',
             email: data.store.email || '',
+            logoUrl: data.store.logoUrl || null,
           })
         }
       }
@@ -74,6 +79,7 @@ export function StoreProfileEditor() {
           longitude: profile.longitude,
           phone: profile.phone?.trim() || null,
           email: profile.email?.trim() || null,
+          logoUrl: profile.logoUrl,
         }),
       })
 
@@ -81,12 +87,15 @@ export function StoreProfileEditor() {
 
       if (res.ok && data.success) {
         toast.success('Store profile updated successfully')
-        // Refresh the store info context so navbar/footer update immediately
+        // Refresh the store info context so navbar/footer/favicon update immediately.
+        // Trigger a full page refresh so the dynamic favicon (served by /icon route) reloads too.
         try {
-          await fetch('/api/store/info')
+          await fetch('/api/store/info', { cache: 'no-store' })
         } catch {
           // Non-critical
         }
+        // Small delay so the new favicon has time to be regenerated
+        setTimeout(() => window.location.reload(), 800)
       } else {
         toast.error(data.error || 'Failed to update store profile')
       }
@@ -211,6 +220,80 @@ export function StoreProfileEditor() {
             placeholder="e.g., hello@yourstore.co.uk"
             className="max-w-sm"
           />
+        </div>
+
+        {/* Store Logo */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <ImagePlus className="h-4 w-4 text-gray-400" />
+            Store Logo
+          </Label>
+          <p className="text-xs text-gray-500">
+            Upload your store's logo. It will appear in the navbar, footer, admin sidebar, driver/picker apps, and as the browser favicon.
+            Recommended: square PNG or WebP, max 2MB.
+          </p>
+          <div className="flex items-start gap-4 mt-2">
+            {/* Preview */}
+            <div className="w-24 h-24 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center border border-gray-200 flex-shrink-0">
+              {profile.logoUrl ? (
+                <img
+                  src={profile.logoUrl}
+                  alt="Store logo preview"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="text-gray-300 text-xs text-center px-2">No logo<br />uploaded</div>
+              )}
+            </div>
+            <div className="flex-1 space-y-2">
+              <label htmlFor="logo-upload" className="cursor-pointer">
+                <div className="inline-flex items-center gap-2 text-sm text-[#16a34a] hover:text-[#15803d] font-medium px-3 py-2 border border-[#16a34a]/30 rounded-md hover:bg-[#16a34a]/5 transition-colors">
+                  <ImagePlus className="h-4 w-4" />
+                  {profile.logoUrl ? 'Change Logo' : 'Upload Logo'}
+                </div>
+                <input
+                  type="file"
+                  id="logo-upload"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const err = validateImageFile(file, 2)
+                    if (err) { toast.error(err); return }
+                    setUploadingLogo(true)
+                    try {
+                      const dataUrl = await fileToDataUrl(file)
+                      setProfile({ ...profile, logoUrl: dataUrl })
+                      toast.success('Logo ready — click Save Changes to apply')
+                    } catch {
+                      toast.error('Failed to process logo')
+                    } finally {
+                      setUploadingLogo(false)
+                    }
+                  }}
+                />
+              </label>
+              {uploadingLogo && (
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Processing...
+                </p>
+              )}
+              {profile.logoUrl && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 text-xs"
+                  onClick={() => setProfile({ ...profile, logoUrl: null })}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Remove Logo
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Save Button */}

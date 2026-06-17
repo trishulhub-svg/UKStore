@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Trash2, Search, Plus, TrendingDown, Calendar, Filter } from 'lucide-react'
+import { Trash2, Search, Plus, TrendingDown, Calendar, Filter, AlertTriangle, RefreshCw, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -88,6 +88,15 @@ export function WastageClient() {
   const [saving, setSaving] = useState(false)
   const [productSearch, setProductSearch] = useState('')
 
+  // Auto-expire scan state
+  const [autoExpireRunning, setAutoExpireRunning] = useState(false)
+  const [autoExpirePreview, setAutoExpirePreview] = useState<{
+    expired: number
+    movedToWastage: number
+    alreadyLogged: number
+    details: Array<{ productName: string; quantity: number; expiryDate: string }>
+  } | null>(null)
+
   const fetchWastage = useCallback(async () => {
     try {
       const params = new URLSearchParams()
@@ -119,11 +128,94 @@ export function WastageClient() {
 
   useEffect(() => {
     fetchProducts()
+    // Run an auto-expire dry-run preview on mount so the admin sees how many
+    // products are pending auto-expiry. Doesn't write anything.
+    fetch('/api/admin/wastage/auto-expire')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data && data.expired > 0) {
+          setAutoExpirePreview({
+            expired: data.expired,
+            movedToWastage: data.movedToWastage,
+            alreadyLogged: data.alreadyLogged,
+            details: (data.details || []).map((d: any) => ({
+              productName: d.productName,
+              quantity: d.quantity,
+              expiryDate: d.expiryDate,
+            })),
+          })
+        }
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
     fetchWastage()
   }, [fetchWastage])
+
+  const handleRunAutoExpire = async () => {
+    setAutoExpireRunning(true)
+    try {
+      const res = await fetch('/api/admin/wastage/auto-expire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: false }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      const moved = data.movedToWastage || 0
+      if (moved > 0) {
+        toast.success(`${moved} expired product${moved === 1 ? '' : 's'} moved to wastage`)
+      } else {
+        toast.info('No new expired products to log')
+      }
+      setAutoExpirePreview(null)
+      fetchWastage()
+    } catch {
+      toast.error('Failed to run auto-expire scan')
+    } finally {
+      setAutoExpireRunning(false)
+    }
+  }
+
+  const handleExportPdf = () => {
+    // Lazy-load jsPDF so the page doesn't pay the cost until the user clicks
+    import('jspdf').then(({ jsPDF }) => {
+      import('jspdf-autotable').then(({ default: autoTable }) => {
+        const doc = new jsPDF()
+        doc.setFontSize(16)
+        doc.text('Wastage & Expiry Log', 14, 18)
+        doc.setFontSize(10)
+        doc.setTextColor(100)
+        doc.text(`Generated: ${new Date().toLocaleString('en-GB')}`, 14, 26)
+        doc.text(`Total entries: ${logs.length}`, 14, 32)
+
+        autoTable(doc, {
+          startY: 40,
+          head: [['Date', 'Product', 'Category', 'Qty', 'Reason', 'Cost']],
+          body: logs.map((l) => [
+            new Date(l.createdAt).toLocaleDateString('en-GB'),
+            l.productName,
+            l.category || '—',
+            String(l.quantity),
+            reasonLabels[l.reason] || l.reason,
+            formatPrice(l.productPrice * l.quantity),
+          ]),
+          styles: { fontSize: 9 },
+          headStyles: { fillColor: [220, 38, 38] },
+        })
+
+        const totalCost = logs.reduce((sum, l) => sum + l.productPrice * l.quantity, 0)
+        const finalY = (doc as any).lastAutoTable?.finalY || 40
+        doc.setFontSize(11)
+        doc.setTextColor(0)
+        doc.text(`Total wastage cost: ${formatPrice(totalCost)}`, 14, finalY + 10)
+
+        doc.save(`wastage-log-${new Date().toISOString().split('T')[0]}.pdf`)
+        toast.success('PDF exported')
+      })
+    })
+  }
 
   const handleCreateLog = async () => {
     if (!selectedProductId || !logQuantity || !logReason) {
@@ -185,10 +277,61 @@ export function WastageClient() {
           <h1 className="text-2xl font-bold text-gray-900">Wastage &amp; Expiry Log</h1>
           <p className="text-gray-500 text-sm">Track expired, damaged, and spoiled products</p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} className="bg-[#16a34a] hover:bg-[#15803d]">
-          <Plus className="h-4 w-4 mr-1" /> Log Wastage
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExportPdf}
+            disabled={logs.length === 0}
+            className="border-gray-300"
+          >
+            <FileDown className="h-4 w-4 mr-1" /> Export PDF
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleRunAutoExpire}
+            disabled={autoExpireRunning}
+            className="border-amber-400 text-amber-700 hover:bg-amber-50"
+          >
+            {autoExpireRunning ? (
+              <><RefreshCw className="h-4 w-4 mr-1 animate-spin" /> Scanning…</>
+            ) : (
+              <><AlertTriangle className="h-4 w-4 mr-1" /> Auto-expire Scan</>
+            )}
+          </Button>
+          <Button onClick={() => setDialogOpen(true)} className="bg-[#16a34a] hover:bg-[#15803d]">
+            <Plus className="h-4 w-4 mr-1" /> Log Wastage
+          </Button>
+        </div>
       </div>
+
+      {/* Auto-expire preview banner */}
+      {autoExpirePreview && autoExpirePreview.expired > 0 && (
+        <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-900">
+                {autoExpirePreview.expired} product{autoExpirePreview.expired === 1 ? '' : 's'} {autoExpirePreview.expired === 1 ? 'has' : 'have'} passed its expiry date
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Click <strong>Auto-expire Scan</strong> to move them into this wastage log automatically and zero out their stock.
+              </p>
+              {autoExpirePreview.details.length > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-amber-800">
+                  {autoExpirePreview.details.slice(0, 5).map((d, i) => (
+                    <li key={i}>
+                      • {d.productName} — {d.quantity} in stock, expired {new Date(d.expiryDate).toLocaleDateString('en-GB')}
+                    </li>
+                  ))}
+                  {autoExpirePreview.details.length > 5 && (
+                    <li className="text-amber-600 italic">+ {autoExpirePreview.details.length - 5} more…</li>
+                  )}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

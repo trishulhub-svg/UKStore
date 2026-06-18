@@ -1,0 +1,783 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { Users, Edit2, Loader2, AlertTriangle, Package, Truck, UserPlus, Copy, Check, Mail, KeyRound, AlertCircle } from 'lucide-react'
+     5→import { Button } from '@/components/ui/button'
+     6→import { Badge } from '@/components/ui/badge'
+     7→import { Card, CardContent } from '@/components/ui/card'
+     8→import { Input } from '@/components/ui/input'
+     9→import { Label } from '@/components/ui/label'
+    10→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    11→import {
+    12→  Dialog,
+    13→  DialogContent,
+    14→  DialogHeader,
+    15→  DialogTitle,
+    16→} from '@/components/ui/dialog'
+    17→import { Separator } from '@/components/ui/separator'
+    18→import { Skeleton } from '@/components/ui/skeleton'
+    19→import { toast } from 'sonner'
+    20→import { formatPrice } from '@/lib/vat'
+    21→
+    22→interface EmployeeProfile {
+    23→  id: string
+    24→  salary: number | null
+    25→  wageRate: number | null
+    26→  wageType: string | null
+    27→  bankName: string | null
+    28→  bankAccountNo: string | null
+    29→  bankSortCode: string | null
+    30→}
+    31→
+    32→interface DriverProfile {
+    33→  vehicleType: string | null
+    34→  verificationStatus: string
+    35→}
+    36→
+    37→interface Employee {
+    38→  id: string
+    39→  name: string | null
+    40→  email: string
+    41→  phone: string | null
+    42→  role: string
+    43→  isActive: boolean
+    44→  mustResetPassword?: boolean
+    45→  createdAt: string
+    46→  employeeProfile: EmployeeProfile | null
+    47→  driverProfile: DriverProfile | null
+    48→  todayOrderCount: number
+    49→}
+    50→
+    51→const roleLabels: Record<string, string> = {
+    52→  OWNER: 'Owner',
+    53→  MANAGER: 'Manager',
+    54→  DRIVER: 'Driver',
+    55→  PICKER: 'Picker',
+    56→}
+    57→
+    58→const roleColors: Record<string, string> = {
+    59→  OWNER: 'bg-purple-100 text-purple-700',
+    60→  MANAGER: 'bg-blue-100 text-blue-700',
+    61→  DRIVER: 'bg-orange-100 text-orange-700',
+    62→  PICKER: 'bg-green-100 text-green-700',
+    63→}
+    64→
+    65→export default function AdminEmployeesPage() {
+    66→  const [employees, setEmployees] = useState<Employee[]>([])
+    67→  const [loading, setLoading] = useState(true)
+    68→  const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
+    69→  const [editDialogOpen, setEditDialogOpen] = useState(false)
+    70→  const [saving, setSaving] = useState(false)
+    71→
+    72→  // Create employee dialog state
+    73→  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+    74→  const [newName, setNewName] = useState('')
+    75→  const [newEmail, setNewEmail] = useState('')
+    76→  const [newPhone, setNewPhone] = useState('')
+    77→  const [newRole, setNewRole] = useState<'DRIVER' | 'PICKER' | 'MANAGER'>('PICKER')
+    78→  const [creating, setCreating] = useState(false)
+    79→  const [createdResult, setCreatedResult] = useState<{
+    80→    email: string
+    81→    tempPassword: string
+    82→    name: string
+    83→  } | null>(null)
+    84→  const [copied, setCopied] = useState(false)
+    85→
+    86→  // Edit form state
+    87→  const [editSalary, setEditSalary] = useState('')
+    88→  const [editWageRate, setEditWageRate] = useState('')
+    89→  const [editWageType, setEditWageType] = useState('')
+    90→  const [editBankName, setEditBankName] = useState('')
+    91→  const [editBankAccountNo, setEditBankAccountNo] = useState('')
+    92→  const [editBankSortCode, setEditBankSortCode] = useState('')
+    93→  const [editName, setEditName] = useState('')
+    94→  const [editPhone, setEditPhone] = useState('')
+    95→  const [editEmail, setEditEmail] = useState('')
+    96→  const [editIsActive, setEditIsActive] = useState(true)
+    97→  const [editRole, setEditRole] = useState('')
+    98→
+    99→  const fetchEmployees = useCallback(async () => {
+   100→    try {
+   101→      const res = await fetch('/api/admin/employees')
+   102→      if (!res.ok) throw new Error()
+   103→      const data = await res.json()
+   104→      setEmployees(data.employees || [])
+   105→    } catch {
+   106→      toast.error('Failed to load employees')
+   107→    } finally {
+   108→      setLoading(false)
+   109→    }
+   110→  }, [])
+   111→
+   112→  useEffect(() => {
+   113→    fetchEmployees()
+   114→  }, [fetchEmployees])
+   115→
+   116→  const handleEdit = (employee: Employee) => {
+   117→    setEditEmployee(employee)
+   118→    setEditSalary(employee.employeeProfile?.salary?.toString() || '')
+   119→    setEditWageRate(employee.employeeProfile?.wageRate?.toString() || '')
+   120→    setEditWageType(employee.employeeProfile?.wageType || 'hourly')
+   121→    setEditBankName(employee.employeeProfile?.bankName || '')
+   122→    setEditBankAccountNo(employee.employeeProfile?.bankAccountNo || '')
+   123→    setEditBankSortCode(employee.employeeProfile?.bankSortCode || '')
+   124→    setEditName(employee.name || '')
+   125→    setEditPhone(employee.phone || '')
+   126→    setEditEmail(employee.email)
+   127→    setEditIsActive(employee.isActive)
+   128→    setEditRole(employee.role)
+   129→    setEditDialogOpen(true)
+   130→  }
+   131→
+   132→  const handleCreateEmployee = async () => {
+   133→    if (!newName.trim() || !newEmail.trim()) {
+   134→      toast.error('Name and email are required')
+   135→      return
+   136→    }
+   137→    setCreating(true)
+   138→    try {
+   139→      const res = await fetch('/api/admin/employees', {
+   140→        method: 'POST',
+   141→        headers: { 'Content-Type': 'application/json' },
+   142→        body: JSON.stringify({
+   143→          name: newName.trim(),
+   144→          email: newEmail.trim(),
+   145→          phone: newPhone.trim() || undefined,
+   146→          role: newRole,
+   147→        }),
+   148→      })
+   149→      if (!res.ok) {
+   150→        const data = await res.json()
+   151→        throw new Error(data.error || 'Failed')
+   152→      }
+   153→      const data = await res.json()
+   154→      setCreatedResult({
+   155→        email: data.employee.email,
+   156→        tempPassword: data.tempPassword,
+   157→        name: data.employee.name || '',
+   158→      })
+   159→      toast.success('Employee created — share the temp password')
+   160→      fetchEmployees()
+   161→      // Reset form fields but keep dialog open to show the temp password
+   162→      setNewName('')
+   163→      setNewEmail('')
+   164→      setNewPhone('')
+   165→      setNewRole('PICKER')
+   166→    } catch (err: any) {
+   167→      toast.error(err.message || 'Failed to create employee')
+   168→    } finally {
+   169→      setCreating(false)
+   170→    }
+   171→  }
+   172→
+   173→  const handleCopyCredentials = async () => {
+   174→    if (!createdResult) return
+   175→    const text = `Welcome to Fresh Mart!\n\nYour employee account has been created.\n\nEmail: ${createdResult.email}\nTemporary password: ${createdResult.tempPassword}\n\nPlease log in at ${window.location.origin}/auth/login and set a new password when prompted.`
+   176→    try {
+   177→      await navigator.clipboard.writeText(text)
+   178→      setCopied(true)
+   179→      toast.success('Credentials copied to clipboard')
+   180→      setTimeout(() => setCopied(false), 2000)
+   181→    } catch {
+   182→      toast.error('Failed to copy')
+   183→    }
+   184→  }
+   185→
+   186→  const handleCloseCreateDialog = () => {
+   187→    setCreateDialogOpen(false)
+   188→    setCreatedResult(null)
+   189→    setCopied(false)
+   190→  }
+   191→
+   192→  const handleSave = async () => {
+   193→    if (!editEmployee) return
+   194→    setSaving(true)
+   195→    try {
+   196→      const body: Record<string, unknown> = {
+   197→        salary: editSalary || null,
+   198→        wageRate: editWageRate || null,
+   199→        wageType: editWageType || null,
+   200→        bankName: editBankName || null,
+   201→        bankAccountNo: editBankAccountNo || null,
+   202→        bankSortCode: editBankSortCode || null,
+   203→        name: editName,
+   204→        phone: editPhone,
+   205→      }
+   206→      // Only send email if it changed (owner-only — backend enforces)
+   207→      if (editEmail !== editEmployee.email) {
+   208→        body.email = editEmail
+   209→      }
+   210→      if (editRole !== editEmployee.role) {
+   211→        body.role = editRole
+   212→      }
+   213→      if (editIsActive !== editEmployee.isActive) {
+   214→        body.isActive = editIsActive
+   215→      }
+   216→
+   217→      const res = await fetch(`/api/admin/employees/${editEmployee.id}`, {
+   218→        method: 'PATCH',
+   219→        headers: { 'Content-Type': 'application/json' },
+   220→        body: JSON.stringify(body),
+   221→      })
+   222→      if (!res.ok) {
+   223→        const data = await res.json()
+   224→        throw new Error(data.error || 'Failed')
+   225→      }
+   226→
+   227→      toast.success(`${editEmployee.name || 'Employee'} details updated`)
+   228→      setEditDialogOpen(false)
+   229→      fetchEmployees()
+   230→    } catch (err: any) {
+   231→      toast.error(err.message || 'Failed to update employee details')
+   232→    } finally {
+   233→      setSaving(false)
+   234→    }
+   235→  }
+   236→
+   237→  return (
+   238→    <div>
+   239→      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   240→        <div>
+   241→          <h1 className="text-2xl font-bold text-gray-900">Employees</h1>
+   242→          <p className="text-gray-500 text-sm">
+   243→            {employees.length} staff members &middot; Salary & wage management
+   244→          </p>
+   245→        </div>
+   246→        <Button
+   247→          onClick={() => {
+   248→            setCreatedResult(null)
+   249→            setCreateDialogOpen(true)
+   250→          }}
+   251→          className="bg-[#16a34a] hover:bg-[#15803d] text-white"
+   252→        >
+   253→          <UserPlus className="h-4 w-4 mr-1" /> Add Employee
+   254→        </Button>
+   255→      </div>
+   256→
+   257→      {loading ? (
+   258→        <div className="space-y-4">
+   259→          {[1, 2, 3, 4].map((i) => (
+   260→            <Skeleton key={i} className="h-20 w-full" />
+   261→          ))}
+   262→        </div>
+   263→      ) : employees.length === 0 ? (
+   264→        <Card>
+   265→          <CardContent className="text-center py-12">
+   266→            <Users className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+   267→            <p className="text-gray-500">No employees found</p>
+   268→          </CardContent>
+   269→        </Card>
+   270→      ) : (
+   271→        <>
+   272→          {/* Desktop Table */}
+   273→          <div className="hidden md:block">
+   274→            <Card>
+   275→              <CardContent className="p-0">
+   276→                <table className="w-full text-sm">
+   277→                  <thead>
+   278→                    <tr className="border-b border-gray-200 bg-gray-50">
+   279→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>
+   280→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Email</th>
+   281→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Phone</th>
+   282→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Role</th>
+   283→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Salary / Wage</th>
+   284→                      <th className="text-center py-3 px-4 font-medium text-gray-500">Today&apos;s Orders</th>
+   285→                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
+   286→                    </tr>
+   287→                  </thead>
+   288→                  <tbody>
+   289→                    {employees.map((emp) => (
+   290→                      <tr key={emp.id} className="border-b border-gray-100 hover:bg-gray-50">
+   291→                        <td className="py-3 px-4 font-medium text-gray-900">
+   292→                          {emp.name || 'N/A'}
+   293→                          {!emp.isActive && (
+   294→                            <Badge variant="outline" className="ml-2 text-xs text-gray-400">Inactive</Badge>
+   295→                          )}
+   296→                          {emp.mustResetPassword && (
+   297→                            <Badge className="ml-2 text-xs bg-amber-100 text-amber-700">Password Reset Required</Badge>
+   298→                          )}
+   299→                        </td>
+   300→                        <td className="py-3 px-4 text-gray-500">{emp.email}</td>
+   301→                        <td className="py-3 px-4 text-gray-500">{emp.phone || '—'}</td>
+   302→                        <td className="py-3 px-4">
+   303→                          <Badge className={`text-xs ${roleColors[emp.role] || 'bg-gray-100 text-gray-700'}`}>
+   304→                            {roleLabels[emp.role] || emp.role}
+   305→                          </Badge>
+   306→                        </td>
+   307→                        <td className="py-3 px-4">
+   308→                          {emp.employeeProfile ? (
+   309→                            <div>
+   310→                              {emp.employeeProfile.salary ? (
+   311→                                <span className="font-medium">{formatPrice(emp.employeeProfile.salary)}/mo</span>
+   312→                              ) : emp.employeeProfile.wageRate ? (
+   313→                                <span className="font-medium">
+   314→                                  {formatPrice(emp.employeeProfile.wageRate)}/{emp.employeeProfile.wageType === 'hourly' ? 'hr' : emp.employeeProfile.wageType === 'daily' ? 'day' : 'hr'}
+   315→                                </span>
+   316→                              ) : (
+   317→                                <span className="text-gray-400 text-xs">Not set</span>
+   318→                              )}
+   319→                            </div>
+   320→                          ) : (
+   321→                            <span className="text-gray-400 text-xs">No profile</span>
+   322→                          )}
+   323→                        </td>
+   324→                        <td className="py-3 px-4 text-center">
+   325→                          <div className="flex items-center justify-center gap-1">
+   326→                            {emp.role === 'DRIVER' ? (
+   327→                              <Truck className="h-3.5 w-3.5 text-orange-500" />
+   328→                            ) : (
+   329→                              <Package className="h-3.5 w-3.5 text-green-500" />
+   330→                            )}
+   331→                            <span className="font-medium">{emp.todayOrderCount}</span>
+   332→                          </div>
+   333→                        </td>
+   334→                        <td className="py-3 px-4 text-right">
+   335→                          <Button
+   336→                            variant="outline"
+   337→                            size="sm"
+   338→                            onClick={() => handleEdit(emp)}
+   339→                          >
+   340→                            <Edit2 className="h-3.5 w-3.5 mr-1" /> Edit
+   341→                          </Button>
+   342→                        </td>
+   343→                      </tr>
+   344→                    ))}
+   345→                  </tbody>
+   346→                </table>
+   347→              </CardContent>
+   348→            </Card>
+   349→          </div>
+   350→
+   351→          {/* Mobile Cards */}
+   352→          <div className="md:hidden space-y-3">
+   353→            {employees.map((emp) => (
+   354→              <Card key={emp.id}>
+   355→                <CardContent className="p-4">
+   356→                  <div className="flex items-center justify-between mb-3">
+   357→                    <div>
+   358→                      <p className="font-medium text-gray-900">{emp.name || 'N/A'}</p>
+   359→                      <p className="text-xs text-gray-500">{emp.email}</p>
+   360→                      {emp.mustResetPassword && (
+   361→                        <Badge className="mt-1 text-xs bg-amber-100 text-amber-700">Password Reset Required</Badge>
+   362→                      )}
+   363→                    </div>
+   364→                    <Badge className={`text-xs ${roleColors[emp.role] || 'bg-gray-100 text-gray-700'}`}>
+   365→                      {roleLabels[emp.role] || emp.role}
+   366→                    </Badge>
+   367→                  </div>
+   368→
+   369→                  <div className="space-y-2 mb-3">
+   370→                    <div className="flex justify-between text-sm">
+   371→                      <span className="text-gray-500">Phone</span>
+   372→                      <span>{emp.phone || '—'}</span>
+   373→                    </div>
+   374→                    <div className="flex justify-between text-sm">
+   375→                      <span className="text-gray-500">Salary / Wage</span>
+   376→                      {emp.employeeProfile ? (
+   377→                        emp.employeeProfile.salary ? (
+   378→                          <span className="font-medium">{formatPrice(emp.employeeProfile.salary)}/mo</span>
+   379→                        ) : emp.employeeProfile.wageRate ? (
+   380→                          <span className="font-medium">
+   381→                            {formatPrice(emp.employeeProfile.wageRate)}/{emp.employeeProfile.wageType === 'hourly' ? 'hr' : 'day'}
+   382→                          </span>
+   383→                        ) : (
+   384→                          <span className="text-gray-400 text-xs">Not set</span>
+   385→                        )
+   386→                      ) : (
+   387→                        <span className="text-gray-400 text-xs">No profile</span>
+   388→                      )}
+   389→                    </div>
+   390→                    <div className="flex justify-between text-sm">
+   391→                      <span className="text-gray-500">Today&apos;s Orders</span>
+   392→                      <div className="flex items-center gap-1">
+   393→                        {emp.role === 'DRIVER' ? (
+   394→                          <Truck className="h-3.5 w-3.5 text-orange-500" />
+   395→                        ) : (
+   396→                          <Package className="h-3.5 w-3.5 text-green-500" />
+   397→                        )}
+   398→                        <span className="font-medium">{emp.todayOrderCount}</span>
+   399→                      </div>
+   400→                    </div>
+   401→                  </div>
+   402→
+   403→                  <Button
+   404→                    variant="outline"
+   405→                    size="sm"
+   406→                    className="w-full min-h-10"
+   407→                    onClick={() => handleEdit(emp)}
+   408→                  >
+   409→                    <Edit2 className="h-4 w-4 mr-1" /> Edit Details
+   410→                  </Button>
+   411→                </CardContent>
+   412→              </Card>
+   413→            ))}
+   414→          </div>
+   415→        </>
+   416→      )}
+   417→
+   418→      {/* Edit Employee Dialog — Personal + Salary + Bank */}
+   419→      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+   420→        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+   421→          <DialogHeader>
+   422→            <DialogTitle>
+   423→              Edit Employee — {editEmployee?.name || 'Employee'}
+   424→            </DialogTitle>
+   425→          </DialogHeader>
+   426→
+   427→          {editEmployee && (
+   428→            <div className="space-y-4 py-2">
+   429→              {/* Personal Details */}
+   430→              <div className="space-y-3">
+   431→                <h4 className="text-sm font-semibold text-gray-700">Personal Details</h4>
+   432→
+   433→                <div className="space-y-1.5">
+   434→                  <Label className="text-xs text-gray-500">Full Name</Label>
+   435→                  <Input
+   436→                    value={editName}
+   437→                    onChange={(e) => setEditName(e.target.value)}
+   438→                    placeholder="Full name"
+   439→                  />
+   440→                </div>
+   441→
+   442→                <div className="space-y-1.5">
+   443→                  <Label className="text-xs text-gray-500">Phone</Label>
+   444→                  <Input
+   445→                    value={editPhone}
+   446→                    onChange={(e) => setEditPhone(e.target.value)}
+   447→                    placeholder="e.g., +44 7123 456789"
+   448→                  />
+   449→                </div>
+   450→
+   451→                <div className="space-y-1.5">
+   452→                  <Label className="text-xs text-gray-500">
+   453→                    Email {editEmployee.role === 'OWNER' ? '(owner-only field)' : ''}
+   454→                  </Label>
+   455→                  <Input
+   456→                    value={editEmail}
+   457→                    onChange={(e) => setEditEmail(e.target.value)}
+   458→                    placeholder="email@example.com"
+   459→                  />
+   460→                  <p className="text-xs text-gray-400">
+   461→                    Only the store owner can change email addresses.
+   462→                  </p>
+   463→                </div>
+   464→
+   465→                <div className="grid grid-cols-2 gap-3">
+   466→                  <div className="space-y-1.5">
+   467→                    <Label className="text-xs text-gray-500">Role</Label>
+   468→                    <Select
+   469→                      value={editRole}
+   470→                      onValueChange={setEditRole}
+   471→                      disabled={editEmployee.role === 'OWNER'}
+   472→                    >
+   473→                      <SelectTrigger>
+   474→                        <SelectValue />
+   475→                      </SelectTrigger>
+   476→                      <SelectContent>
+   477→                        <SelectItem value="OWNER" disabled>Owner</SelectItem>
+   478→                        <SelectItem value="MANAGER">Manager</SelectItem>
+   479→                        <SelectItem value="DRIVER">Driver</SelectItem>
+   480→                        <SelectItem value="PICKER">Picker</SelectItem>
+   481→                      </SelectContent>
+   482→                    </Select>
+   483→                  </div>
+   484→                  <div className="space-y-1.5">
+   485→                    <Label className="text-xs text-gray-500">Account Status</Label>
+   486→                    <Select
+   487→                      value={editIsActive ? 'active' : 'inactive'}
+   488→                      onValueChange={(v) => setEditIsActive(v === 'active')}
+   489→                      disabled={editEmployee.role === 'OWNER'}
+   490→                    >
+   491→                      <SelectTrigger>
+   492→                        <SelectValue />
+   493→                      </SelectTrigger>
+   494→                      <SelectContent>
+   495→                        <SelectItem value="active">Active</SelectItem>
+   496→                        <SelectItem value="inactive">Inactive</SelectItem>
+   497→                      </SelectContent>
+   498→                    </Select>
+   499→                  </div>
+   500→                </div>
+   501→
+   502→                {editEmployee.mustResetPassword && (
+   503→                  <div className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
+   504→                    <KeyRound className="h-3.5 w-3.5" />
+   505→                    <span>This employee must reset their password on next login.</span>
+   506→                  </div>
+   507→                )}
+   508→              </div>
+   509→
+   510→              <Separator />
+   511→
+   512→              {/* Salary / Wage Type */}
+   513→              <div className="space-y-2">
+   514→                <Label>Wage Type</Label>
+   515→                <Select value={editWageType} onValueChange={setEditWageType}>
+   516→                  <SelectTrigger>
+   517→                    <SelectValue />
+   518→                  </SelectTrigger>
+   519→                  <SelectContent>
+   520→                    <SelectItem value="hourly">Hourly Wage</SelectItem>
+   521→                    <SelectItem value="daily">Daily Wage</SelectItem>
+   522→                    <SelectItem value="monthly">Monthly Salary</SelectItem>
+   523→                  </SelectContent>
+   524→                </Select>
+   525→              </div>
+   526→
+   527→              {/* Conditional fields based on wage type */}
+   528→              {editWageType === 'monthly' ? (
+   529→                <div className="space-y-2">
+   530→                  <Label>Monthly Salary (£)</Label>
+   531→                  <Input
+   532→                    type="number"
+   533→                    step="0.01"
+   534→                    placeholder="e.g., 2500"
+   535→                    value={editSalary}
+   536→                    onChange={(e) => setEditSalary(e.target.value)}
+   537→                  />
+   538→                </div>
+   539→              ) : (
+   540→                <div className="space-y-2">
+   541→                  <Label>
+   542→                    {editWageType === 'hourly' ? 'Hourly' : 'Daily'} Wage Rate (£)
+   543→                  </Label>
+   544→                  <Input
+   545→                    type="number"
+   546→                    step="0.01"
+   547→                    placeholder={editWageType === 'hourly' ? 'e.g., 12.50' : 'e.g., 100'}
+   548→                    value={editWageRate}
+   549→                    onChange={(e) => setEditWageRate(e.target.value)}
+   550→                  />
+   551→                </div>
+   552→              )}
+   553→
+   554→              <Separator />
+   555→
+   556→              {/* Bank Details */}
+   557→              <div className="space-y-2">
+   558→                <Label className="text-sm font-semibold text-gray-700">Bank Details</Label>
+   559→                <div className="grid grid-cols-1 gap-3">
+   560→                  <div>
+   561→                    <Label className="text-xs text-gray-500">Bank Name</Label>
+   562→                    <Input
+   563→                      placeholder="e.g., Barclays"
+   564→                      value={editBankName}
+   565→                      onChange={(e) => setEditBankName(e.target.value)}
+   566→                    />
+   567→                  </div>
+   568→                  <div className="grid grid-cols-2 gap-3">
+   569→                    <div>
+   570→                      <Label className="text-xs text-gray-500">Account Number</Label>
+   571→                      <Input
+   572→                        placeholder="12345678"
+   573→                        value={editBankAccountNo}
+   574→                        onChange={(e) => setEditBankAccountNo(e.target.value)}
+   575→                      />
+   576→                    </div>
+   577→                    <div>
+   578→                      <Label className="text-xs text-gray-500">Sort Code</Label>
+   579→                      <Input
+   580→                        placeholder="00-00-00"
+   581→                        value={editBankSortCode}
+   582→                        onChange={(e) => setEditBankSortCode(e.target.value)}
+   583→                      />
+   584→                    </div>
+   585→                  </div>
+   586→                </div>
+   587→              </div>
+   588→
+   589→              <div className="flex justify-end gap-2 pt-2">
+   590→                <Button
+   591→                  variant="outline"
+   592→                  onClick={() => setEditDialogOpen(false)}
+   593→                  disabled={saving}
+   594→                >
+   595→                  Cancel
+   596→                </Button>
+   597→                <Button
+   598→                  onClick={handleSave}
+   599→                  disabled={saving}
+   600→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white"
+   601→                >
+   602→                  {saving ? (
+   603→                    <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Saving...</>
+   604→                  ) : (
+   605→                    'Save Changes'
+   606→                  )}
+   607→                </Button>
+   608→              </div>
+   609→            </div>
+   610→          )}
+   611→        </DialogContent>
+   612→      </Dialog>
+   613→
+   614→      {/* Create Employee Dialog */}
+   615→      <Dialog open={createDialogOpen} onOpenChange={(open) => { if (!open) handleCloseCreateDialog() }}>
+   616→        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+   617→          <DialogHeader>
+   618→            <DialogTitle>Create New Employee</DialogTitle>
+   619→          </DialogHeader>
+   620→
+   621→          {createdResult ? (
+   622→            // ─── Success state — show temp password ─────────────
+   623→            <div className="space-y-4 py-2">
+   624→              <div className="rounded-lg bg-green-50 border border-green-200 p-4">
+   625→                <div className="flex items-center gap-2 text-green-700 font-medium text-sm mb-2">
+   626→                  <AlertCircle className="h-4 w-4" />
+   627→                  Account created for {createdResult.name}
+   628→                </div>
+   629→                <p className="text-xs text-green-700">
+   630→                  Share these credentials with the employee. They will be required to set a new password on first login.
+   631→                </p>
+   632→              </div>
+   633→
+   634→              <div className="space-y-2">
+   635→                <Label className="text-xs text-gray-500">Email</Label>
+   636→                <div className="flex items-center gap-2">
+   637→                  <Input value={createdResult.email} readOnly className="bg-gray-50 font-mono text-sm" />
+   638→                </div>
+   639→              </div>
+   640→
+   641→              <div className="space-y-2">
+   642→                <Label className="text-xs text-gray-500">Temporary Password</Label>
+   643→                <div className="flex items-center gap-2">
+   644→                  <Input
+   645→                    value={createdResult.tempPassword}
+   646→                    readOnly
+   647→                    className="bg-gray-50 font-mono text-sm"
+   648→                  />
+   649→                  <Button
+   650→                    variant="outline"
+   651→                    size="icon"
+   652→                    onClick={handleCopyCredentials}
+   653→                    title="Copy credentials"
+   654→                  >
+   655→                    {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+   656→                  </Button>
+   657→                </div>
+   658→              </div>
+   659→
+   660→              <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+   661→                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+   662→                <div>
+   663→                  <p className="font-medium mb-1">Important:</p>
+   664→                  <ul className="list-disc list-inside space-y-0.5">
+   665→                    <li>This password is shown only once.</li>
+   666→                    <li>When the employee logs in, they'll be forced to set a new password.</li>
+   667→                    <li>Copy and share it securely — do not email it in plain text.</li>
+   668→                  </ul>
+   669→                </div>
+   670→              </div>
+   671→
+   672→              <div className="flex justify-end gap-2 pt-2">
+   673→                <Button
+   674→                  variant="outline"
+   675→                  onClick={() => {
+   676→                    setCreatedResult(null)
+   677→                    // Keep dialog open to allow creating another employee
+   678→                  }}
+   679→                >
+   680→                  Create Another
+   681→                </Button>
+   682→                <Button
+   683→                  onClick={handleCloseCreateDialog}
+   684→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white"
+   685→                >
+   686→                  Done
+   687→                </Button>
+   688→              </div>
+   689→            </div>
+   690→          ) : (
+   691→            // ─── Form state ────────────────────────────────────
+   692→            <div className="space-y-4 py-2">
+   693→              <div className="space-y-1.5">
+   694→                <Label htmlFor="newName">Full Name *</Label>
+   695→                <Input
+   696→                  id="newName"
+   697→                  value={newName}
+   698→                  onChange={(e) => setNewName(e.target.value)}
+   699→                  placeholder="e.g., John Smith"
+   700→                />
+   701→              </div>
+   702→
+   703→              <div className="space-y-1.5">
+   704→                <Label htmlFor="newEmail">Email *</Label>
+   705→                <div className="relative">
+   706→                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+   707→                  <Input
+   708→                    id="newEmail"
+   709→                    type="email"
+   710→                    value={newEmail}
+   711→                    onChange={(e) => setNewEmail(e.target.value)}
+   712→                    placeholder="employee@example.com"
+   713→                    className="pl-9"
+   714→                  />
+   715→                </div>
+   716→                <p className="text-xs text-gray-400">
+   717→                  The temp password will be sent here once email is configured.
+   718→                </p>
+   719→              </div>
+   720→
+   721→              <div className="space-y-1.5">
+   722→                <Label htmlFor="newPhone">Phone (optional)</Label>
+   723→                <Input
+   724→                  id="newPhone"
+   725→                  value={newPhone}
+   726→                  onChange={(e) => setNewPhone(e.target.value)}
+   727→                  placeholder="e.g., +44 7123 456789"
+   728→                />
+   729→              </div>
+   730→
+   731→              <div className="space-y-1.5">
+   732→                <Label>Role *</Label>
+   733→                <Select
+   734→                  value={newRole}
+   735→                  onValueChange={(v: 'DRIVER' | 'PICKER' | 'MANAGER') => setNewRole(v)}
+   736→                >
+   737→                  <SelectTrigger>
+   738→                    <SelectValue />
+   739→                  </SelectTrigger>
+   740→                  <SelectContent>
+   741→                    <SelectItem value="PICKER">Picker (warehouse)</SelectItem>
+   742→                    <SelectItem value="DRIVER">Driver (deliveries)</SelectItem>
+   743→                    <SelectItem value="MANAGER">Manager (admin access)</SelectItem>
+   744→                  </SelectContent>
+   745→                </Select>
+   746→              </div>
+   747→
+   748→              <div className="flex items-start gap-2 rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
+   749→                <KeyRound className="h-4 w-4 mt-0.5 flex-shrink-0" />
+   750→                <div>
+   751→                  <p className="font-medium mb-0.5">What happens next:</p>
+   752→                  <ol className="list-decimal list-inside space-y-0.5">
+   753→                    <li>A secure temp password is generated automatically.</li>
+   754→                    <li>The employee must log in with their email + temp password.</li>
+   755→                    <li>They'll be immediately prompted to set their own password.</li>
+   756→                  </ol>
+   757→                </div>
+   758→              </div>
+   759→
+   760→              <div className="flex justify-end gap-2 pt-2">
+   761→                <Button variant="outline" onClick={handleCloseCreateDialog} disabled={creating}>
+   762→                  Cancel
+   763→                </Button>
+   764→                <Button
+   765→                  onClick={handleCreateEmployee}
+   766→                  disabled={creating || !newName.trim() || !newEmail.trim()}
+   767→                  className="bg-[#16a34a] hover:bg-[#15803d] text-white"
+   768→                >
+   769→                  {creating ? (
+   770→                    <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Creating...</>
+   771→                  ) : (
+   772→                    <><UserPlus className="h-4 w-4 mr-1.5" /> Create Employee</>
+   773→                  )}
+   774→                </Button>
+   775→              </div>
+   776→            </div>
+   777→          )}
+   778→        </DialogContent>
+   779→      </Dialog>
+   780→    </div>
+   781→  )
+   782→}
+   783→

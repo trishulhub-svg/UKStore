@@ -1,0 +1,890 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback } from 'react'
+     4→import { useParams, useRouter } from 'next/navigation'
+     5→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Badge } from '@/components/ui/badge'
+     8→import { Separator } from '@/components/ui/separator'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Label } from '@/components/ui/label'
+    11→import {
+    12→  CheckCircle2,
+    13→  Circle,
+    14→  Package,
+    15→  Truck,
+    16→  MapPin,
+    17→  Phone,
+    18→  ArrowLeft,
+    19→  Camera,
+    20→  PenLine,
+    21→  AlertCircle,
+    22→  ShieldAlert,
+    23→  UserCheck,
+    24→  X,
+    25→  RotateCcw,
+    26→  Upload,
+    27→  Image as ImageIcon,
+    28→} from 'lucide-react'
+    29→
+    30→interface ProductInfo {
+    31→  id: string
+    32→  name: string
+    33→  imageUrl: string | null
+    34→  barcode: string | null
+    35→  category: { name: string } | null
+    36→  isHfss?: boolean
+    37→}
+    38→
+    39→interface OrderItem {
+    40→  id: string
+    41→  productName: string
+    42→  quantity: number
+    43→  unitPrice: number
+    44→  picked: boolean
+    45→  product: ProductInfo | null
+    46→}
+    47→
+    48→interface CustomerInfo {
+    49→  id: string
+    50→  name: string
+    51→  phone: string | null
+    52→  email: string | null
+    53→}
+    54→
+    55→interface AddressInfo {
+    56→  id: string
+    57→  addressLine1: string
+    58→  addressLine2: string | null
+    59→  city: string
+    60→  postcode: string
+    61→}
+    62→
+    63→interface Order {
+    64→  id: string
+    65→  status: string
+    66→  total: number
+    67→  deliveryFee: number
+    68→  subtotal: number
+    69→  notes: string | null
+    70→  hasChallenge25: boolean
+    71→  challenge25Verified: boolean
+    72→  paymentMethod: string | null
+    73→  createdAt: string
+    74→  customer: CustomerInfo
+    75→  address: AddressInfo
+    76→  items: OrderItem[]
+    77→}
+    78→
+    79→const statusSteps = [
+    80→  { key: 'placed', label: 'Placed', icon: Package },
+    81→  { key: 'picking', label: 'Picking', icon: Package },
+    82→  { key: 'ready', label: 'Packed', icon: CheckCircle2 },
+    83→  { key: 'out_for_delivery', label: 'Out for Delivery', icon: Truck },
+    84→  { key: 'delivered', label: 'Delivered', icon: CheckCircle2 },
+    85→]
+    86→
+    87→export function DriverOrderFlowClient() {
+    88→  const params = useParams()
+    89→  const router = useRouter()
+    90→  const orderId = params.id as string
+    91→
+    92→  const [order, setOrder] = useState<Order | null>(null)
+    93→  const [loading, setLoading] = useState(true)
+    94→  const [actionLoading, setActionLoading] = useState<string | null>(null)
+    95→  const [showConfirmDelivery, setShowConfirmDelivery] = useState(false)
+    96→
+    97→  // Delivery proof state
+    98→  const [deliveryPhoto, setDeliveryPhoto] = useState<string | null>(null)
+    99→  const [signatureData, setSignatureData] = useState<string | null>(null)
+   100→  const [isDrawing, setIsDrawing] = useState(false)
+   101→  const signatureCanvasRef = useState<React.RefObject<HTMLCanvasElement | null>>(() => ({ current: null }))[0]
+   102→
+   103→  // Challenge 25 state
+   104→  const [showChallenge25, setShowChallenge25] = useState(false)
+   105→  const [birthYear, setBirthYear] = useState('')
+   106→  const [challenge25Error, setChallenge25Error] = useState('')
+   107→
+   108→  const fetchOrder = useCallback(async () => {
+   109→    try {
+   110→      const res = await fetch(`/api/driver/orders/${orderId}`)
+   111→      if (res.ok) {
+   112→        const data = await res.json()
+   113→        setOrder(data.order)
+   114→      }
+   115→    } catch (err) {
+   116→      console.error('Failed to fetch order:', err)
+   117→    } finally {
+   118→      setLoading(false)
+   119→    }
+   120→  }, [orderId])
+   121→
+   122→  useEffect(() => {
+   123→    fetchOrder()
+   124→  }, [fetchOrder])
+   125→
+   126→  const handleMarkPicked = async (itemId: string) => {
+   127→    setActionLoading(itemId)
+   128→    try {
+   129→      const res = await fetch(`/api/driver/orders/${orderId}`, {
+   130→        method: 'PATCH',
+   131→        headers: { 'Content-Type': 'application/json' },
+   132→        body: JSON.stringify({ itemId, picked: true }),
+   133→      })
+   134→      if (res.ok) {
+   135→        const data = await res.json()
+   136→        setOrder(data.order)
+   137→      }
+   138→    } catch (err) {
+   139→      console.error('Failed to mark as picked:', err)
+   140→    } finally {
+   141→      setActionLoading(null)
+   142→    }
+   143→  }
+   144→
+   145→  const handleClaimOrder = async () => {
+   146→    setActionLoading('claim')
+   147→    try {
+   148→      const res = await fetch(`/api/driver/orders/${orderId}`, {
+   149→        method: 'PATCH',
+   150→        headers: { 'Content-Type': 'application/json' },
+   151→        body: JSON.stringify({ assignToMe: true }),
+   152→      })
+   153→      if (res.ok) {
+   154→        const data = await res.json()
+   155→        setOrder(data.order)
+   156→      }
+   157→    } catch (err) {
+   158→      console.error('Failed to claim order:', err)
+   159→    } finally {
+   160→      setActionLoading(null)
+   161→    }
+   162→  }
+   163→
+   164→  const handleUpdateStatus = async (newStatus: string) => {
+   165→    setActionLoading(newStatus)
+   166→    try {
+   167→      const res = await fetch(`/api/driver/orders/${orderId}`, {
+   168→        method: 'PATCH',
+   169→        headers: { 'Content-Type': 'application/json' },
+   170→        body: JSON.stringify({ status: newStatus, assignToMe: true }),
+   171→      })
+   172→      if (res.ok) {
+   173→        const data = await res.json()
+   174→        setOrder(data.order)
+   175→      }
+   176→    } catch (err) {
+   177→      console.error('Failed to update status:', err)
+   178→    } finally {
+   179→      setActionLoading(null)
+   180→    }
+   181→  }
+   182→
+   183→  const handleConfirmDelivery = async () => {
+   184→    setActionLoading('deliver')
+   185→    try {
+   186→      const res = await fetch(`/api/driver/orders/${orderId}/deliver`, {
+   187→        method: 'POST',
+   188→        headers: { 'Content-Type': 'application/json' },
+   189→        body: JSON.stringify({
+   190→          deliveryPhotoUrl: deliveryPhoto,
+   191→          signatureUrl: signatureData,
+   192→        }),
+   193→      })
+   194→      if (res.ok) {
+   195→        router.push('/driver')
+   196→      }
+   197→    } catch (err) {
+   198→      console.error('Failed to confirm delivery:', err)
+   199→    } finally {
+   200→      setActionLoading(null)
+   201→      setShowConfirmDelivery(false)
+   202→    }
+   203→  }
+   204→
+   205→  // Photo capture handler
+   206→  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+   207→    const file = e.target.files?.[0]
+   208→    if (!file) return
+   209→
+   210→    const reader = new FileReader()
+   211→    reader.onloadend = () => {
+   212→      setDeliveryPhoto(reader.result as string)
+   213→    }
+   214→    reader.readAsDataURL(file)
+   215→  }
+   216→
+   217→  // Signature pad handlers
+   218→  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+   219→    const canvas = signatureCanvasRef.current
+   220→    if (!canvas) return
+   221→    setIsDrawing(true)
+   222→    const ctx = canvas.getContext('2d')
+   223→    if (!ctx) return
+   224→
+   225→    const rect = canvas.getBoundingClientRect()
+   226→    let x: number, y: number
+   227→
+   228→    if ('touches' in e) {
+   229→      x = e.touches[0].clientX - rect.left
+   230→      y = e.touches[0].clientY - rect.top
+   231→    } else {
+   232→      x = e.clientX - rect.left
+   233→      y = e.clientY - rect.top
+   234→    }
+   235→
+   236→    ctx.beginPath()
+   237→    ctx.moveTo(x, y)
+   238→  }
+   239→
+   240→  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+   241→    if (!isDrawing) return
+   242→    const canvas = signatureCanvasRef.current
+   243→    if (!canvas) return
+   244→    const ctx = canvas.getContext('2d')
+   245→    if (!ctx) return
+   246→
+   247→    const rect = canvas.getBoundingClientRect()
+   248→    let x: number, y: number
+   249→
+   250→    if ('touches' in e) {
+   251→      e.preventDefault()
+   252→      x = e.touches[0].clientX - rect.left
+   253→      y = e.touches[0].clientY - rect.top
+   254→    } else {
+   255→      x = e.clientX - rect.left
+   256→      y = e.clientY - rect.top
+   257→    }
+   258→
+   259→    ctx.lineWidth = 2
+   260→    ctx.lineCap = 'round'
+   261→    ctx.strokeStyle = '#1f2937'
+   262→    ctx.lineTo(x, y)
+   263→    ctx.stroke()
+   264→  }
+   265→
+   266→  const stopDrawing = () => {
+   267→    if (!isDrawing) return
+   268→    setIsDrawing(false)
+   269→    // Save signature as data URL
+   270→    const canvas = signatureCanvasRef.current
+   271→    if (canvas) {
+   272→      setSignatureData(canvas.toDataURL('image/png'))
+   273→    }
+   274→  }
+   275→
+   276→  const clearSignature = () => {
+   277→    const canvas = signatureCanvasRef.current
+   278→    if (!canvas) return
+   279→    const ctx = canvas.getContext('2d')
+   280→    if (!ctx) return
+   281→    ctx.clearRect(0, 0, canvas.width, canvas.height)
+   282→    setSignatureData(null)
+   283→  }
+   284→
+   285→  // Challenge 25 verification
+   286→  const handleVerifyChallenge25 = async () => {
+   287→    setChallenge25Error('')
+   288→
+   289→    const year = parseInt(birthYear, 10)
+   290→    const currentYear = new Date().getFullYear()
+   291→
+   292→    if (!birthYear || isNaN(year) || year < 1900 || year > currentYear) {
+   293→      setChallenge25Error('Please enter a valid birth year.')
+   294→      return
+   295→    }
+   296→
+   297→    const age = currentYear - year
+   298→    // Determine the minimum age required (default 18 for age-restricted items)
+   299→    const minAge = ageRestrictedItems.reduce((max, item) => {
+   300→      return Math.max(max, item.product?.minimumAge || 18)
+   301→    }, 18)
+   302→    if (age < minAge) {
+   303→      setChallenge25Error(`Customer must be ${minAge} or older to receive this order. Sale refused.`)
+   304→      return
+   305→    }
+   306→
+   307→    setActionLoading('challenge25')
+   308→    try {
+   309→      const res = await fetch(`/api/driver/orders/${orderId}`, {
+   310→        method: 'PATCH',
+   311→        headers: { 'Content-Type': 'application/json' },
+   312→        body: JSON.stringify({ challenge25Verified: true }),
+   313→      })
+   314→      if (res.ok) {
+   315→        const data = await res.json()
+   316→        setOrder(data.order)
+   317→        setShowChallenge25(false)
+   318→        setBirthYear('')
+   319→      }
+   320→    } catch (err) {
+   321→      console.error('Failed to verify Challenge 25:', err)
+   322→      setChallenge25Error('Failed to verify. Please try again.')
+   323→    } finally {
+   324→      setActionLoading(null)
+   325→    }
+   326→  }
+   327→
+   328→  if (loading) {
+   329→    return (
+   330→      <div className="p-4 space-y-4">
+   331→        {[1, 2, 3].map((i) => (
+   332→          <div key={i} className="animate-pulse bg-gray-200 rounded-xl h-24" />
+   333→        ))}
+   334→      </div>
+   335→    )
+   336→  }
+   337→
+   338→  if (!order) {
+   339→    return (
+   340→      <div className="p-4 text-center">
+   341→        <AlertCircle className="h-10 w-10 text-gray-400 mx-auto mb-2" />
+   342→        <p className="text-gray-600">Order not found</p>
+   343→        <Button variant="outline" onClick={() => router.push('/driver')} className="mt-4">
+   344→          Back to Dashboard
+   345→        </Button>
+   346→      </div>
+   347→    )
+   348→  }
+   349→
+   350→  const allPicked = order.items.every((item) => item.picked)
+   351→  const pickedCount = order.items.filter((item) => item.picked).length
+   352→  const currentStepIndex = statusSteps.findIndex((s) => s.key === order.status)
+   353→
+   354→  // Identify age-restricted items in the order for Challenge 25 display
+   355→  // This includes both isAgeRestricted (alcohol, tobacco, etc.) and HFSS items with minimumAge >= 16
+   356→  const ageRestrictedItems = order.items.filter(
+   357→    (item) => item.product?.isAgeRestricted || (item.product?.isHfss && (item.product?.minimumAge || 0) >= 16)
+   358→  )
+   359→
+   360→  // Determine if Challenge 25 needs to be shown
+   361→  const needsChallenge25 = order.hasChallenge25 && !order.challenge25Verified && order.status === 'out_for_delivery'
+   362→
+   363→  return (
+   364→    <div className="p-4 space-y-4">
+   365→      {/* Back Button & Title */}
+   366→      <div className="flex items-center gap-2">
+   367→        <Button variant="ghost" size="icon" onClick={() => router.push('/driver')} className="h-8 w-8">
+   368→          <ArrowLeft className="h-4 w-4" />
+   369→        </Button>
+   370→        <div>
+   371→          <h1 className="font-bold text-lg text-gray-900">Order #{order.id.slice(-8)}</h1>
+   372→          <p className="text-xs text-gray-500">
+   373→            {new Date(order.createdAt).toLocaleDateString('en-GB', {
+   374→              day: 'numeric',
+   375→              month: 'short',
+   376→              year: 'numeric',
+   377→              hour: '2-digit',
+   378→              minute: '2-digit',
+   379→            })}
+   380→          </p>
+   381→        </div>
+   382→      </div>
+   383→
+   384→      {/* Challenge 25 Warning Banner */}
+   385→      {order.hasChallenge25 && !order.challenge25Verified && (
+   386→        <Card className="shadow-sm border-amber-300 bg-amber-50">
+   387→          <CardContent className="p-3 flex items-center gap-3">
+   388→            <ShieldAlert className="h-6 w-6 text-amber-600 shrink-0" />
+   389→            <div className="flex-1">
+   390→              <p className="text-sm font-semibold text-amber-800">Challenge 25 — Age Verification Required</p>
+   391→              <p className="text-xs text-amber-700">
+   392→                This order contains age-restricted items. Verify customer ID before delivery.
+   393→              </p>
+   394→            </div>
+   395→            <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-100 text-xs">
+   396→              Pending
+   397→            </Badge>
+   398→          </CardContent>
+   399→        </Card>
+   400→      )}
+   401→
+   402→      {/* Challenge 25 Verified Banner */}
+   403→      {order.hasChallenge25 && order.challenge25Verified && (
+   404→        <Card className="shadow-sm border-green-300 bg-green-50">
+   405→          <CardContent className="p-3 flex items-center gap-3">
+   406→            <UserCheck className="h-6 w-6 text-green-600 shrink-0" />
+   407→            <div className="flex-1">
+   408→              <p className="text-sm font-semibold text-green-800">Challenge 25 — Age Verified</p>
+   409→              <p className="text-xs text-green-700">Customer ID has been verified. Safe to deliver.</p>
+   410→            </div>
+   411→            <Badge variant="outline" className="text-green-700 border-green-300 bg-green-100 text-xs">
+   412→              Verified
+   413→            </Badge>
+   414→          </CardContent>
+   415→        </Card>
+   416→      )}
+   417→
+   418→      {/* Status Timeline */}
+   419→      <Card className="shadow-sm">
+   420→        <CardContent className="p-4">
+   421→          <div className="flex items-start justify-between">
+   422→            {statusSteps.map((step, i) => {
+   423→              const isCompleted = i <= currentStepIndex
+   424→              const isCurrent = i === currentStepIndex
+   425→              const Icon = step.icon
+   426→
+   427→              return (
+   428→                <div key={step.key} className="flex flex-col items-center flex-1 relative">
+   429→                  <div
+   430→                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center mb-1 ${
+   431→                      isCompleted
+   432→                        ? 'bg-[#16a34a] text-white'
+   433→                        : 'bg-gray-100 text-gray-400'
+   434→                    } ${isCurrent ? 'ring-2 ring-[#16a34a]/30' : ''}`}
+   435→                  >
+   436→                    {isCompleted ? (
+   437→                      <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+   438→                    ) : (
+   439→                      <Circle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+   440→                    )}
+   441→                  </div>
+   442→                  <span
+   443→                    className={`text-[10px] sm:text-xs text-center leading-tight ${
+   444→                      isCompleted ? 'text-[#16a34a] font-semibold' : 'text-gray-400'
+   445→                    }`}
+   446→                  >
+   447→                    {step.label}
+   448→                  </span>
+   449→                  {i < statusSteps.length - 1 && (
+   450→                    <div
+   451→                      className={`absolute top-[12px] sm:top-[14px] left-1/2 w-full h-0.5 ${
+   452→                        i < currentStepIndex ? 'bg-[#16a34a]' : 'bg-gray-200'
+   453→                      }`}
+   454→                      style={{ zIndex: -1, transform: 'translateX(50%)' }}
+   455→                    />
+   456→                  )}
+   457→                </div>
+   458→              )
+   459→            })}
+   460→          </div>
+   461→        </CardContent>
+   462→      </Card>
+   463→
+   464→      {/* Customer & Delivery Info */}
+   465→      <Card className="shadow-sm">
+   466→        <CardHeader className="pb-2 pt-4 px-4">
+   467→          <CardTitle className="text-sm font-semibold text-gray-700">Delivery Details</CardTitle>
+   468→        </CardHeader>
+   469→        <CardContent className="px-4 pb-4 space-y-2">
+   470→          <div className="flex items-start gap-2">
+   471→            <MapPin className="h-4 w-4 text-[#16a34a] mt-0.5 shrink-0" />
+   472→            <div>
+   473→              <p className="text-sm text-gray-900">{order.address.addressLine1}</p>
+   474→              {order.address.addressLine2 && (
+   475→                <p className="text-sm text-gray-600">{order.address.addressLine2}</p>
+   476→              )}
+   477→              <p className="text-sm text-gray-600">{order.address.city} {order.address.postcode}</p>
+   478→            </div>
+   479→          </div>
+   480→          <div className="flex items-center gap-2">
+   481→            <Phone className="h-4 w-4 text-[#16a34a] shrink-0" />
+   482→            <span className="text-sm text-gray-900">{order.customer.name}</span>
+   483→            {order.customer.phone && (
+   484→              <span className="text-sm text-gray-500">· {order.customer.phone}</span>
+   485→            )}
+   486→          </div>
+   487→          {order.paymentMethod && (
+   488→            <div className="flex items-center gap-2">
+   489→              <span className="text-xs font-medium text-gray-500">Payment:</span>
+   490→              <Badge variant="outline" className="text-xs capitalize">
+   491→                {order.paymentMethod === 'cash' ? 'Cash on Delivery' :
+   492→                 order.paymentMethod === 'bank_transfer' ? 'Bank Transfer' :
+   493→                 'Card Payment'}
+   494→              </Badge>
+   495→            </div>
+   496→          )}
+   497→          {order.notes && (
+   498→            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mt-1">
+   499→              <p className="text-xs font-medium text-amber-800">📝 Customer Note</p>
+   500→              <p className="text-xs text-amber-700">{order.notes}</p>
+   501→            </div>
+   502→          )}
+   503→        </CardContent>
+   504→      </Card>
+   505→
+   506→      {/* Claim Order Button (if not assigned) */}
+   507→      {order.status === 'picking' || order.status === 'ready' ? (
+   508→        <Button
+   509→          onClick={handleClaimOrder}
+   510→          disabled={actionLoading === 'claim'}
+   511→          className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white h-10"
+   512→        >
+   513→          {actionLoading === 'claim' ? 'Claiming...' : 'Claim This Order'}
+   514→        </Button>
+   515→      ) : null}
+   516→
+   517→      {/* Pick List */}
+   518→      <Card className="shadow-sm">
+   519→        <CardHeader className="pb-2 pt-4 px-4">
+   520→          <div className="flex items-center justify-between">
+   521→            <CardTitle className="text-sm font-semibold text-gray-700">Pick List</CardTitle>
+   522→            <Badge variant="outline" className="text-xs">
+   523→              {pickedCount}/{order.items.length} picked
+   524→            </Badge>
+   525→          </div>
+   526→        </CardHeader>
+   527→        <CardContent className="px-4 pb-4 space-y-2">
+   528→          {order.items.map((item) => (
+   529→            <div
+   530→              key={item.id}
+   531→              className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+   532→                item.picked
+   533→                  ? 'bg-green-50 border-green-200'
+   534→                  : 'bg-white border-gray-200'
+   535→              }`}
+   536→            >
+   537→              <button
+   538→                onClick={() => !item.picked && handleMarkPicked(item.id)}
+   539→                disabled={item.picked || actionLoading === item.id}
+   540→                className="shrink-0"
+   541→              >
+   542→                {item.picked ? (
+   543→                  <CheckCircle2 className="h-6 w-6 text-[#16a34a]" />
+   544→                ) : (
+   545→                  <Circle className="h-6 w-6 text-gray-300 hover:text-[#16a34a] transition-colors" />
+   546→                )}
+   547→              </button>
+   548→              <div className="flex-1 min-w-0">
+   549→                <p className={`text-sm font-medium ${item.picked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+   550→                  {item.productName}
+   551→                  {item.product?.isHfss && (
+   552→                    <span className="ml-1.5 text-xs text-amber-600 font-normal">(Age-restricted)</span>
+   553→                  )}
+   554→                </p>
+   555→                <div className="flex items-center gap-2 text-xs text-gray-500">
+   556→                  <span>Qty: {item.quantity}</span>
+   557→                  {item.product?.category && (
+   558→                    <>
+   559→                      <span>·</span>
+   560→                      <span>{item.product.category.name}</span>
+   561→                    </>
+   562→                  )}
+   563→                  {item.product?.barcode && (
+   564→                    <>
+   565→                      <span>·</span>
+   566→                      <span className="font-mono">{item.product.barcode}</span>
+   567→                    </>
+   568→                  )}
+   569→                </div>
+   570→              </div>
+   571→              <span className="text-sm font-medium text-gray-700">
+   572→                £{(item.unitPrice * item.quantity).toFixed(2)}
+   573→              </span>
+   574→            </div>
+   575→          ))}
+   576→        </CardContent>
+   577→      </Card>
+   578→
+   579→      <Separator />
+   580→
+   581→      {/* Action Buttons */}
+   582→      <div className="space-y-3">
+   583→        {/* When picking: show "Order Packed" when all items picked */}
+   584→        {order.status === 'picking' && allPicked && (
+   585→          <Button
+   586→            onClick={() => handleUpdateStatus('ready')}
+   587→            disabled={actionLoading === 'ready'}
+   588→            className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white h-12 text-base"
+   589→          >
+   590→            <Package className="h-5 w-5 mr-2" />
+   591→            {actionLoading === 'ready' ? 'Updating...' : 'Mark Order as Packed'}
+   592→          </Button>
+   593→        )}
+   594→
+   595→        {order.status === 'picking' && !allPicked && (
+   596→          <div className="text-center py-2">
+   597→            <p className="text-sm text-gray-500">
+   598→              Pick all items to mark as packed ({pickedCount}/{order.items.length})
+   599→            </p>
+   600→          </div>
+   601→        )}
+   602→
+   603→        {/* When ready: show "Start Delivery" */}
+   604→        {order.status === 'ready' && (
+   605→          <Button
+   606→            onClick={() => handleUpdateStatus('out_for_delivery')}
+   607→            disabled={actionLoading === 'out_for_delivery'}
+   608→            className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white h-12 text-base"
+   609→          >
+   610→            <Truck className="h-5 w-5 mr-2" />
+   611→            {actionLoading === 'out_for_delivery' ? 'Starting...' : 'Start Delivery'}
+   612→          </Button>
+   613→        )}
+   614→
+   615→        {/* When out for delivery: Challenge 25 verification (if needed) */}
+   616→        {needsChallenge25 && !showChallenge25 && !showConfirmDelivery && (
+   617→          <Card className="shadow-sm border-amber-300 bg-amber-50">
+   618→            <CardHeader className="pb-2 pt-4 px-4">
+   619→              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+   620→                <ShieldAlert className="h-5 w-5" />
+   621→                Challenge 25 — Age Verification Required
+   622→              </CardTitle>
+   623→            </CardHeader>
+   624→            <CardContent className="px-4 pb-4 space-y-3">
+   625→              <p className="text-sm text-amber-700">
+   626→                This order contains age-restricted items. You must verify the customer&apos;s age before completing delivery.
+   627→              </p>
+   628→              {ageRestrictedItems.length > 0 && (
+   629→                <div className="space-y-1">
+   630→                  <p className="text-xs font-medium text-amber-800">Age-restricted items:</p>
+   631→                  <ul className="list-disc list-inside text-xs text-amber-700">
+   632→                    {ageRestrictedItems.map((item) => (
+   633→                      <li key={item.id}>{item.productName} x {item.quantity}{item.product?.minimumAge ? ` (Age ${item.product.minimumAge}+)` : ''}</li>
+   634→                    ))}
+   635→                  </ul>
+   636→                </div>
+   637→              )}
+   638→              <Button
+   639→                onClick={() => setShowChallenge25(true)}
+   640→                className="w-full bg-amber-600 hover:bg-amber-700 text-white h-10"
+   641→              >
+   642→                <ShieldAlert className="h-4 w-4 mr-2" />
+   643→                Verify Customer Age
+   644→              </Button>
+   645→            </CardContent>
+   646→          </Card>
+   647→        )}
+   648→
+   649→        {/* Challenge 25 Verification Form */}
+   650→        {showChallenge25 && (
+   651→          <Card className="shadow-sm border-amber-300">
+   652→            <CardHeader className="pb-2 pt-4 px-4">
+   653→              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+   654→                <UserCheck className="h-5 w-5 text-amber-600" />
+   655→                Verify Customer Age
+   656→              </CardTitle>
+   657→            </CardHeader>
+   658→            <CardContent className="px-4 pb-4 space-y-3">
+   659→              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+   660→                <p className="text-sm text-amber-800">
+   661→                  <strong>UK Challenge 25 Policy:</strong> Ask for ID if the customer looks under 25.
+   662→                  Verify they are 18 or older for age-restricted products.
+   663→                </p>
+   664→              </div>
+   665→              <div className="space-y-2">
+   666→                <Label htmlFor="birthYear" className="text-sm font-medium">
+   667→                  Customer&apos;s Year of Birth
+   668→                </Label>
+   669→                <Input
+   670→                  id="birthYear"
+   671→                  type="number"
+   672→                  placeholder="e.g., 1995"
+   673→                  value={birthYear}
+   674→                  onChange={(e) => {
+   675→                    setBirthYear(e.target.value)
+   676→                    setChallenge25Error('')
+   677→                  }}
+   678→                  min={1900}
+   679→                  max={new Date().getFullYear()}
+   680→                  className="h-10"
+   681→                />
+   682→                {birthYear && !isNaN(parseInt(birthYear)) && (
+   683→                  <p className="text-xs text-gray-500">
+   684→                    Customer age: {new Date().getFullYear() - parseInt(birthYear)} years old
+   685→                    {new Date().getFullYear() - parseInt(birthYear) >= 18 ? (
+   686→                      <span className="text-green-600 ml-1">✓ Eligible</span>
+   687→                    ) : (
+   688→                      <span className="text-red-600 ml-1">✗ Under 18 — Sale refused</span>
+   689→                    )}
+   690→                  </p>
+   691→                )}
+   692→              </div>
+   693→              {challenge25Error && (
+   694→                <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+   695→                  <p className="text-sm text-red-700">{challenge25Error}</p>
+   696→                </div>
+   697→              )}
+   698→              <div className="flex gap-2">
+   699→                <Button
+   700→                  variant="outline"
+   701→                  onClick={() => {
+   702→                    setShowChallenge25(false)
+   703→                    setBirthYear('')
+   704→                    setChallenge25Error('')
+   705→                  }}
+   706→                  className="flex-1 h-10"
+   707→                >
+   708→                  Cancel
+   709→                </Button>
+   710→                <Button
+   711→                  onClick={handleVerifyChallenge25}
+   712→                  disabled={actionLoading === 'challenge25' || !birthYear}
+   713→                  className="flex-1 bg-[#16a34a] hover:bg-[#15803d] text-white h-10"
+   714→                >
+   715→                  {actionLoading === 'challenge25' ? 'Verifying...' : 'Confirm ID Verified'}
+   716→                </Button>
+   717→              </div>
+   718→            </CardContent>
+   719→          </Card>
+   720→        )}
+   721→
+   722→        {/* When out for delivery: show "Confirm Delivery" (only after Challenge 25 if required) */}
+   723→        {order.status === 'out_for_delivery' && !showConfirmDelivery && !needsChallenge25 && (
+   724→          <Button
+   725→            onClick={() => setShowConfirmDelivery(true)}
+   726→            className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white h-12 text-base"
+   727→          >
+   728→            <CheckCircle2 className="h-5 w-5 mr-2" />
+   729→            Confirm Delivery
+   730→          </Button>
+   731→        )}
+   732→
+   733→        {/* Also show when Challenge 25 is verified */}
+   734→        {order.status === 'out_for_delivery' && order.hasChallenge25 && order.challenge25Verified && !showConfirmDelivery && (
+   735→          <Button
+   736→            onClick={() => setShowConfirmDelivery(true)}
+   737→            className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white h-12 text-base"
+   738→          >
+   739→            <CheckCircle2 className="h-5 w-5 mr-2" />
+   740→            Confirm Delivery
+   741→          </Button>
+   742→        )}
+   743→
+   744→        {/* Delivery Confirmation Dialog with Photo Proof & Signature */}
+   745→        {showConfirmDelivery && (
+   746→          <Card className="shadow-sm border-[#16a34a]/20">
+   747→            <CardHeader className="pb-2 pt-4 px-4">
+   748→              <CardTitle className="text-sm font-semibold text-gray-700">Confirm Delivery</CardTitle>
+   749→            </CardHeader>
+   750→            <CardContent className="px-4 pb-4 space-y-4">
+   751→              {/* Photo Proof Section */}
+   752→              <div className="space-y-2">
+   753→                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+   754→                  <Camera className="h-4 w-4" />
+   755→                  Photo Proof of Delivery
+   756→                </Label>
+   757→                {deliveryPhoto ? (
+   758→                  <div className="relative">
+   759→                    <img
+   760→                      src={deliveryPhoto}
+   761→                      alt="Delivery proof"
+   762→                      className="w-full h-48 object-cover rounded-lg border border-gray-200"
+   763→                    />
+   764→                    <Button
+   765→                      variant="destructive"
+   766→                      size="icon"
+   767→                      className="absolute top-2 right-2 h-8 w-8"
+   768→                      onClick={() => setDeliveryPhoto(null)}
+   769→                    >
+   770→                      <X className="h-4 w-4" />
+   771→                    </Button>
+   772→                  </div>
+   773→                ) : (
+   774→                  <div>
+   775→                    <input
+   776→                      type="file"
+   777→                      accept="image/*"
+   778→                      capture="environment"
+   779→                      onChange={handlePhotoCapture}
+   780→                      className="hidden"
+   781→                      id="delivery-photo-input"
+   782→                    />
+   783→                    <label
+   784→                      htmlFor="delivery-photo-input"
+   785→                      className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-200 rounded-lg p-6 text-gray-400 hover:border-[#16a34a] hover:text-[#16a34a] transition-colors cursor-pointer"
+   786→                    >
+   787→                      <Camera className="h-8 w-8" />
+   788→                      <span className="text-sm font-medium">Take Photo</span>
+   789→                      <span className="text-xs">Opens your camera to take a delivery photo</span>
+   790→                    </label>
+   791→                  </div>
+   792→                )}
+   793→              </div>
+   794→
+   795→              {/* Signature Section */}
+   796→              <div className="space-y-2">
+   797→                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+   798→                  <PenLine className="h-4 w-4" />
+   799→                  Customer Signature
+   800→                </Label>
+   801→                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+   802→                  <canvas
+   803→                    ref={signatureCanvasRef}
+   804→                    width={400}
+   805→                    height={150}
+   806→                    className="w-full touch-none"
+   807→                    style={{ height: '150px' }}
+   808→                    onMouseDown={startDrawing}
+   809→                    onMouseMove={draw}
+   810→                    onMouseUp={stopDrawing}
+   811→                    onMouseLeave={stopDrawing}
+   812→                    onTouchStart={startDrawing}
+   813→                    onTouchMove={draw}
+   814→                    onTouchEnd={stopDrawing}
+   815→                  />
+   816→                </div>
+   817→                <div className="flex items-center justify-between">
+   818→                  <p className="text-xs text-gray-400">Sign above with finger or mouse</p>
+   819→                  <Button
+   820→                    variant="ghost"
+   821→                    size="sm"
+   822→                    className="text-xs h-7 text-gray-500"
+   823→                    onClick={clearSignature}
+   824→                  >
+   825→                    <RotateCcw className="h-3 w-3 mr-1" />
+   826→                    Clear
+   827→                  </Button>
+   828→                </div>
+   829→              </div>
+   830→
+   831→              {/* Proof Status Summary */}
+   832→              <div className="flex items-center gap-2">
+   833→                {deliveryPhoto && (
+   834→                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+   835→                    <ImageIcon className="h-3 w-3 mr-1" />
+   836→                    Photo captured
+   837→                  </Badge>
+   838→                )}
+   839→                {signatureData && (
+   840→                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+   841→                    <PenLine className="h-3 w-3 mr-1" />
+   842→                    Signature captured
+   843→                  </Badge>
+   844→                )}
+   845→                {!deliveryPhoto && !signatureData && (
+   846→                  <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+   847→                    No proof captured
+   848→                  </Badge>
+   849→                )}
+   850→              </div>
+   851→
+   852→              <div className="flex gap-2">
+   853→                <Button
+   854→                  variant="outline"
+   855→                  onClick={() => {
+   856→                    setShowConfirmDelivery(false)
+   857→                    setDeliveryPhoto(null)
+   858→                    clearSignature()
+   859→                  }}
+   860→                  className="flex-1 h-10"
+   861→                >
+   862→                  Cancel
+   863→                </Button>
+   864→                <Button
+   865→                  onClick={handleConfirmDelivery}
+   866→                  disabled={actionLoading === 'deliver'}
+   867→                  className="flex-1 bg-[#16a34a] hover:bg-[#15803d] text-white h-10"
+   868→                >
+   869→                  {actionLoading === 'deliver' ? 'Confirming...' : 'Confirm Delivered'}
+   870→                </Button>
+   871→              </div>
+   872→            </CardContent>
+   873→          </Card>
+   874→        )}
+   875→
+   876→        {/* Order delivered */}
+   877→        {order.status === 'delivered' && (
+   878→          <div className="text-center py-4">
+   879→            <CheckCircle2 className="h-12 w-12 text-[#16a34a] mx-auto mb-2" />
+   880→            <p className="font-semibold text-gray-900">Order Delivered!</p>
+   881→            <Button variant="outline" onClick={() => router.push('/driver')} className="mt-3">
+   882→              Back to Dashboard
+   883→            </Button>
+   884→          </div>
+   885→        )}
+   886→      </div>
+   887→    </div>
+   888→  )
+   889→}
+   890→

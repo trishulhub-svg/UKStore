@@ -1,0 +1,802 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { Plus, Search, ArrowUpDown, Pencil, Trash2, ToggleLeft, ToggleRight, AlertTriangle, FileDown } from 'lucide-react'
+     5→import { Button } from '@/components/ui/button'
+     6→import { Input } from '@/components/ui/input'
+     7→import { Badge } from '@/components/ui/badge'
+     8→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     9→import {
+    10→  Dialog,
+    11→  DialogContent,
+    12→  DialogHeader,
+    13→  DialogTitle,
+    14→  DialogFooter,
+    15→} from '@/components/ui/dialog'
+    16→import {
+    17→  AlertDialog,
+    18→  AlertDialogContent,
+    19→  AlertDialogHeader,
+    20→  AlertDialogTitle,
+    21→  AlertDialogDescription,
+    22→  AlertDialogFooter,
+    23→  AlertDialogCancel,
+    24→  AlertDialogAction,
+    25→} from '@/components/ui/alert-dialog'
+    26→import { Label } from '@/components/ui/label'
+    27→import { Textarea } from '@/components/ui/textarea'
+    28→import {
+    29→  Select,
+    30→  SelectContent,
+    31→  SelectItem,
+    32→  SelectTrigger,
+    33→  SelectValue,
+    34→} from '@/components/ui/select'
+    35→import { Switch } from '@/components/ui/switch'
+    36→import { Skeleton } from '@/components/ui/skeleton'
+    37→import { toast } from 'sonner'
+    38→import { formatPrice, getVatRateLabel } from '@/lib/vat'
+    39→import { CsvImportExport } from '@/components/admin/csv-import-export'
+    40→import { exportTableToPdf } from '@/lib/client-pdf'
+    41→
+    42→interface Category {
+    43→  id: string
+    44→  name: string
+    45→}
+    46→
+    47→interface Product {
+    48→  id: string
+    49→  name: string
+    50→  slug: string
+    51→  description: string | null
+    52→  price: number
+    53→  vatRate: number
+    54→  isHfss: boolean
+    55→  isAgeRestricted: boolean
+    56→  minimumAge: number
+    57→  imageUrl: string | null
+    58→  barcode: string | null
+    59→  unit: string
+    60→  weightKg: number | null
+    61→  aisle: string | null
+    62→  minStockThreshold: number
+    63→  substituteProductId: string | null
+    64→  isAvailable: boolean
+    65→  stockQuantity: number
+    66→  isFeatured: boolean
+    67→  sortOrder: number
+    68→  expiryDate: string | null
+    69→  bestBeforeDate: string | null
+    70→  category: { id: string; name: string }
+    71→  substituteProduct?: { id: string; name: string } | null
+    72→}
+    73→
+    74→const emptyProduct = {
+    75→  name: '',
+    76→  categoryId: '',
+    77→  description: '',
+    78→  price: '',
+    79→  vatRate: '0',
+    80→  vatRateCustom: '', // When non-empty, used instead of the preset select
+    81→  isHfss: false,
+    82→  isAgeRestricted: false,
+    83→  minimumAge: '0',
+    84→  imageUrl: '',
+    85→  barcode: '',
+    86→  unit: 'each',
+    87→  weightKg: '',
+    88→  aisle: '',
+    89→  minStockThreshold: '5',
+    90→  substituteProductId: '',
+    91→  isAvailable: true,
+    92→  stockQuantity: '0',
+    93→  isFeatured: false,
+    94→  sortOrder: '0',
+    95→  expiryDate: '',
+    96→  bestBeforeDate: '',
+    97→}
+    98→
+    99→export default function AdminProductsPage() {
+   100→  const [products, setProducts] = useState<Product[]>([])
+   101→  const [categories, setCategories] = useState<Category[]>([])
+   102→  const [loading, setLoading] = useState(true)
+   103→  const [search, setSearch] = useState('')
+   104→  const [filterCategory, setFilterCategory] = useState('all')
+   105→  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock'>('name')
+   106→  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+   107→  const [total, setTotal] = useState(0)
+   108→
+   109→  // Modal state
+   110→  const [dialogOpen, setDialogOpen] = useState(false)
+   111→  const [editingId, setEditingId] = useState<string | null>(null)
+   112→  const [form, setForm] = useState(emptyProduct)
+   113→  const [saving, setSaving] = useState(false)
+   114→
+   115→  // Delete state
+   116→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   117→  const [deleteName, setDeleteName] = useState('')
+   118→  const [deleting, setDeleting] = useState(false)
+   119→
+   120→  const fetchProducts = useCallback(async () => {
+   121→    try {
+   122→      const params = new URLSearchParams()
+   123→      if (search) params.set('search', search)
+   124→      if (filterCategory !== 'all') params.set('category', filterCategory)
+   125→      params.set('sortBy', sortBy)
+   126→      params.set('sortOrder', sortOrder)
+   127→
+   128→      const res = await fetch(`/api/admin/products?${params}`)
+   129→      if (!res.ok) throw new Error()
+   130→      const data = await res.json()
+   131→      setProducts(data.products)
+   132→      setTotal(data.total)
+   133→    } catch {
+   134→      toast.error('Failed to load products')
+   135→    } finally {
+   136→      setLoading(false)
+   137→    }
+   138→  }, [search, filterCategory, sortBy, sortOrder])
+   139→
+   140→  const fetchCategories = async () => {
+   141→    try {
+   142→      const res = await fetch('/api/admin/categories')
+   143→      if (!res.ok) return
+   144→      const data = await res.json()
+   145→      setCategories(data.categories.map((c: any) => ({ id: c.id, name: c.name })))
+   146→    } catch {}
+   147→  }
+   148→
+   149→  useEffect(() => {
+   150→    fetchCategories()
+   151→  }, [])
+   152→
+   153→  useEffect(() => {
+   154→    fetchProducts()
+   155→  }, [fetchProducts])
+   156→
+   157→  const handleOpenCreate = () => {
+   158→    setEditingId(null)
+   159→    setForm(emptyProduct)
+   160→    setDialogOpen(true)
+   161→  }
+   162→
+   163→  const handleOpenEdit = (p: Product) => {
+   164→    setEditingId(p.id)
+   165→    // Detect custom VAT rate (not one of the standard presets)
+   166→    const standardRates = ['0', '0.05', '0.2']
+   167→    const vatStr = String(p.vatRate)
+   168→    const isCustomVat = !standardRates.includes(vatStr)
+   169→    setForm({
+   170→      name: p.name,
+   171→      categoryId: p.category.id,
+   172→      description: p.description || '',
+   173→      price: String(p.price),
+   174→      vatRate: isCustomVat ? 'custom' : vatStr,
+   175→      vatRateCustom: isCustomVat ? vatStr : '',
+   176→      isHfss: p.isHfss,
+   177→      isAgeRestricted: p.isAgeRestricted,
+   178→      minimumAge: String(p.minimumAge || 0),
+   179→      imageUrl: p.imageUrl || '',
+   180→      barcode: p.barcode || '',
+   181→      unit: p.unit,
+   182→      weightKg: p.weightKg ? String(p.weightKg) : '',
+   183→      aisle: p.aisle || '',
+   184→      minStockThreshold: String(p.minStockThreshold ?? 5),
+   185→      substituteProductId: p.substituteProductId || '',
+   186→      isAvailable: p.isAvailable,
+   187→      stockQuantity: String(p.stockQuantity),
+   188→      isFeatured: p.isFeatured,
+   189→      sortOrder: String(p.sortOrder),
+   190→      expiryDate: p.expiryDate ? p.expiryDate.split('T')[0] : '',
+   191→      bestBeforeDate: p.bestBeforeDate ? p.bestBeforeDate.split('T')[0] : '',
+   192→    })
+   193→    setDialogOpen(true)
+   194→  }
+   195→
+   196→  const handleSave = async () => {
+   197→    if (!form.name || !form.categoryId || !form.price) {
+   198→      toast.error('Name, category, and price are required')
+   199→      return
+   200→    }
+   201→    // Resolve final VAT rate: custom input takes precedence over select
+   202→    const finalVatRate = form.vatRate === 'custom'
+   203→      ? (form.vatRateCustom || '0')
+   204→      : form.vatRate
+   205→
+   206→    setSaving(true)
+   207→    try {
+   208→      const url = editingId ? `/api/admin/products/${editingId}` : '/api/admin/products'
+   209→      const method = editingId ? 'PATCH' : 'POST'
+   210→      const payload = { ...form, vatRate: finalVatRate }
+   211→      // Don't send vatRateCustom to backend — backend only knows vatRate
+   212→      const { vatRateCustom, ...bodyToSend } = payload
+   213→      const res = await fetch(url, {
+   214→        method,
+   215→        headers: { 'Content-Type': 'application/json' },
+   216→        body: JSON.stringify(bodyToSend),
+   217→      })
+   218→      if (!res.ok) {
+   219→        const data = await res.json()
+   220→        throw new Error(data.error || 'Failed')
+   221→      }
+   222→      toast.success(editingId ? 'Product updated' : 'Product created')
+   223→      setDialogOpen(false)
+   224→      fetchProducts()
+   225→    } catch (err: any) {
+   226→      toast.error(err.message || 'Failed to save product')
+   227→    } finally {
+   228→      setSaving(false)
+   229→    }
+   230→  }
+   231→
+   232→  const handleDelete = async () => {
+   233→    if (!deleteId) return
+   234→    setDeleting(true)
+   235→    try {
+   236→      const res = await fetch(`/api/admin/products/${deleteId}`, { method: 'DELETE' })
+   237→      if (!res.ok) {
+   238→        const data = await res.json()
+   239→        throw new Error(data.error || 'Failed')
+   240→      }
+   241→      toast.success('Product deleted')
+   242→      setDeleteId(null)
+   243→      fetchProducts()
+   244→    } catch (err: any) {
+   245→      toast.error(err.message || 'Failed to delete product')
+   246→    } finally {
+   247→      setDeleting(false)
+   248→    }
+   249→  }
+   250→
+   251→  const handleToggle = async (id: string, field: 'isAvailable' | 'isHfss' | 'isAgeRestricted', value: boolean) => {
+   252→    try {
+   253→      const res = await fetch(`/api/admin/products/${id}`, {
+   254→        method: 'PATCH',
+   255→        headers: { 'Content-Type': 'application/json' },
+   256→        body: JSON.stringify({ [field]: value }),
+   257→      })
+   258→      if (!res.ok) throw new Error()
+   259→      toast.success(`${field === 'isAvailable' ? 'Availability' : 'HFSS flag'} updated`)
+   260→      fetchProducts()
+   261→    } catch {
+   262→      toast.error('Failed to update')
+   263→    }
+   264→  }
+   265→
+   266→  const toggleSort = (field: 'name' | 'price' | 'stock') => {
+   267→    if (sortBy === field) {
+   268→      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+   269→    } else {
+   270→      setSortBy(field)
+   271→      setSortOrder('asc')
+   272→    }
+   273→  }
+   274→
+   275→  const handleExportPdf = async () => {
+   276→    if (products.length === 0) {
+   277→      toast.error('No products to export')
+   278→      return
+   279→    }
+   280→    try {
+   281→      await exportTableToPdf({
+   282→        title: 'Products',
+   283→        subtitle: `${total} product${total === 1 ? '' : 's'}`,
+   284→        filename: `products-${new Date().toISOString().split('T')[0]}.pdf`,
+   285→        columns: ['Name', 'Category', 'Price', 'VAT', 'Stock', 'Available', 'Expiry', 'HFSS', 'Age 18+'],
+   286→        rows: products.map((p) => [
+   287→          p.name,
+   288→          p.category?.name || '—',
+   289→          formatPrice(p.price),
+   290→          getVatRateLabel(p.vatRate),
+   291→          p.stockQuantity,
+   292→          p.isAvailable ? 'Yes' : 'No',
+   293→          p.expiryDate ? new Date(p.expiryDate).toLocaleDateString('en-GB') : '—',
+   294→          p.isHfss ? 'Yes' : 'No',
+   295→          p.isAgeRestricted ? 'Yes' : 'No',
+   296→        ]),
+   297→        footer: `Total inventory value: ${formatPrice(products.reduce((s, p) => s + p.price * p.stockQuantity, 0))}`,
+   298→      })
+   299→      toast.success('PDF exported')
+   300→    } catch {
+   301→      toast.error('Failed to export PDF')
+   302→    }
+   303→  }
+   304→
+   305→  return (
+   306→    <div>
+   307→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+   308→        <div>
+   309→          <h1 className="text-2xl font-bold text-gray-900">Products</h1>
+   310→          <p className="text-gray-500 text-sm">{total} products total</p>
+   311→        </div>
+   312→        <div className="flex flex-wrap gap-2">
+   313→          <Button
+   314→            variant="outline"
+   315→            onClick={handleExportPdf}
+   316→            disabled={products.length === 0}
+   317→            className="border-gray-300"
+   318→          >
+   319→            <FileDown className="h-4 w-4 mr-1" /> Export PDF
+   320→          </Button>
+   321→          <Button onClick={handleOpenCreate} className="bg-[#16a34a] hover:bg-[#15803d]">
+   322→            <Plus className="h-4 w-4 mr-1" /> Add Product
+   323→          </Button>
+   324→        </div>
+   325→      </div>
+   326→
+   327→      {/* CSV Import/Export */}
+   328→      <div className="mb-6">
+   329→        <CsvImportExport />
+   330→      </div>
+   331→
+   332→      {/* Filters */}
+   333→      <Card className="mb-6">
+   334→        <CardContent className="p-4">
+   335→          <div className="flex flex-col sm:flex-row gap-3">
+   336→            <div className="relative flex-1">
+   337→              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+   338→              <Input
+   339→                placeholder="Search products..."
+   340→                value={search}
+   341→                onChange={(e) => setSearch(e.target.value)}
+   342→                className="pl-9"
+   343→              />
+   344→            </div>
+   345→            <Select value={filterCategory} onValueChange={setFilterCategory}>
+   346→              <SelectTrigger className="w-full sm:w-48">
+   347→                <SelectValue placeholder="All Categories" />
+   348→              </SelectTrigger>
+   349→              <SelectContent>
+   350→                <SelectItem value="all">All Categories</SelectItem>
+   351→                {categories.map((c) => (
+   352→                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+   353→                ))}
+   354→              </SelectContent>
+   355→            </Select>
+   356→          </div>
+   357→        </CardContent>
+   358→      </Card>
+   359→
+   360→      {/* Table */}
+   361→      <Card>
+   362→        <CardContent className="p-0">
+   363→          {loading ? (
+   364→            <div className="p-6 space-y-4">
+   365→              {[1, 2, 3, 4, 5].map((i) => (
+   366→                <Skeleton key={i} className="h-12 w-full" />
+   367→              ))}
+   368→            </div>
+   369→          ) : products.length === 0 ? (
+   370→            <div className="text-center py-12">
+   371→              <AlertTriangle className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+   372→              <p className="text-gray-500">No products found</p>
+   373→            </div>
+   374→          ) : (
+   375→            <>
+   376→              {/* Desktop Table */}
+   377→              <div className="hidden md:block overflow-x-auto">
+   378→                <table className="w-full text-sm">
+   379→                  <thead>
+   380→                    <tr className="border-b border-gray-200 bg-gray-50">
+   381→                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+   382→                        <button onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-gray-700">
+   383→                          Name <ArrowUpDown className="h-3 w-3" />
+   384→                        </button>
+   385→                      </th>
+   386→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Category</th>
+   387→                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+   388→                        <button onClick={() => toggleSort('price')} className="flex items-center gap-1 hover:text-gray-700">
+   389→                          Price <ArrowUpDown className="h-3 w-3" />
+   390→                        </button>
+   391→                      </th>
+   392→                      <th className="text-left py-3 px-4 font-medium text-gray-500">VAT</th>
+   393→                      <th className="text-left py-3 px-4 font-medium text-gray-500">HFSS</th>
+   394→                      <th className="text-left py-3 px-4 font-medium text-gray-500">
+   395→                        <button onClick={() => toggleSort('stock')} className="flex items-center gap-1 hover:text-gray-700">
+   396→                          Stock <ArrowUpDown className="h-3 w-3" />
+   397→                        </button>
+   398→                      </th>
+   399→                      <th className="text-left py-3 px-4 font-medium text-gray-500">Available</th>
+   400→                      <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
+   401→                    </tr>
+   402→                  </thead>
+   403→                  <tbody>
+   404→                    {products.map((p) => (
+   405→                      <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50">
+   406→                        <td className="py-3 px-4 font-medium text-gray-900">{p.name}</td>
+   407→                        <td className="py-3 px-4">
+   408→                          <Badge variant="secondary" className="text-xs">{p.category.name}</Badge>
+   409→                        </td>
+   410→                        <td className="py-3 px-4">{formatPrice(p.price)}</td>
+   411→                        <td className="py-3 px-4 text-gray-500 text-xs">{getVatRateLabel(p.vatRate)}</td>
+   412→                        <td className="py-3 px-4">
+   413→                          <div className="flex items-center gap-1">
+   414→                            <button onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}>
+   415→                              {p.isHfss ? (
+   416→                                <ToggleRight className="h-5 w-5 text-amber-500" />
+   417→                              ) : (
+   418→                                <ToggleLeft className="h-5 w-5 text-gray-300" />
+   419→                              )}
+   420→                            </button>
+   421→                            <button onClick={() => handleToggle(p.id, 'isAgeRestricted', !p.isAgeRestricted)}>
+   422→                              {p.isAgeRestricted ? (
+   423→                                <ToggleRight className="h-5 w-5 text-red-500" />
+   424→                              ) : (
+   425→                                <ToggleLeft className="h-5 w-5 text-gray-300" />
+   426→                              )}
+   427→                            </button>
+   428→                          </div>
+   429→                        </td>
+   430→                        <td className="py-3 px-4">
+   431→                          <span className={p.stockQuantity <= 5 ? 'text-red-600 font-medium' : ''}>
+   432→                            {p.stockQuantity}
+   433→                          </span>
+   434→                        </td>
+   435→                        <td className="py-3 px-4">
+   436→                          <button onClick={() => handleToggle(p.id, 'isAvailable', !p.isAvailable)}>
+   437→                            {p.isAvailable ? (
+   438→                              <ToggleRight className="h-5 w-5 text-green-600" />
+   439→                            ) : (
+   440→                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+   441→                            )}
+   442→                          </button>
+   443→                        </td>
+   444→                        <td className="py-3 px-4 text-right">
+   445→                          <div className="flex items-center justify-end gap-1">
+   446→                            <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(p)}>
+   447→                              <Pencil className="h-4 w-4" />
+   448→                            </Button>
+   449→                            <Button
+   450→                              variant="ghost"
+   451→                              size="icon"
+   452→                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+   453→                              onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
+   454→                            >
+   455→                              <Trash2 className="h-4 w-4" />
+   456→                            </Button>
+   457→                          </div>
+   458→                        </td>
+   459→                      </tr>
+   460→                    ))}
+   461→                  </tbody>
+   462→                </table>
+   463→              </div>
+   464→
+   465→              {/* Mobile Cards */}
+   466→              <div className="md:hidden space-y-3 p-4">
+   467→                {products.map((p) => (
+   468→                  <Card key={p.id}>
+   469→                    <CardContent className="p-4">
+   470→                      <div className="flex items-start justify-between mb-3">
+   471→                        <div>
+   472→                          <p className="font-medium text-gray-900">{p.name}</p>
+   473→                          <Badge variant="secondary" className="text-xs mt-1">{p.category.name}</Badge>
+   474→                        </div>
+   475→                        <span className={`text-sm ${p.stockQuantity <= 5 ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+   476→                          Stock: {p.stockQuantity}
+   477→                        </span>
+   478→                      </div>
+   479→                      <div className="space-y-2 mb-3">
+   480→                        <div className="flex justify-between">
+   481→                          <span className="text-sm text-gray-500">Price</span>
+   482→                          <span className="font-medium">{formatPrice(p.price)}</span>
+   483→                        </div>
+   484→                        <div className="flex justify-between">
+   485→                          <span className="text-sm text-gray-500">VAT Rate</span>
+   486→                          <span className="font-medium">{getVatRateLabel(p.vatRate)}</span>
+   487→                        </div>
+   488→                      </div>
+   489→                      <div className="flex items-center justify-between mb-3">
+   490→                        <div className="flex items-center gap-3">
+   491→                          <button
+   492→                            onClick={() => handleToggle(p.id, 'isAvailable', !p.isAvailable)}
+   493→                            className="flex items-center gap-1.5 min-h-[44px]"
+   494→                          >
+   495→                            {p.isAvailable ? (
+   496→                              <ToggleRight className="h-5 w-5 text-green-600" />
+   497→                            ) : (
+   498→                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+   499→                            )}
+   500→                            <span className="text-sm">Available</span>
+   501→                          </button>
+   502→                          <button
+   503→                            onClick={() => handleToggle(p.id, 'isHfss', !p.isHfss)}
+   504→                            className="flex items-center gap-1.5 min-h-[44px]"
+   505→                          >
+   506→                            {p.isHfss ? (
+   507→                              <ToggleRight className="h-5 w-5 text-amber-500" />
+   508→                            ) : (
+   509→                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+   510→                            )}
+   511→                            <span className="text-sm">HFSS</span>
+   512→                          </button>
+   513→                          <button
+   514→                            onClick={() => handleToggle(p.id, 'isAgeRestricted', !p.isAgeRestricted)}
+   515→                            className="flex items-center gap-1.5 min-h-[44px]"
+   516→                          >
+   517→                            {p.isAgeRestricted ? (
+   518→                              <ToggleRight className="h-5 w-5 text-red-500" />
+   519→                            ) : (
+   520→                              <ToggleLeft className="h-5 w-5 text-gray-300" />
+   521→                            )}
+   522→                            <span className="text-sm">Age 18+</span>
+   523→                          </button>
+   524→                        </div>
+   525→                      </div>
+   526→                      <div className="flex items-center gap-2 pt-2 border-t">
+   527→                        <Button variant="outline" size="sm" className="flex-1 min-h-10" onClick={() => handleOpenEdit(p)}>
+   528→                          <Pencil className="h-4 w-4 mr-1" /> Edit
+   529→                        </Button>
+   530→                        <Button
+   531→                          variant="outline"
+   532→                          size="sm"
+   533→                          className="flex-1 min-h-10 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+   534→                          onClick={() => { setDeleteId(p.id); setDeleteName(p.name) }}
+   535→                        >
+   536→                          <Trash2 className="h-4 w-4 mr-1" /> Delete
+   537→                        </Button>
+   538→                      </div>
+   539→                    </CardContent>
+   540→                  </Card>
+   541→                ))}
+   542→              </div>
+   543→            </>
+   544→          )}
+   545→        </CardContent>
+   546→      </Card>
+   547→
+   548→      {/* Create/Edit Dialog */}
+   549→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   550→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   551→          <DialogHeader>
+   552→            <DialogTitle>{editingId ? 'Edit Product' : 'Add Product'}</DialogTitle>
+   553→          </DialogHeader>
+   554→          <div className="grid gap-4 py-4">
+   555→            <div className="grid gap-2">
+   556→              <Label htmlFor="name">Name *</Label>
+   557→              <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+   558→            </div>
+   559→            <div className="grid gap-2">
+   560→              <Label htmlFor="categoryId">Category *</Label>
+   561→              <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
+   562→                <SelectTrigger>
+   563→                  <SelectValue placeholder="Select category" />
+   564→                </SelectTrigger>
+   565→                <SelectContent>
+   566→                  {categories.map((c) => (
+   567→                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+   568→                  ))}
+   569→                </SelectContent>
+   570→              </Select>
+   571→            </div>
+   572→            <div className="grid gap-2">
+   573→              <Label htmlFor="description">Description</Label>
+   574→              <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+   575→            </div>
+   576→            <div className="grid grid-cols-2 gap-4">
+   577→              <div className="grid gap-2">
+   578→                <Label htmlFor="price">Price (£) *</Label>
+   579→                <Input id="price" type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+   580→              </div>
+   581→              <div className="grid gap-2">
+   582→                <Label htmlFor="vatRate">VAT Rate</Label>
+   583→                <Select value={form.vatRate} onValueChange={(v) => setForm({ ...form, vatRate: v })}>
+   584→                  <SelectTrigger>
+   585→                    <SelectValue />
+   586→                  </SelectTrigger>
+   587→                  <SelectContent>
+   588→                    <SelectItem value="0">Zero-rated (0%)</SelectItem>
+   589→                    <SelectItem value="0.05">Reduced (5%)</SelectItem>
+   590→                    <SelectItem value="0.2">Standard (20%)</SelectItem>
+   591→                    <SelectItem value="custom">Custom…</SelectItem>
+   592→                  </SelectContent>
+   593→                </Select>
+   594→                {form.vatRate === 'custom' && (
+   595→                  <div className="flex items-center gap-2 mt-1">
+   596→                    <Input
+   597→                      type="number"
+   598→                      step="0.01"
+   599→                      min="0"
+   600→                      max="1"
+   601→                      value={form.vatRateCustom}
+   602→                      onChange={(e) => setForm({ ...form, vatRateCustom: e.target.value })}
+   603→                      placeholder="e.g., 0.125 for 12.5%"
+   604→                    />
+   605→                    <span className="text-xs text-gray-500 whitespace-nowrap">decimal (0–1)</span>
+   606→                  </div>
+   607→                )}
+   608→                {form.vatRate === 'custom' && form.vatRateCustom && (
+   609→                  <p className="text-xs text-gray-500">
+   610→                    = {Math.round(parseFloat(form.vatRateCustom || '0') * 100)}% VAT
+   611→                  </p>
+   612→                )}
+   613→              </div>
+   614→            </div>
+   615→            <div className="grid grid-cols-2 gap-4">
+   616→              <div className="grid gap-2">
+   617→                <Label htmlFor="expiryDate">Expiry Date</Label>
+   618→                <Input
+   619→                  id="expiryDate"
+   620→                  type="date"
+   621→                  value={form.expiryDate}
+   622→                  onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
+   623→                />
+   624→                <p className="text-xs text-gray-500">Hard expiry — unsafe to sell after this date. Auto-moves to wastage.</p>
+   625→              </div>
+   626→              <div className="grid gap-2">
+   627→                <Label htmlFor="bestBeforeDate">Best Before Date</Label>
+   628→                <Input
+   629→                  id="bestBeforeDate"
+   630→                  type="date"
+   631→                  value={form.bestBeforeDate}
+   632→                  onChange={(e) => setForm({ ...form, bestBeforeDate: e.target.value })}
+   633→                />
+   634→                <p className="text-xs text-gray-500">Advisory — quality degrades but still saleable.</p>
+   635→              </div>
+   636→            </div>
+   637→            <div className="grid grid-cols-2 gap-4">
+   638→              <div className="grid gap-2">
+   639→                <Label htmlFor="stockQuantity">Stock Quantity</Label>
+   640→                <Input id="stockQuantity" type="number" value={form.stockQuantity} onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })} />
+   641→              </div>
+   642→              <div className="grid gap-2">
+   643→                <Label htmlFor="unit">Unit</Label>
+   644→                <Select value={form.unit} onValueChange={(v) => setForm({ ...form, unit: v })}>
+   645→                  <SelectTrigger>
+   646→                    <SelectValue />
+   647→                  </SelectTrigger>
+   648→                  <SelectContent>
+   649→                    <SelectItem value="each">Each</SelectItem>
+   650→                    <SelectItem value="kg">Kg</SelectItem>
+   651→                    <SelectItem value="litre">Litre</SelectItem>
+   652→                    <SelectItem value="pack">Pack</SelectItem>
+   653→                    <SelectItem value="bunch">Bunch</SelectItem>
+   654→                  </SelectContent>
+   655→                </Select>
+   656→              </div>
+   657→            </div>
+   658→            <div className="grid grid-cols-2 gap-4">
+   659→              <div className="grid gap-2">
+   660→                <Label htmlFor="weightKg">Weight (kg)</Label>
+   661→                <Input id="weightKg" type="number" step="0.01" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} />
+   662→              </div>
+   663→              <div className="grid gap-2">
+   664→                <Label htmlFor="barcode">Barcode</Label>
+   665→                <Input id="barcode" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
+   666→              </div>
+   667→            </div>
+   668→            <div className="grid grid-cols-2 gap-4">
+   669→              <div className="grid gap-2">
+   670→                <Label htmlFor="aisle">Aisle</Label>
+   671→                <Input id="aisle" placeholder="e.g., A1" value={form.aisle} onChange={(e) => setForm({ ...form, aisle: e.target.value })} />
+   672→              </div>
+   673→              <div className="grid gap-2">
+   674→                <Label htmlFor="minStockThreshold">Min Stock Threshold</Label>
+   675→                <Input id="minStockThreshold" type="number" min="0" value={form.minStockThreshold} onChange={(e) => setForm({ ...form, minStockThreshold: e.target.value })} />
+   676→              </div>
+   677→            </div>
+   678→            <div className="grid gap-2">
+   679→              <Label htmlFor="imageUrl">Product Image</Label>
+   680→              <div className="flex items-start gap-3">
+   681→                {(form.imageUrl && form.imageUrl.startsWith('data:')) && (
+   682→                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+   683→                    <img src={form.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+   684→                  </div>
+   685→                )}
+   686→                <div className="flex-1">
+   687→                  <Input id="imageUrl" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="Image URL or upload below" />
+   688→                  <div className="mt-2">
+   689→                    <label htmlFor="imageUpload" className="cursor-pointer">
+   690→                      <div className="inline-flex items-center gap-2 text-sm text-[#16a34a] hover:text-[#15803d] font-medium">
+   691→                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+   692→                        Upload Image (max 2MB)
+   693→                      </div>
+   694→                      <input
+   695→                        type="file"
+   696→                        id="imageUpload"
+   697→                        accept="image/jpeg,image/png,image/webp"
+   698→                        className="hidden"
+   699→                        onChange={async (e) => {
+   700→                          const file = e.target.files?.[0]
+   701→                          if (!file) return
+   702→                          const { validateImageFile, fileToDataUrl } = await import('@/lib/upload')
+   703→                          const err = validateImageFile(file)
+   704→                          if (err) { toast.error(err); return }
+   705→                          try {
+   706→                            const dataUrl = await fileToDataUrl(file)
+   707→                            setForm({ ...form, imageUrl: dataUrl })
+   708→                          } catch { toast.error('Failed to process image') }
+   709→                        }}
+   710→                      />
+   711→                    </label>
+   712→                  </div>
+   713→                </div>
+   714→              </div>
+   715→            </div>
+   716→            {editingId && (
+   717→              <div className="grid gap-2">
+   718→                <Label>Substitute Product</Label>
+   719→                <Select value={form.substituteProductId || '_none'} onValueChange={(v) => setForm({ ...form, substituteProductId: v === '_none' ? '' : v })}>
+   720→                  <SelectTrigger>
+   721→                    <SelectValue placeholder="No substitute" />
+   722→                  </SelectTrigger>
+   723→                  <SelectContent>
+   724→                    <SelectItem value="_none">No substitute</SelectItem>
+   725→                    {products
+   726→                      .filter((p) => p.id !== editingId && p.category.id === form.categoryId)
+   727→                      .map((p) => (
+   728→                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   729→                      ))}
+   730→                  </SelectContent>
+   731→                </Select>
+   732→                <p className="text-xs text-gray-500">Select an alternative product from the same category</p>
+   733→              </div>
+   734→            )}
+   735→            <div className="flex items-center gap-6">
+   736→              <div className="flex items-center gap-2">
+   737→                <Switch checked={form.isAvailable} onCheckedChange={(v) => setForm({ ...form, isAvailable: v })} />
+   738→                <Label>Available</Label>
+   739→              </div>
+   740→              <div className="flex items-center gap-2">
+   741→                <Switch checked={form.isHfss} onCheckedChange={(v) => setForm({ ...form, isHfss: v })} />
+   742→                <Label>HFSS (High in Fat, Salt, Sugar)</Label>
+   743→              </div>
+   744→              <div className="flex items-center gap-2">
+   745→                <Switch checked={form.isAgeRestricted} onCheckedChange={(v) => setForm({ ...form, isAgeRestricted: v, minimumAge: v ? '18' : '0' })} />
+   746→                <Label>Age Restricted (Challenge 25)</Label>
+   747→              </div>
+   748→              {form.isAgeRestricted && (
+   749→                <div className="space-y-1">
+   750→                  <Label htmlFor="minimumAge">Minimum Age</Label>
+   751→                  <Select value={form.minimumAge} onValueChange={(v) => setForm({ ...form, minimumAge: v })}>
+   752→                    <SelectTrigger id="minimumAge">
+   753→                      <SelectValue placeholder="Select minimum age" />
+   754→                    </SelectTrigger>
+   755→                    <SelectContent>
+   756→                      <SelectItem value="16">16+ (Energy drinks)</SelectItem>
+   757→                      <SelectItem value="18">18+ (Alcohol, Tobacco, Knives, Solvents)</SelectItem>
+   758→                      <SelectItem value="21">21+ (US-restricted items)</SelectItem>
+   759→                    </SelectContent>
+   760→                  </Select>
+   761→                </div>
+   762→              )}
+   763→              <div className="flex items-center gap-2">
+   764→                <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
+   765→                <Label>Featured</Label>
+   766→              </div>
+   767→            </div>
+   768→          </div>
+   769→          <DialogFooter>
+   770→            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+   771→            <Button onClick={handleSave} disabled={saving} className="bg-[#16a34a] hover:bg-[#15803d]">
+   772→              {saving ? 'Saving...' : editingId ? 'Update' : 'Create'}
+   773→            </Button>
+   774→          </DialogFooter>
+   775→        </DialogContent>
+   776→      </Dialog>
+   777→
+   778→      {/* Delete Confirmation */}
+   779→      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+   780→        <AlertDialogContent>
+   781→          <AlertDialogHeader>
+   782→            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+   783→            <AlertDialogDescription>
+   784→              Are you sure you want to delete <strong>{deleteName}</strong>? This action cannot be undone.
+   785→            </AlertDialogDescription>
+   786→          </AlertDialogHeader>
+   787→          <AlertDialogFooter>
+   788→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   789→            <AlertDialogAction
+   790→              onClick={handleDelete}
+   791→              disabled={deleting}
+   792→              className="bg-red-600 hover:bg-red-700"
+   793→            >
+   794→              {deleting ? 'Deleting...' : 'Delete'}
+   795→            </AlertDialogAction>
+   796→          </AlertDialogFooter>
+   797→        </AlertDialogContent>
+   798→      </AlertDialog>
+   799→    </div>
+   800→  )
+   801→}
+   802→

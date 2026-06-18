@@ -147,3 +147,50 @@ Stage Summary:
 - Fix has two layers: (1) permanent fix in prisma.ts so future DBs are always migrated correctly, (2) one-time DB patch script that brings the current DB up to date immediately
 - All admin pages should now load data correctly when the user refreshes the browser
 - The patch-db-schema.py script is safe to re-run (idempotent) and can be deleted after this fix is verified
+
+---
+Task ID: 4
+Agent: Main
+Task: Fix "Failed to load products/employees/etc" across all admin pages — comprehensive data-loading audit + fix + push
+
+Work Log:
+- Server-side investigation: All 20 admin API endpoints + 9 customer-facing endpoints return 200 OK when tested with a valid session cookie (via curl). Server logs show successful 200 responses for every endpoint.
+- Root cause: EXPIRED SESSION COOKIE. When the user's session cookie expires or is missing, the middleware returns 401 { error: 'Authentication required' } for any /api/admin/* request. Each admin page's `if (!res.ok) throw new Error()` triggered the catch block → `toast.error('Failed to load X')`. The user sees the toast but stays on the broken page with no auto-redirect to login.
+- Ran a comprehensive audit via Explore subagent across 30+ admin/customer/driver/picker pages and 16 API routes. Confirmed:
+  * Zero client↔API response-shape mismatches (all `data.products`, `data.employees`, etc. match)
+  * The "Failed to load" symptom is purely a 401 handling issue
+  * 5 specific silent-failure bugs that crash pages on 401 (analytics, driver-earnings, driver-profile, picker-profile, bank-holiday-mode-change)
+  * 1 wrong-URL bug in notifications-client.tsx (duplicate `notifications` segment)
+- Created src/lib/api-fetch.ts — global fetch wrapper:
+  * apiFetch(url, init) — on 401, redirects to /auth/login?redirect=<currentPath> and throws 'Session expired — redirecting to login'
+  * apiFetchJson<T>(url, init) — convenience wrapper that also throws on non-OK
+  * redirectOn401: false option for endpoints where 401 is acceptable (navbar, footer)
+- Bulk-converted ALL raw fetch() calls across 42 client components to apiFetch():
+  * 14 admin pages (products, categories, customers, drivers, employees, orders, banners, shifts, wastage, finance, promotions, delivery-zones, analytics, settings)
+  * 12 admin components (kanban, low-stock, bank-holidays, notification-editor, store-status, store-profile, csv-import-export, delivery-map, shifts-client, admin-settings, admin-dashboard, finance-client)
+  * 11 customer pages (home, orders, favourites, addresses, notifications, banner-carousel, checkout, cross-sell-slider, order-tracking, predictive-search, product-detail)
+  * 4 driver pages (dashboard, order-flow, earnings, profile)
+  * 3 picker pages (dashboard, packing, profile)
+  * Profile page (works for all roles — customer/driver/picker/manager/owner)
+  * Navbar + Footer (with redirectOn401: false since they're on every page including login)
+- Updated toast error catch blocks to skip the toast when err.message === 'Session expired — redirecting to login' — so users don't see a confusing error message right before being redirected to login.
+- Fixed 5 specific bugs:
+  1. admin/analytics/page.tsx — added res.ok check + shape validation. On 401, was setting data = {error: '...'} which then crashed on summary.totalRevenue access (TypeError).
+  2. driver/driver-earnings-client.tsx — same fix. Was crashing on data.today.earnings.toFixed(2) when data was the error object.
+  3. driver/driver-profile-client.tsx — added res.ok check + null data guard.
+  4. picker/picker-profile-client.tsx — same fix.
+  5. customer/notifications-client.tsx — fixed handleMarkAllRead URL bug. Was calling /api/user/notifications/notifications (duplicate segment, 404). Now loops through unread notifications and marks each one read via the existing /api/user/notifications/[id] PATCH endpoint.
+  6. admin/bank-holiday-manager.tsx — handleModeChange was DELETE-then-POST without checking res.ok on either. If POST failed, holiday was deleted but never recreated (silent data loss). Now checks res.ok on both.
+- Auth fetches intentionally NOT converted: src/lib/auth-client.ts and src/components/auth/reset-password-client.tsx — these call /api/auth/login, /api/auth/register, /api/auth/reset-password, /api/auth/session where 401 means "wrong credentials" not "session expired". Converting them would cause an infinite redirect loop on the login page.
+- External API fetches (postcodes.io, Google OAuth) NOT converted — they're server-side and don't go through our session system.
+- TypeScript check: All pre-existing errors remain (Stripe/nodemailer optional deps, Prisma type mismatches in API routes). No NEW errors introduced by the apiFetch conversion.
+- Production build: PASSED (✓ Compiled successfully in 14.4s, ✓ 67/67 static pages generated).
+- Runtime verification: All admin endpoints return 200 OK with valid session, 401 without session (correct behavior).
+- Committed as 4efa831 and pushed to origin/main.
+
+Stage Summary:
+- ROOT CAUSE: Expired session cookie → 401 from middleware → each page's catch block shows "Failed to load X" toast with no redirect to login
+- FIX: Created global apiFetch() wrapper that auto-redirects to /auth/login on 401, and converted every client-side fetch() call across 42 components
+- ALSO FIXED: 5 silent-failure bugs that crashed pages on auth errors, 1 wrong-URL bug in notifications, 1 partial-failure data-loss bug in bank-holiday mode change
+- Build passes, all endpoints verified, pushed to GitHub
+- User should now: (1) HARD REFRESH the browser (Ctrl+Shift+R) to load the new JS bundles, (2) if on a deployed Vercel build, wait for the auto-deploy to complete, (3) if session expired, they'll be auto-redirected to login instead of seeing "Failed to load" toasts

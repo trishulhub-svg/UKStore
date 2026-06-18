@@ -103,3 +103,47 @@ Stage Summary:
 - Customer data: only customer themselves can edit personal data; admin can only ban/unban
 - Banners: 2 default images (admin-uploadable, not deletable) shown when no promotional banners; promotional banners have toggle + delete
 - All changes build cleanly and pass TypeScript checks
+
+---
+Task ID: 3
+Agent: Main
+Task: Fix "failed to load employees" + all admin data loading failures (products, categories, drivers, customers, banners, shifts, wastage, finance)
+
+Work Log:
+- Investigated root cause: existing SQLite DB at db/custom.db was created with an OLDER schema and never had its missing tables/columns added.
+- DB inspection revealed:
+  * Missing tables: `banners`, `employee_profiles` (never created because SCHEMA_SQL had CREATE TABLE IF NOT EXISTS, but the DB was already considered "valid" by verifyDatabaseSchema() which only checks 6 core tables)
+  * Missing columns on `users`: `mustResetPassword`
+  * Missing columns on `products`: `originalPrice`, `images`, `brand`, `rating`, `reviewCount`, `expiryDate`, `bestBeforeDate`
+  * Missing columns on `stores`: `logoUrl`, `defaultBanner1Url`, `defaultBanner2Url`
+  * Missing columns on `shifts`: `manualHours`
+  * Missing columns on `orders`: `promotionId`, `discountAmount`
+- Root cause in src/lib/auth/prisma.ts:
+  * `initializeDatabaseAtPath()` for existing DBs only ran `runColumnMigrations()`, never `executeSchemaSql()` — so newly-added tables (banners, employee_profiles) never got created on existing DBs
+  * `SCHEMA_SQL` block was missing `banners` and `employee_profiles` table definitions entirely
+  * `COLUMN_MIGRATIONS` list was missing 5 columns: `products.originalPrice`, `products.images`, `products.brand`, `products.rating`, `products.reviewCount`
+- Fixes applied to src/lib/auth/prisma.ts:
+  1. Added `banners` table definition to SCHEMA_SQL block (with all columns including `linkUrl`, `linkCategory`, `sortOrder`, `isActive`)
+  2. Added `employee_profiles` table definition to SCHEMA_SQL block (with `userId` unique index)
+  3. Added 5 missing columns to COLUMN_MIGRATIONS: products.originalPrice, products.images, products.brand, products.rating, products.reviewCount
+  4. Added 11 more missing columns to COLUMN_MIGRATIONS: orders.promotionId, orders.discountAmount, orders.bankTransferRef, orders.bankTransferVerified, orders.deliveryPhotoUrl, orders.batchGroup, orders.packedAt, orders.dispatchedAt, orders.deliveredAt, orders.hasChallenge25, orders.challenge25Verified, order_items.picked
+  5. Created new helper `ensureAllTablesExist()` that wraps `executeSchemaSql()` — runs all CREATE TABLE IF NOT EXISTS statements (idempotent)
+  6. Updated both existing-DB code paths (existing-DB-valid path + bundled-DB-valid path) to call `ensureAllTablesExist()` THEN `runColumnMigrations()` — so new tables get created AND new columns get added on every restart
+- Direct DB patch script: scripts/patch-db-schema.py — runs the same ALTER TABLE / CREATE TABLE operations directly against the existing DB file via sqlite3 module (so the fix takes effect immediately without requiring a server restart)
+- Verified fix by running patch-db-schema.py + curl-testing all admin API endpoints:
+  * /api/admin/employees ✅ returned 2 employees (Store Owner + Demo Driver)
+  * /api/admin/products ✅ returned empty array (no data seeded, no error)
+  * /api/admin/categories ✅ returned empty array (no data seeded, no error)
+  * /api/admin/drivers ✅ returned driver with full profile
+  * /api/admin/customers ✅ returned Demo Customer
+  * /api/admin/banners ✅ returned empty array (table now exists)
+  * /api/admin/shifts ✅ returned shifts + staff list
+  * /api/admin/wastage ✅ returned wastage logs + summary
+  * /api/admin/finance/report ✅ returned full finance report with daily chart data
+- TypeScript check confirmed no new errors introduced by the prisma.ts changes (only pre-existing Stripe/nodemailer optional-dep warnings remain)
+
+Stage Summary:
+- Root cause: stale DB schema (older than current Prisma schema) combined with incomplete runtime migration logic in prisma.ts
+- Fix has two layers: (1) permanent fix in prisma.ts so future DBs are always migrated correctly, (2) one-time DB patch script that brings the current DB up to date immediately
+- All admin pages should now load data correctly when the user refreshes the browser
+- The patch-db-schema.py script is safe to re-run (idempotent) and can be deleted after this fix is verified

@@ -359,6 +359,35 @@ CREATE TABLE IF NOT EXISTS "bank_holidays" (
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS "banners" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "storeId" TEXT NOT NULL,
+  "title" TEXT,
+  "imageUrl" TEXT NOT NULL,
+  "linkUrl" TEXT,
+  "linkCategory" TEXT,
+  "sortOrder" INTEGER NOT NULL DEFAULT 0,
+  "isActive" BOOLEAN NOT NULL DEFAULT 1,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "employee_profiles" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "userId" TEXT NOT NULL,
+  "salary" REAL,
+  "wageRate" REAL,
+  "wageType" TEXT,
+  "bankName" TEXT,
+  "bankAccountNo" TEXT,
+  "bankSortCode" TEXT,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "employee_profiles_userId_key" ON "employee_profiles"("userId");
 `
 
 // ─── Schema Creation ────────────────────────────────────────────
@@ -377,14 +406,48 @@ const COLUMN_MIGRATIONS: Array<{ table: string; column: string; typeDef: string 
   { table: 'stores', column: 'logoUrl', typeDef: 'TEXT' },
   { table: 'stores', column: 'defaultBanner1Url', typeDef: 'TEXT' },
   { table: 'stores', column: 'defaultBanner2Url', typeDef: 'TEXT' },
-  // products
+  // products — columns added after initial schema
+  { table: 'products', column: 'originalPrice', typeDef: 'REAL' },
+  { table: 'products', column: 'images', typeDef: 'TEXT' },
+  { table: 'products', column: 'brand', typeDef: 'TEXT' },
+  { table: 'products', column: 'rating', typeDef: 'REAL NOT NULL DEFAULT 0' },
+  { table: 'products', column: 'reviewCount', typeDef: 'INTEGER NOT NULL DEFAULT 0' },
   { table: 'products', column: 'expiryDate', typeDef: 'DATETIME' },
   { table: 'products', column: 'bestBeforeDate', typeDef: 'DATETIME' },
   // shifts
   { table: 'shifts', column: 'manualHours', typeDef: 'REAL' },
   // users
   { table: 'users', column: 'mustResetPassword', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+  // orders — columns added for promotions / bank transfers
+  { table: 'orders', column: 'promotionId', typeDef: 'TEXT' },
+  { table: 'orders', column: 'discountAmount', typeDef: 'REAL NOT NULL DEFAULT 0' },
+  { table: 'orders', column: 'bankTransferRef', typeDef: 'TEXT' },
+  { table: 'orders', column: 'bankTransferVerified', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+  { table: 'orders', column: 'deliveryPhotoUrl', typeDef: 'TEXT' },
+  { table: 'orders', column: 'batchGroup', typeDef: 'TEXT' },
+  { table: 'orders', column: 'packedAt', typeDef: 'DATETIME' },
+  { table: 'orders', column: 'dispatchedAt', typeDef: 'DATETIME' },
+  { table: 'orders', column: 'deliveredAt', typeDef: 'DATETIME' },
+  { table: 'orders', column: 'hasChallenge25', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+  { table: 'orders', column: 'challenge25Verified', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+  // order_items
+  { table: 'order_items', column: 'picked', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
 ]
+
+/**
+ * Idempotently create any missing tables on an EXISTING database.
+ *
+ * The SCHEMA_SQL block uses `CREATE TABLE IF NOT EXISTS` for every table,
+ * so re-running it on an existing DB is safe — it will only create tables
+ * that don't yet exist (e.g. banners, employee_profiles added in later
+ * schema versions) and will not touch existing tables.
+ *
+ * This is critical for production databases that were created with an
+ * older version of SCHEMA_SQL and need new tables added without data loss.
+ */
+async function ensureAllTablesExist(client: PrismaClient): Promise<void> {
+  await executeSchemaSql(client)
+}
 
 async function runColumnMigrations(client: PrismaClient): Promise<void> {
   for (const m of COLUMN_MIGRATIONS) {
@@ -532,7 +595,12 @@ async function initializeDatabaseAtPath(dbPath: string, dbUrl: string): Promise<
       await testClient.$connect()
       const isValid = await verifyDatabaseSchema(testClient)
       if (isValid) {
-        // Run column migrations on the existing DB so newly added Prisma fields work
+        // Existing DB is valid — but it might be missing tables that were
+        // added in later schema versions (banners, employee_profiles, etc.)
+        // and missing columns that were added later. Run BOTH:
+        //   1. ensureAllTablesExist — CREATE TABLE IF NOT EXISTS for every table
+        //   2. runColumnMigrations — ALTER TABLE ADD COLUMN for every new column
+        await ensureAllTablesExist(testClient)
         await runColumnMigrations(testClient)
         process.env.DATABASE_URL = dbUrl
         console.log(`[Prisma] Using existing database at: ${dbPath}`)
@@ -562,6 +630,7 @@ async function initializeDatabaseAtPath(dbPath: string, dbUrl: string): Promise<
       await testClient.$connect()
       const isValid = await verifyDatabaseSchema(testClient)
       if (isValid) {
+        await ensureAllTablesExist(testClient)
         await runColumnMigrations(testClient)
         process.env.DATABASE_URL = dbUrl
         console.log(`[Prisma] Using copied bundled database at: ${dbPath}`)

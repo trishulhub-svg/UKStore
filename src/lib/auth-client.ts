@@ -19,6 +19,8 @@ export interface AuthUser {
 export interface AuthResponse {
   user: AuthUser | null
   error: string | TechnicalError | null
+  /** True when the user must reset their password on first login (new employee accounts) */
+  mustResetPassword?: boolean
 }
 
 // ─── Auth Methods ─────────────────────────────────────────
@@ -83,7 +85,7 @@ export async function authLogin(email: string, password: string): Promise<AuthRe
     }
 
     const data = await res.json()
-    return { user: data.user, error: null }
+    return { user: data.user, error: null, mustResetPassword: data.mustResetPassword === true }
   } catch (err) {
     const timestamp = new Date().toISOString()
     const errMsg = err instanceof Error ? err.message : String(err)

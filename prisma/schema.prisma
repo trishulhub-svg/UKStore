@@ -61,16 +61,17 @@ enum DiscountType {
 // ─── Models ───────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  passwordHash String?
-  phone        String?
-  role         Role     @default(CUSTOMER)
-  avatarUrl    String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  name                 String?
+  passwordHash         String?
+  phone                String?
+  role                 Role     @default(CUSTOMER)
+  avatarUrl            String?
+  isActive             Boolean  @default(true)
+  mustResetPassword    Boolean  @default(false)  // Force password reset on next login (used for new employee accounts)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   // Relations
   addresses       Address[]
@@ -96,6 +97,8 @@ model Store {
   phone                String?
   email                String?
   logoUrl              String?  // Custom store logo (data URL or external URL). Used in navbar, footer, favicon, admin shell.
+  defaultBanner1Url    String?  // First default banner shown on the customer homepage when no promotional/normal banners are uploaded
+  defaultBanner2Url    String?  // Second default banner shown on the customer homepage when no promotional/normal banners are uploaded
   baseDeliveryFee      Float    @default(3.50)
   perKmCharge          Float    @default(0.50)
   freeDeliveryThreshold Float   @default(20.00)

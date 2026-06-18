@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Eye, AlertTriangle, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import { Search, Eye, AlertTriangle, CheckCircle2, XCircle, Clock, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,7 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
+import { exportTableToPdf } from '@/lib/client-pdf'
 
 const verificationColors: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700',
@@ -179,11 +180,49 @@ export default function AdminDriversPage() {
     }
   }
 
+  const handleExportPdf = async () => {
+    if (drivers.length === 0) {
+      toast.error('No drivers to export')
+      return
+    }
+    try {
+      await exportTableToPdf({
+        title: 'Drivers',
+        subtitle: `${drivers.length} driver${drivers.length === 1 ? '' : 's'}`,
+        filename: `drivers-${new Date().toISOString().split('T')[0]}.pdf`,
+        columns: ['Name', 'Email', 'Vehicle', 'Verification', 'Deliveries', 'Status', 'Joined'],
+        rows: drivers.map((d) => [
+          d.name || '—',
+          d.email,
+          d.driverProfile?.vehicleType || '—',
+          d.driverProfile?.verificationStatus || 'pending',
+          d._count.drivenOrders,
+          d.isActive ? 'Active' : 'Inactive',
+          new Date(d.createdAt).toLocaleDateString('en-GB'),
+        ]),
+        footer: `Total deliveries by listed drivers: ${drivers.reduce((s, d) => s + d._count.drivenOrders, 0)}`,
+      })
+      toast.success('PDF exported')
+    } catch {
+      toast.error('Failed to export PDF')
+    }
+  }
+
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Drivers</h1>
-        <p className="text-gray-500 text-sm">{drivers.length} drivers</p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Drivers</h1>
+          <p className="text-gray-500 text-sm">{drivers.length} drivers</p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleExportPdf}
+          disabled={drivers.length === 0}
+          className="border-gray-300"
+        >
+          <FileDown className="h-4 w-4 mr-1" /> Export PDF
+        </Button>
       </div>
 
       {/* Search */}

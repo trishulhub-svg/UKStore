@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS "users" (
   "role" TEXT NOT NULL DEFAULT 'CUSTOMER',
   "avatarUrl" TEXT,
   "isActive" BOOLEAN NOT NULL DEFAULT 1,
+  "mustResetPassword" BOOLEAN NOT NULL DEFAULT 0,
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -75,6 +76,9 @@ CREATE TABLE IF NOT EXISTS "stores" (
   "longitude" REAL NOT NULL,
   "phone" TEXT,
   "email" TEXT,
+  "logoUrl" TEXT,
+  "defaultBanner1Url" TEXT,
+  "defaultBanner2Url" TEXT,
   "baseDeliveryFee" REAL NOT NULL DEFAULT 3.5,
   "perKmCharge" REAL NOT NULL DEFAULT 0.5,
   "freeDeliveryThreshold" REAL NOT NULL DEFAULT 20.0,
@@ -134,6 +138,8 @@ CREATE TABLE IF NOT EXISTS "products" (
   "rating" REAL NOT NULL DEFAULT 0,
   "reviewCount" INTEGER NOT NULL DEFAULT 0,
   "sortOrder" INTEGER NOT NULL DEFAULT 0,
+  "expiryDate" DATETIME,
+  "bestBeforeDate" DATETIME,
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -314,6 +320,7 @@ CREATE TABLE IF NOT EXISTS "shifts" (
   "date" DATETIME NOT NULL,
   "startTime" TEXT NOT NULL,
   "endTime" TEXT NOT NULL,
+  "manualHours" REAL,
   "role" TEXT NOT NULL,
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -355,6 +362,49 @@ CREATE TABLE IF NOT EXISTS "bank_holidays" (
 `
 
 // ─── Schema Creation ────────────────────────────────────────────
+
+/**
+ * Column migrations — idempotent ALTER TABLE ADD COLUMN statements.
+ *
+ * SQLite doesn't support `IF NOT EXISTS` for ADD COLUMN, so we query
+ * PRAGMA table_info first and only add columns that are missing.
+ *
+ * Each entry: { table, column, typeDef }
+ * typeDef is the full "TYPE DEFAULT ..." clause as in CREATE TABLE.
+ */
+const COLUMN_MIGRATIONS: Array<{ table: string; column: string; typeDef: string }> = [
+  // stores
+  { table: 'stores', column: 'logoUrl', typeDef: 'TEXT' },
+  { table: 'stores', column: 'defaultBanner1Url', typeDef: 'TEXT' },
+  { table: 'stores', column: 'defaultBanner2Url', typeDef: 'TEXT' },
+  // products
+  { table: 'products', column: 'expiryDate', typeDef: 'DATETIME' },
+  { table: 'products', column: 'bestBeforeDate', typeDef: 'DATETIME' },
+  // shifts
+  { table: 'shifts', column: 'manualHours', typeDef: 'REAL' },
+  // users
+  { table: 'users', column: 'mustResetPassword', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+]
+
+async function runColumnMigrations(client: PrismaClient): Promise<void> {
+  for (const m of COLUMN_MIGRATIONS) {
+    try {
+      const cols = await client.$queryRawUnsafe<{ name: string }[]>(
+        `PRAGMA table_info(${m.table})`
+      )
+      const exists = cols.some((c) => c.name === m.column)
+      if (!exists) {
+        await client.$executeRawUnsafe(
+          `ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.typeDef}`
+        )
+        console.log(`[Prisma] Migrated ${m.table}.${m.column} (added column)`)
+      }
+    } catch (err) {
+      // Non-fatal — the column might already exist or the table might not exist yet
+      console.warn(`[Prisma] Column migration ${m.table}.${m.column} skipped:`, err)
+    }
+  }
+}
 
 /**
  * Execute the schema SQL against a PrismaClient.
@@ -482,6 +532,8 @@ async function initializeDatabaseAtPath(dbPath: string, dbUrl: string): Promise<
       await testClient.$connect()
       const isValid = await verifyDatabaseSchema(testClient)
       if (isValid) {
+        // Run column migrations on the existing DB so newly added Prisma fields work
+        await runColumnMigrations(testClient)
         process.env.DATABASE_URL = dbUrl
         console.log(`[Prisma] Using existing database at: ${dbPath}`)
         await testClient.$disconnect()
@@ -510,6 +562,7 @@ async function initializeDatabaseAtPath(dbPath: string, dbUrl: string): Promise<
       await testClient.$connect()
       const isValid = await verifyDatabaseSchema(testClient)
       if (isValid) {
+        await runColumnMigrations(testClient)
         process.env.DATABASE_URL = dbUrl
         console.log(`[Prisma] Using copied bundled database at: ${dbPath}`)
         await testClient.$disconnect()
@@ -546,6 +599,9 @@ async function initializeDatabaseAtPath(dbPath: string, dbUrl: string): Promise<
       console.warn('[Prisma] Retrying schema creation...')
       await executeSchemaSql(tempClient)
     }
+
+    // Run column migrations to add any newly added columns
+    await runColumnMigrations(tempClient)
 
     // Verify schema
     const isValid = await verifyDatabaseSchema(tempClient)

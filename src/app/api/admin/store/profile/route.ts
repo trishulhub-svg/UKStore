@@ -13,6 +13,8 @@ const EDITABLE_FIELDS = new Set([
   'phone',
   'email',
   'logoUrl',
+  'defaultBanner1Url',
+  'defaultBanner2Url',
 ])
 
 /**
@@ -50,6 +52,8 @@ export async function GET() {
         phone: store.phone,
         email: store.email,
         logoUrl: store.logoUrl,
+        defaultBanner1Url: store.defaultBanner1Url,
+        defaultBanner2Url: store.defaultBanner2Url,
         isActive: store.isActive,
         isOpen: store.isOpen,
         baseDeliveryFee: store.baseDeliveryFee,
@@ -135,6 +139,14 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Logo URL must be a string' }, { status: 400 })
       }
 
+      if (
+        (key === 'defaultBanner1Url' || key === 'defaultBanner2Url') &&
+        value !== null &&
+        typeof value !== 'string'
+      ) {
+        return NextResponse.json({ error: `${key} must be a string` }, { status: 400 })
+      }
+
       updateData[key] = value
     }
 
@@ -160,6 +172,8 @@ export async function PUT(request: NextRequest) {
         phone: updated.phone,
         email: updated.email,
         logoUrl: updated.logoUrl,
+        defaultBanner1Url: updated.defaultBanner1Url,
+        defaultBanner2Url: updated.defaultBanner2Url,
       },
       message: 'Store profile updated successfully',
     })

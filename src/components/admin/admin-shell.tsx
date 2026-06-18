@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   Settings, LayoutDashboard, ChevronRight, User as UserIcon, LogOut, ArrowLeft,
   Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3, Menu, PoundSterling,
-  CalendarDays, Trash2, Image, UserCog,
+  CalendarDays, Trash2, Image, UserCog, UserCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -113,6 +113,12 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
             </div>
           </div>
           <div className="flex gap-2">
+            <Link href="/account/profile" className="flex-1">
+              <Button variant="outline" size="sm" className="w-full text-xs">
+                <UserCircle className="h-3 w-3 mr-1" />
+                Profile
+              </Button>
+            </Link>
             <Link href="/" className="flex-1">
               <Button variant="outline" size="sm" className="w-full text-xs">
                 <ArrowLeft className="h-3 w-3 mr-1" />
@@ -197,23 +203,29 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
                       <p className="text-xs text-gray-500 truncate">{userEmail}</p>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Link href="/" className="flex-1" onClick={() => setMobileMenuOpen(false)}>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Link href="/account/profile" onClick={() => setMobileMenuOpen(false)}>
                       <Button variant="outline" size="sm" className="w-full min-h-[44px]">
-                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        <UserCircle className="h-4 w-4 mr-1" />
+                        Profile
+                      </Button>
+                    </Link>
+                    <Link href="/" onClick={() => setMobileMenuOpen(false)}>
+                      <Button variant="outline" size="sm" className="w-full min-h-[44px]">
+                        <ArrowLeft className="h-4 w-4 mr-1" />
                         Store
                       </Button>
                     </Link>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 min-h-[44px] text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      className="min-h-[44px] text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                       onClick={() => {
                         setMobileMenuOpen(false)
                         handleLogout()
                       }}
                     >
-                      <LogOut className="h-4 w-4 mr-2" />
+                      <LogOut className="h-4 w-4 mr-1" />
                       Logout
                     </Button>
                   </div>

@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
 import { StoreLogo } from '@/components/layout/store-logo'
-import { ClockInOutButton } from '@/components/shared/clock-in-out-button'
 import { useEffect, useState } from 'react'
 import type { AuthUser } from '@/lib/auth-client'
 
@@ -81,7 +80,6 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-base text-white">{storeName} Driver</span>
           </div>
           <div className="flex items-center gap-2">
-            <ClockInOutButton variant="compact" />
             <Button
               variant="ghost"
               size="sm"

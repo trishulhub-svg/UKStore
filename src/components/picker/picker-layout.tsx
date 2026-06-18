@@ -2,19 +2,17 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Package, Clock, User, LogOut } from 'lucide-react'
+import { LayoutDashboard, Package, User, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
 import { StoreLogo } from '@/components/layout/store-logo'
 import { useEffect, useState } from 'react'
 import type { AuthUser } from '@/lib/auth-client'
-import { ClockInOutButton } from '@/components/shared/clock-in-out-button'
 
 const navItems = [
   { href: '/picker', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/picker/packing', label: 'Packing', icon: Package },
-  { href: '/picker/attendance', label: 'Attendance', icon: Clock },
   { href: '/picker/profile', label: 'Profile', icon: User },
 ]
 
@@ -82,7 +80,6 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-base text-white">{storeName} Picker</span>
           </div>
           <div className="flex items-center gap-2">
-            <ClockInOutButton variant="compact" />
             <Button
               variant="ghost"
               size="sm"

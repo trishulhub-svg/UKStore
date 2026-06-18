@@ -116,6 +116,9 @@ export async function POST(request: NextRequest) {
         role: user.role,
         createdAt: user.createdAt.toISOString(),
       },
+      // True for newly-created employee accounts that haven't reset their temp password yet.
+      // The client uses this to redirect to /auth/reset-password after login.
+      mustResetPassword: user.mustResetPassword === true,
     })
 
     response.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS)

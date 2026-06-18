@@ -34,10 +34,17 @@ export function LoginClient() {
     setLoading(true)
 
     try {
-      const { error: authError, user } = await authLogin(email, password)
+      const { error: authError, user, mustResetPassword } = await authLogin(email, password)
 
       if (authError) {
         setError(authError)
+        return
+      }
+
+      // Force password reset on first login (new employee accounts)
+      if (mustResetPassword) {
+        router.push('/auth/reset-password?forced=1')
+        router.refresh()
         return
       }
 

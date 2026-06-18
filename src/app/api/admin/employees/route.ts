@@ -1,6 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
+import { hashPassword } from '@/lib/auth'
+import crypto from 'crypto'
+
+/**
+ * Generate a secure random temporary password.
+ * 12 chars: mix of upper/lower/digits/symbols — meets typical complexity rules.
+ */
+function generateTempPassword(length = 12): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+  const lower = 'abcdefghijkmnopqrstuvwxyz'
+  const digits = '23456789'
+  const symbols = '!@#$%^&*-_=+'
+  const all = upper + lower + digits + symbols
+  // Ensure at least one of each category
+  const required = [
+    upper[crypto.randomInt(upper.length)],
+    lower[crypto.randomInt(lower.length)],
+    digits[crypto.randomInt(digits.length)],
+    symbols[crypto.randomInt(symbols.length)],
+  ]
+  const remaining: string[] = []
+  for (let i = 0; i < length - required.length; i++) {
+    remaining.push(all[crypto.randomInt(all.length)])
+  }
+  // Combine and shuffle
+  const combined = [...required, ...remaining]
+  for (let i = combined.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1)
+    ;[combined[i], combined[j]] = [combined[j], combined[i]]
+  }
+  return combined.join('')
+}
 
 // GET /api/admin/employees — list all non-customer users with employee profiles and today's order counts
 export async function GET() {
@@ -62,6 +94,7 @@ export async function GET() {
           phone: emp.phone,
           role: emp.role,
           isActive: emp.isActive,
+          mustResetPassword: emp.mustResetPassword,
           createdAt: emp.createdAt.toISOString(),
           employeeProfile: emp.employeeProfile
             ? {
@@ -89,5 +122,119 @@ export async function GET() {
   } catch (err) {
     console.error('[Admin Employees GET]', err)
     return NextResponse.json({ error: 'Failed to fetch employees' }, { status: 500 })
+  }
+}
+
+/**
+ * POST /api/admin/employees — create a new employee account.
+ *
+ * Body:
+ *   - name: string (required)
+ *   - email: string (required, unique)
+ *   - phone?: string
+ *   - role: 'DRIVER' | 'PICKER' | 'MANAGER' (required, OWNER not allowed via this endpoint)
+ *   - tempPassword?: string (optional, auto-generated if omitted)
+ *
+ * The created user is hashed with bcrypt, mustResetPassword=true so they're forced
+ * to set their own password on first login. The temp password is returned ONCE
+ * for the admin to share with the employee (we don't have SMTP configured by default).
+ *
+ * If an SMTP-enabled email service is wired up later, we'd send the temp password
+ * to the employee's email automatically.
+ */
+export async function POST(request: NextRequest) {
+  const { error, user } = await requireAdmin()
+  if (error) return error
+
+  try {
+    const prisma = await getPrisma()
+    const body = await request.json()
+
+    // Validate required fields
+    const { name, email, role, phone, tempPassword } = body
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+    }
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Valid email is required' }, { status: 400 })
+    }
+    const allowedRoles = ['DRIVER', 'PICKER', 'MANAGER']
+    if (!allowedRoles.includes(role)) {
+      return NextResponse.json(
+        { error: `Role must be one of: ${allowedRoles.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // Check for duplicate email
+    const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } })
+    if (existing) {
+      return NextResponse.json({ error: 'A user with this email already exists' }, { status: 409 })
+    }
+
+    // Use provided temp password or generate a secure one
+    const finalTempPassword =
+      typeof tempPassword === 'string' && tempPassword.length >= 8
+        ? tempPassword
+        : generateTempPassword()
+
+    const passwordHash = await hashPassword(finalTempPassword)
+
+    const newUser = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        name: name.trim(),
+        phone: phone || null,
+        role,
+        passwordHash,
+        isActive: true,
+        mustResetPassword: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        mustResetPassword: true,
+        createdAt: true,
+      },
+    })
+
+    // For drivers, also create a default driver profile with pending verification
+    if (role === 'DRIVER') {
+      await prisma.driverProfile.create({
+        data: {
+          userId: newUser.id,
+          verificationStatus: 'pending',
+        },
+      })
+    }
+
+    // Create an empty employee profile so salary/wage can be edited later
+    await prisma.employeeProfile.create({
+      data: { userId: newUser.id },
+    })
+
+    // TODO: When SMTP is configured (Resend/SendGrid), send the temp password
+    //       to newUser.email here. For now, return it once so the admin can
+    //       share it manually.
+    // await sendTempPasswordEmail(newUser.email, finalTempPassword)
+
+    console.log(`[Admin Employees POST] Owner ${user.id} created ${role} account ${newUser.email}`)
+
+    return NextResponse.json(
+      {
+        employee: newUser,
+        tempPassword: finalTempPassword,
+        emailSent: false, // Flip to true when SMTP is wired
+        message: 'Employee created. Share the temp password — they must reset it on first login.',
+      },
+      { status: 201 }
+    )
+  } catch (err) {
+    console.error('[Admin Employees POST]', err)
+    return NextResponse.json({ error: 'Failed to create employee' }, { status: 500 })
   }
 }

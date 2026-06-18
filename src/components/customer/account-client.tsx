@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { User, Mail, Calendar, ShoppingBag, LogOut, ChevronRight, Package, Clock, MapPin, Settings } from 'lucide-react'
+import { User, Mail, Calendar, ShoppingBag, LogOut, ChevronRight, Package, Clock, MapPin, Settings, KeyRound, UserCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -96,6 +96,13 @@ export function AccountClient({ storeName, user, orders }: AccountClientProps) {
                   </span>
                 </div>
                 <Separator className="my-3" />
+                {/* Profile / change password */}
+                <Link href="/account/profile" className="block">
+                  <Button variant="outline" className="w-full mb-2">
+                    <UserCircle className="h-4 w-4 mr-2" />
+                    My Profile &amp; Settings
+                  </Button>
+                </Link>
                 {/* Admin link for owner/manager roles */}
                 {(user.role.toUpperCase() === 'OWNER' || user.role.toUpperCase() === 'MANAGER') && (
                   <Link href="/admin" className="block">

@@ -6,12 +6,10 @@ import { Badge } from '@/components/ui/badge'
 import {
   Package,
   CheckCircle2,
-  Clock,
   ShoppingCart,
   ArrowRight,
 } from 'lucide-react'
 import Link from 'next/link'
-import { ClockInOutButton } from '@/components/shared/clock-in-out-button'
 
 interface Stats {
   bagsCompletedToday: number
@@ -31,30 +29,15 @@ export function PickerDashboardClient() {
   const [stats, setStats] = useState<Stats>({ bagsCompletedToday: 0, ordersToPack: 0 })
   const [readyOrders, setReadyOrders] = useState<ReadyOrder[]>([])
   const [loading, setLoading] = useState(true)
-  const [attendanceStatus, setAttendanceStatus] = useState<{ isClockedIn: boolean; currentShiftStart: string | null }>({
-    isClockedIn: false,
-    currentShiftStart: null,
-  })
 
   const fetchData = useCallback(async () => {
     try {
-      const [ordersRes, attendanceRes] = await Promise.all([
-        fetch('/api/picker/orders'),
-        fetch('/api/attendance'),
-      ])
+      const ordersRes = await fetch('/api/picker/orders')
 
       if (ordersRes.ok) {
         const data = await ordersRes.json()
         setStats(data.stats || { bagsCompletedToday: 0, ordersToPack: 0 })
         setReadyOrders(data.readyOrders || [])
-      }
-
-      if (attendanceRes.ok) {
-        const data = await attendanceRes.json()
-        setAttendanceStatus({
-          isClockedIn: data.isClockedIn,
-          currentShiftStart: data.currentShiftStart,
-        })
       }
     } catch (err) {
       console.error('Failed to fetch picker data:', err)
@@ -69,33 +52,6 @@ export function PickerDashboardClient() {
     return () => clearInterval(interval)
   }, [fetchData])
 
-  // Shift timer
-  const [elapsed, setElapsed] = useState(0)
-  useEffect(() => {
-    if (!attendanceStatus.isClockedIn || !attendanceStatus.currentShiftStart) {
-      setElapsed(0)
-      return
-    }
-
-    const startMs = new Date(attendanceStatus.currentShiftStart).getTime()
-    setElapsed(Date.now() - startMs)
-
-    const interval = setInterval(() => {
-      setElapsed(Date.now() - startMs)
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [attendanceStatus.isClockedIn, attendanceStatus.currentShiftStart])
-
-  const formatDuration = (ms: number) => {
-    const totalSeconds = Math.floor(ms / 1000)
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-    if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-    return `${minutes}:${String(seconds).padStart(2, '0')}`
-  }
-
   if (loading) {
     return (
       <div className="p-4 space-y-4">
@@ -108,28 +64,6 @@ export function PickerDashboardClient() {
 
   return (
     <div className="p-4 space-y-6">
-      {/* Clock In/Out + Shift Timer */}
-      <Card className="border-0 shadow-sm bg-gradient-to-r from-orange-50 to-amber-50">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Shift Status</p>
-              {attendanceStatus.isClockedIn ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="w-2 h-2 rounded-full bg-[#16a34a] animate-pulse" />
-                  <span className="text-lg font-bold font-mono text-gray-900">
-                    {formatDuration(elapsed)}
-                  </span>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-600 mt-1">Not clocked in</p>
-              )}
-            </div>
-            <ClockInOutButton variant="default" />
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="border-0 shadow-sm">

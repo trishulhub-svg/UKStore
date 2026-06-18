@@ -21,7 +21,9 @@ import {
   User,
   Mail,
   Eye,
+  KeyRound,
 } from 'lucide-react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 
 interface DriverProfileData {
@@ -223,6 +225,33 @@ export function DriverProfileClient() {
                 on {new Date(profile.verifiedAt).toLocaleDateString('en-GB')}
               </span>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Password & Account Settings */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <KeyRound className="h-4 w-4" />
+            Password &amp; Account Settings
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          <p className="text-xs text-gray-500 mb-3">
+            Change your password or update your full profile details (name, phone).
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Link href="/auth/reset-password" className="flex-1">
+              <Button variant="outline" className="w-full h-10">
+                <KeyRound className="h-4 w-4 mr-1" /> Change Password
+              </Button>
+            </Link>
+            <Link href="/account/profile" className="flex-1">
+              <Button variant="outline" className="w-full h-10">
+                <User className="h-4 w-4 mr-1" /> Full Profile
+              </Button>
+            </Link>
           </div>
         </CardContent>
       </Card>

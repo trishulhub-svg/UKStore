@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from '@/components/ui/carousel'
 import type { Banner } from '@/types'
 
-// Placeholder banners when no real banners exist
+// Gradient placeholders shown only when there are no real banners AND no
+// admin-uploaded default banner images. Once the owner uploads default banner
+// images (via /admin/banners), those take precedence over these placeholders.
 const PLACEHOLDER_BANNERS = [
   {
     id: 'placeholder-1',
@@ -37,12 +39,19 @@ const PLACEHOLDER_BANNERS = [
   },
 ]
 
+interface DefaultBanner {
+  image_url: string
+  title: string | null
+  is_default: true
+}
+
 interface BannerCarouselProps {
   banners?: Banner[]
 }
 
 export function BannerCarousel({ banners: propBanners }: BannerCarouselProps) {
   const [fetchedBanners, setFetchedBanners] = useState<Banner[]>([])
+  const [defaultBanners, setDefaultBanners] = useState<DefaultBanner[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const [api, setApi] = useState<ReturnType<typeof Object> | null>(null)
@@ -51,7 +60,7 @@ export function BannerCarousel({ banners: propBanners }: BannerCarouselProps) {
   // Use prop banners if provided, otherwise use fetched banners
   const banners = propBanners && propBanners.length > 0 ? propBanners : fetchedBanners
 
-  // Fetch banners if not provided via props
+  // Fetch banners + defaults if not provided via props
   useEffect(() => {
     if (propBanners && propBanners.length > 0) return
 
@@ -59,8 +68,12 @@ export function BannerCarousel({ banners: propBanners }: BannerCarouselProps) {
     fetch('/api/banners')
       .then((r) => r.json())
       .then((data) => {
-        if (!cancelled && data.banners && data.banners.length > 0) {
+        if (cancelled) return
+        if (data.banners && data.banners.length > 0) {
           setFetchedBanners(data.banners)
+        }
+        if (data.defaultBanners && data.defaultBanners.length > 0) {
+          setDefaultBanners(data.defaultBanners)
         }
       })
       .catch(() => {
@@ -69,8 +82,24 @@ export function BannerCarousel({ banners: propBanners }: BannerCarouselProps) {
     return () => { cancelled = true }
   }, [propBanners])
 
-  const displayBanners = banners.length > 0 ? banners : PLACEHOLDER_BANNERS
-  const isPlaceholder = banners.length === 0
+  // Decide what to display:
+  //   1. Real promotional/normal banners (highest priority)
+  //   2. Admin-uploaded default banner images (fallback)
+  //   3. Gradient placeholders (last resort)
+  const isPlaceholder = banners.length === 0 && defaultBanners.length === 0
+
+  // Build display list — convert default banners to a shape compatible with the carousel
+  const displayBanners: Array<any> = isPlaceholder
+    ? PLACEHOLDER_BANNERS
+    : banners.length > 0
+      ? banners
+      : defaultBanners.map((d, i) => ({
+          id: `default-${i}`,
+          title: d.title,
+          image_url: d.image_url,
+          link_url: '/catalog',
+          is_default: true,
+        }))
 
   // Auto-rotate
   useEffect(() => {
@@ -109,7 +138,7 @@ export function BannerCarousel({ banners: propBanners }: BannerCarouselProps) {
       >
         <CarouselContent className="-ml-0">
           {displayBanners.map((banner, index) => (
-            <CarouselItem key={banner.id} className="pl-0 basis-full">
+            <CarouselItem key={banner.id || index} className="pl-0 basis-full">
               <Link
                 href={banner.link_url || '#'}
                 className="block w-full"
@@ -117,7 +146,7 @@ export function BannerCarousel({ banners: propBanners }: BannerCarouselProps) {
                 {isPlaceholder ? (
                   // Placeholder: gradient background with text
                   <div
-                    className={`relative w-full h-40 sm:h-48 md:h-56 lg:h-64 bg-gradient-to-r ${(banner as typeof PLACEHOLDER_BANNERS[number]).gradient} flex items-center justify-center overflow-hidden rounded-xl`}
+                    className={`relative w-full h-40 sm:h-48 md:h-56 lg:h-64 bg-gradient-to-r ${banner.gradient} flex items-center justify-center overflow-hidden rounded-xl`}
                   >
                     <div className="absolute inset-0 bg-black/10" />
                     <div className="relative z-10 text-center px-6">
@@ -128,7 +157,7 @@ export function BannerCarousel({ banners: propBanners }: BannerCarouselProps) {
                     </div>
                   </div>
                 ) : (
-                  // Real banner: image with optional overlay
+                  // Real or default banner: image with optional overlay
                   <div className="relative w-full h-40 sm:h-48 md:h-56 lg:h-64 overflow-hidden rounded-xl bg-gray-100">
                     {banner.image_url ? (
                       <img

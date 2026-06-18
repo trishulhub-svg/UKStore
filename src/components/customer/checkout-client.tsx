@@ -20,6 +20,7 @@ import { calculateDeliveryFee } from '@/lib/delivery'
 import { useDeliveryLocation, geocodeAddress } from '@/lib/delivery-location'
 import type { Store, Address } from '@/types'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface CheckoutClientProps {
   store: Store
@@ -239,7 +240,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
     setPromoLoading(true)
     try {
       const categoryIds = [...new Set(items.map((item) => item.product.category?.id).filter(Boolean))] as string[]
-      const res = await fetch('/api/promotions/validate', {
+      const res = await apiFetch('/api/promotions/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -264,8 +265,11 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
         toast.error(data.message || 'Invalid promo code')
         setAppliedPromo(null)
       }
-    } catch {
-      toast.error('Failed to validate promo code. Please try again.')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to validate promo code. Please try again.')
+      }
+
     } finally {
       setPromoLoading(false)
     }
@@ -282,7 +286,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
     setError(null)
 
     try {
-      const response = await fetch('/api/checkout', {
+      const response = await apiFetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

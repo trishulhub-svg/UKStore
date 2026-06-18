@@ -18,6 +18,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface EmployeeProfile {
   id: string
@@ -98,12 +99,15 @@ export default function AdminEmployeesPage() {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/employees')
+      const res = await apiFetch('/api/admin/employees')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setEmployees(data.employees || [])
-    } catch {
-      toast.error('Failed to load employees')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load employees')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -136,7 +140,7 @@ export default function AdminEmployeesPage() {
     }
     setCreating(true)
     try {
-      const res = await fetch('/api/admin/employees', {
+      const res = await apiFetch('/api/admin/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -164,7 +168,10 @@ export default function AdminEmployeesPage() {
       setNewPhone('')
       setNewRole('PICKER')
     } catch (err: any) {
-      toast.error(err.message || 'Failed to create employee')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to create employee')
+      }
+
     } finally {
       setCreating(false)
     }
@@ -178,8 +185,11 @@ export default function AdminEmployeesPage() {
       setCopied(true)
       toast.success('Credentials copied to clipboard')
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      toast.error('Failed to copy')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to copy')
+      }
+
     }
   }
 
@@ -214,7 +224,7 @@ export default function AdminEmployeesPage() {
         body.isActive = editIsActive
       }
 
-      const res = await fetch(`/api/admin/employees/${editEmployee.id}`, {
+      const res = await apiFetch(`/api/admin/employees/${editEmployee.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -228,7 +238,10 @@ export default function AdminEmployeesPage() {
       setEditDialogOpen(false)
       fetchEmployees()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to update employee details')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to update employee details')
+      }
+
     } finally {
       setSaving(false)
     }

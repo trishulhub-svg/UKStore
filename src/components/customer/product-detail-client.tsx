@@ -25,6 +25,7 @@ import { TrustBadges } from '@/components/customer/trust-badges'
 import { CrossSellSection } from '@/components/customer/cross-sell-slider'
 import { toast } from 'sonner'
 import type { Store, ProductWithCategory, Promotion } from '@/types'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface SubstituteProduct {
   id: string
@@ -95,7 +96,7 @@ export function ProductDetailClient({ store, product, allCategories = [] }: Prod
   useEffect(() => {
     async function fetchSubstitute() {
       try {
-        const res = await fetch(`/api/products/${product.id}/substitute`)
+        const res = await apiFetch(`/api/products/${product.id}/substitute`)
         if (res.ok) {
           const data = await res.json()
           setSubstituteProduct(data.substitute || null)
@@ -113,7 +114,7 @@ export function ProductDetailClient({ store, product, allCategories = [] }: Prod
       try {
         const params = new URLSearchParams()
         if (product.category_id) params.set('categoryId', product.category_id)
-        const res = await fetch(`/api/promotions?${params.toString()}`)
+        const res = await apiFetch(`/api/promotions?${params.toString()}`)
         if (res.ok) {
           const data = await res.json()
           setPromotions(data.promotions || [])

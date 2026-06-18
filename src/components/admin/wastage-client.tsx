@@ -25,6 +25,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface WastageLog {
   id: string
@@ -104,14 +105,17 @@ export function WastageClient() {
       if (filterStartDate) params.set('startDate', filterStartDate)
       if (filterEndDate) params.set('endDate', filterEndDate)
 
-      const res = await fetch(`/api/admin/wastage?${params}`)
+      const res = await apiFetch(`/api/admin/wastage?${params}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setLogs(data.logs)
       setTotal(data.total)
       setSummary(data.summary)
-    } catch {
-      toast.error('Failed to load wastage logs')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load wastage logs')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -119,7 +123,7 @@ export function WastageClient() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch('/api/admin/products?limit=200')
+      const res = await apiFetch('/api/admin/products?limit=200')
       if (!res.ok) return
       const data = await res.json()
       setProducts(data.products)
@@ -130,7 +134,7 @@ export function WastageClient() {
     fetchProducts()
     // Run an auto-expire dry-run preview on mount so the admin sees how many
     // products are pending auto-expiry. Doesn't write anything.
-    fetch('/api/admin/wastage/auto-expire')
+    apiFetch('/api/admin/wastage/auto-expire')
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data && data.expired > 0) {
@@ -156,7 +160,7 @@ export function WastageClient() {
   const handleRunAutoExpire = async () => {
     setAutoExpireRunning(true)
     try {
-      const res = await fetch('/api/admin/wastage/auto-expire', {
+      const res = await apiFetch('/api/admin/wastage/auto-expire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false }),
@@ -171,8 +175,11 @@ export function WastageClient() {
       }
       setAutoExpirePreview(null)
       fetchWastage()
-    } catch {
-      toast.error('Failed to run auto-expire scan')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to run auto-expire scan')
+      }
+
     } finally {
       setAutoExpireRunning(false)
     }
@@ -229,7 +236,7 @@ export function WastageClient() {
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/admin/wastage', {
+      const res = await apiFetch('/api/admin/wastage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -252,7 +259,10 @@ export function WastageClient() {
       setProductSearch('')
       fetchWastage()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to log wastage')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to log wastage')
+      }
+
     } finally {
       setSaving(false)
     }

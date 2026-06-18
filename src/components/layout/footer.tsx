@@ -6,6 +6,7 @@ import { ShoppingBag, ShoppingCart, Truck, Instagram, Linkedin, MapPin, Phone, M
 import { Separator } from '@/components/ui/separator'
 import { useStoreInfo } from '@/lib/store-info'
 import { StoreLogo } from '@/components/layout/store-logo'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface FooterCategory {
   id: string
@@ -82,7 +83,8 @@ export function Footer() {
   const storeName = storeInfo?.name || 'Fresh Mart'
 
   useEffect(() => {
-    fetch('/api/categories')
+    // Footer is on every page including the login page — DON'T redirect on 401 here
+    apiFetch('/api/categories', { redirectOn401: false })
       .then((r) => r.json())
       .then((data) => {
         if (data.categories && Array.isArray(data.categories)) {

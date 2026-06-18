@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { exportTableToPdf } from '@/lib/client-pdf'
+import { apiFetch } from '@/lib/api-fetch'
 
 const verificationColors: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700',
@@ -97,12 +98,15 @@ export default function AdminDriversPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const res = await fetch(`/api/admin/drivers?${params}`)
+      const res = await apiFetch(`/api/admin/drivers?${params}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setDrivers(data.drivers)
-    } catch {
-      toast.error('Failed to load drivers')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load drivers')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -116,12 +120,15 @@ export default function AdminDriversPage() {
     setDetailLoading(true)
     setSheetOpen(true)
     try {
-      const res = await fetch(`/api/admin/drivers/${driverId}`)
+      const res = await apiFetch(`/api/admin/drivers/${driverId}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setSelectedDriver(data.driver)
-    } catch {
-      toast.error('Failed to load driver details')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load driver details')
+      }
+
     } finally {
       setDetailLoading(false)
     }
@@ -129,7 +136,7 @@ export default function AdminDriversPage() {
 
   const handleApprove = async (driverId: string) => {
     try {
-      const res = await fetch('/api/admin/drivers', {
+      const res = await apiFetch('/api/admin/drivers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ driverId, verificationStatus: 'approved' }),
@@ -138,8 +145,11 @@ export default function AdminDriversPage() {
       toast.success('Driver approved')
       fetchDrivers()
       if (selectedDriver?.id === driverId) handleViewDetail(driverId)
-    } catch {
-      toast.error('Failed to approve driver')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to approve driver')
+      }
+
     }
   }
 
@@ -147,7 +157,7 @@ export default function AdminDriversPage() {
     if (!rejectDriverId) return
     setRejecting(true)
     try {
-      const res = await fetch('/api/admin/drivers', {
+      const res = await apiFetch('/api/admin/drivers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ driverId: rejectDriverId, verificationStatus: 'rejected', rejectionReason }),
@@ -157,8 +167,11 @@ export default function AdminDriversPage() {
       setRejectDriverId(null)
       setRejectionReason('')
       fetchDrivers()
-    } catch {
-      toast.error('Failed to reject driver')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to reject driver')
+      }
+
     } finally {
       setRejecting(false)
     }
@@ -166,7 +179,7 @@ export default function AdminDriversPage() {
 
   const handleToggleActive = async (driverId: string, isActive: boolean) => {
     try {
-      const res = await fetch('/api/admin/drivers', {
+      const res = await apiFetch('/api/admin/drivers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ driverId, isActive }),
@@ -175,8 +188,11 @@ export default function AdminDriversPage() {
       toast.success(isActive ? 'Driver activated' : 'Driver deactivated')
       fetchDrivers()
       if (selectedDriver?.id === driverId) handleViewDetail(driverId)
-    } catch {
-      toast.error('Failed to update driver')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update driver')
+      }
+
     }
   }
 
@@ -203,8 +219,11 @@ export default function AdminDriversPage() {
         footer: `Total deliveries by listed drivers: ${drivers.reduce((s, d) => s + d._count.drivenOrders, 0)}`,
       })
       toast.success('PDF exported')
-    } catch {
-      toast.error('Failed to export PDF')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to export PDF')
+      }
+
     }
   }
 

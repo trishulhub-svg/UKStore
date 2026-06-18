@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
 import { KanbanOrderBoard } from '@/components/admin/kanban-order-board'
+import { apiFetch } from '@/lib/api-fetch'
 
 type ViewMode = 'kanban' | 'list'
 
@@ -102,13 +103,16 @@ export default function AdminOrdersPage() {
       if (search) params.set('search', search)
       if (filterStatus !== 'all') params.set('status', filterStatus)
 
-      const res = await fetch(`/api/admin/orders?${params}`)
+      const res = await apiFetch(`/api/admin/orders?${params}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setOrders(data.orders)
       setTotal(data.total)
-    } catch {
-      toast.error('Failed to load orders')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load orders')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -119,7 +123,7 @@ export default function AdminOrdersPage() {
   }, [fetchOrders])
 
   useEffect(() => {
-    fetch('/api/admin/drivers')
+    apiFetch('/api/admin/drivers')
       .then((r) => r.json())
       .then((d) => setDrivers(d.drivers || []))
       .catch(() => {})
@@ -129,12 +133,15 @@ export default function AdminOrdersPage() {
     setDetailLoading(true)
     setSheetOpen(true)
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}`)
+      const res = await apiFetch(`/api/admin/orders/${orderId}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setSelectedOrder(data.order)
-    } catch {
-      toast.error('Failed to load order details')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load order details')
+      }
+
     } finally {
       setDetailLoading(false)
     }
@@ -142,7 +149,7 @@ export default function AdminOrdersPage() {
 
   const handleUpdateStatus = async (orderId: string, status: string) => {
     try {
-      const res = await fetch('/api/admin/orders', {
+      const res = await apiFetch('/api/admin/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, status }),
@@ -153,14 +160,17 @@ export default function AdminOrdersPage() {
       if (selectedOrder?.id === orderId) {
         handleViewDetail(orderId)
       }
-    } catch {
-      toast.error('Failed to update order status')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update order status')
+      }
+
     }
   }
 
   const handleAssignDriver = async (orderId: string, driverId: string) => {
     try {
-      const res = await fetch('/api/admin/orders', {
+      const res = await apiFetch('/api/admin/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, driverId }),
@@ -171,8 +181,11 @@ export default function AdminOrdersPage() {
       if (selectedOrder?.id === orderId) {
         handleViewDetail(orderId)
       }
-    } catch {
-      toast.error('Failed to assign driver')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to assign driver')
+      }
+
     }
   }
 

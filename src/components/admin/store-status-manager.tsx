@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ export function StoreStatusManager() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/store/status')
+      const res = await apiFetch('/api/admin/store/status')
       if (!res.ok) throw new Error()
       const d = await res.json()
       setData(d)
@@ -92,8 +93,11 @@ export function StoreStatusManager() {
       setPerKmCharge(String(d.delivery.perKmCharge))
       setFreeDeliveryThreshold(String(d.delivery.freeDeliveryThreshold))
       setDeliveryRadiusKm(String(d.delivery.deliveryRadiusKm))
-    } catch {
-      toast.error('Failed to load store status')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load store status')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -106,7 +110,7 @@ export function StoreStatusManager() {
   const handleToggleOpen = async (open: boolean) => {
     setIsOpen(open)
     try {
-      const res = await fetch('/api/admin/store/status', {
+      const res = await apiFetch('/api/admin/store/status', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isOpen: open }),
@@ -122,15 +126,18 @@ export function StoreStatusManager() {
   const handleSaveHours = async () => {
     setSaving(true)
     try {
-      const res = await fetch('/api/admin/store/status', {
+      const res = await apiFetch('/api/admin/store/status', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ openingHours }),
       })
       if (!res.ok) throw new Error()
       toast.success('Opening hours saved')
-    } catch {
-      toast.error('Failed to save opening hours')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to save opening hours')
+      }
+
     } finally {
       setSaving(false)
     }
@@ -139,7 +146,7 @@ export function StoreStatusManager() {
   const handleSaveDelivery = async () => {
     setSaving(true)
     try {
-      const res = await fetch('/api/admin/store/status', {
+      const res = await apiFetch('/api/admin/store/status', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -154,8 +161,11 @@ export function StoreStatusManager() {
       if (!res.ok) throw new Error()
       toast.success('Delivery settings saved')
       fetchData()
-    } catch {
-      toast.error('Failed to save delivery settings')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to save delivery settings')
+      }
+
     } finally {
       setSaving(false)
     }

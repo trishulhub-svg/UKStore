@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/vat'
 import { DeliveryMap } from '@/components/admin/delivery-map'
 import type { Order } from '@/types'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface AdminDashboardClientProps {
   stats: {
@@ -36,7 +37,7 @@ export function AdminDashboardClient({ stats, recentOrders }: AdminDashboardClie
   const [lowStockCount, setLowStockCount] = useState<number | null>(null)
 
   useEffect(() => {
-    fetch('/api/admin/products/low-stock')
+    apiFetch('/api/admin/products/low-stock')
       .then((res) => res.json())
       .then((data) => setLowStockCount(data.count ?? 0))
       .catch(() => setLowStockCount(null))

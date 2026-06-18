@@ -38,6 +38,7 @@ import { toast } from 'sonner'
 import { formatPrice, getVatRateLabel } from '@/lib/vat'
 import { CsvImportExport } from '@/components/admin/csv-import-export'
 import { exportTableToPdf } from '@/lib/client-pdf'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Category {
   id: string
@@ -125,13 +126,16 @@ export default function AdminProductsPage() {
       params.set('sortBy', sortBy)
       params.set('sortOrder', sortOrder)
 
-      const res = await fetch(`/api/admin/products?${params}`)
+      const res = await apiFetch(`/api/admin/products?${params}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setProducts(data.products)
       setTotal(data.total)
-    } catch {
-      toast.error('Failed to load products')
+    } catch (err: any) {
+      // 401 already redirects to login — only show toast for other errors
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load products')
+      }
     } finally {
       setLoading(false)
     }
@@ -139,7 +143,7 @@ export default function AdminProductsPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch('/api/admin/categories')
+      const res = await apiFetch('/api/admin/categories')
       if (!res.ok) return
       const data = await res.json()
       setCategories(data.categories.map((c: any) => ({ id: c.id, name: c.name })))
@@ -210,7 +214,7 @@ export default function AdminProductsPage() {
       const payload = { ...form, vatRate: finalVatRate }
       // Don't send vatRateCustom to backend — backend only knows vatRate
       const { vatRateCustom, ...bodyToSend } = payload
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyToSend),
@@ -223,7 +227,9 @@ export default function AdminProductsPage() {
       setDialogOpen(false)
       fetchProducts()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save product')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to save product')
+      }
     } finally {
       setSaving(false)
     }
@@ -233,7 +239,7 @@ export default function AdminProductsPage() {
     if (!deleteId) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/admin/products/${deleteId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/admin/products/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed')
@@ -242,7 +248,9 @@ export default function AdminProductsPage() {
       setDeleteId(null)
       fetchProducts()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to delete product')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to delete product')
+      }
     } finally {
       setDeleting(false)
     }
@@ -250,7 +258,7 @@ export default function AdminProductsPage() {
 
   const handleToggle = async (id: string, field: 'isAvailable' | 'isHfss' | 'isAgeRestricted', value: boolean) => {
     try {
-      const res = await fetch(`/api/admin/products/${id}`, {
+      const res = await apiFetch(`/api/admin/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: value }),
@@ -258,8 +266,10 @@ export default function AdminProductsPage() {
       if (!res.ok) throw new Error()
       toast.success(`${field === 'isAvailable' ? 'Availability' : 'HFSS flag'} updated`)
       fetchProducts()
-    } catch {
-      toast.error('Failed to update')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update')
+      }
     }
   }
 

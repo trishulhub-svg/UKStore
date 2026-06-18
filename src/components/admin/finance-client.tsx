@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { FileDown, Mail, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface FinanceClientProps {
   initialSummary: {
@@ -223,7 +224,7 @@ export function FinanceClient({ initialSummary, storeName }: FinanceClientProps)
   const handleGeneratePdf = async () => {
     setGeneratingPdf(true)
     try {
-      const res = await fetch('/api/admin/finance/report')
+      const res = await apiFetch('/api/admin/finance/report')
       if (!res.ok) throw new Error()
       const report: FinanceReport = await res.json()
 
@@ -412,7 +413,7 @@ export function FinanceClient({ initialSummary, storeName }: FinanceClientProps)
   const handleEmailReport = async () => {
     setSendingEmail(true)
     try {
-      const res = await fetch('/api/admin/finance/email-report', {
+      const res = await apiFetch('/api/admin/finance/email-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -428,7 +429,10 @@ export function FinanceClient({ initialSummary, storeName }: FinanceClientProps)
         toast.info(data.message || 'Report saved as in-app notification (SMTP not configured)')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to send email')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to send email')
+      }
+
     } finally {
       setSendingEmail(false)
     }

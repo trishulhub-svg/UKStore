@@ -13,6 +13,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface ImportResult {
   created: number
@@ -57,7 +58,7 @@ export function CsvImportExport() {
   const handleExport = async () => {
     setExporting(true)
     try {
-      const res = await fetch('/api/admin/products/export')
+      const res = await apiFetch('/api/admin/products/export')
       if (!res.ok) throw new Error()
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -69,8 +70,11 @@ export function CsvImportExport() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       toast.success('Products exported successfully')
-    } catch {
-      toast.error('Failed to export products')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to export products')
+      }
+
     } finally {
       setExporting(false)
     }
@@ -161,7 +165,7 @@ export function CsvImportExport() {
     setImporting(true)
     setPreviewOpen(false)
     try {
-      const res = await fetch('/api/admin/products/import', {
+      const res = await apiFetch('/api/admin/products/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows: allRows }),
@@ -175,7 +179,10 @@ export function CsvImportExport() {
       setResultOpen(true)
       toast.success(`Import complete: ${result.created} created, ${result.updated} updated`)
     } catch (err: any) {
-      toast.error(err.message || 'Failed to import products')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to import products')
+      }
+
     } finally {
       setImporting(false)
       setAllRows([])

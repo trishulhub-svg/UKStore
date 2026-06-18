@@ -10,6 +10,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import Link from 'next/link'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Stats {
   bagsCompletedToday: number
@@ -32,7 +33,7 @@ export function PickerDashboardClient() {
 
   const fetchData = useCallback(async () => {
     try {
-      const ordersRes = await fetch('/api/picker/orders')
+      const ordersRes = await apiFetch('/api/picker/orders')
 
       if (ordersRes.ok) {
         const data = await ordersRes.json()

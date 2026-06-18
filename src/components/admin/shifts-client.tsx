@@ -32,6 +32,7 @@ import {
   Clock,
   User,
 } from 'lucide-react'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface StaffMember {
   id: string
@@ -128,7 +129,7 @@ export function ShiftsClient() {
       const monday = weekDates[0]
       const params = new URLSearchParams()
       params.set('weekStart', monday.toISOString())
-      const res = await fetch(`/api/admin/shifts?${params.toString()}`)
+      const res = await apiFetch(`/api/admin/shifts?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setShifts(data.shifts || [])
@@ -179,7 +180,7 @@ export function ShiftsClient() {
         }
       }
 
-      const res = await fetch('/api/admin/shifts', {
+      const res = await apiFetch('/api/admin/shifts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -208,7 +209,7 @@ export function ShiftsClient() {
   const handleDeleteShift = async (shiftId: string) => {
     setDeleting(shiftId)
     try {
-      const res = await fetch(`/api/admin/shifts/${shiftId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/admin/shifts/${shiftId}`, { method: 'DELETE' })
       if (res.ok) {
         fetchData()
       }

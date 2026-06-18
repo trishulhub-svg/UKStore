@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { getRoleBasedRedirect } from '@/lib/auth-client'
 import type { ServerUser } from '@/lib/auth/server'
+import { apiFetch } from '@/lib/api-fetch'
 
 const roleLabels: Record<string, string> = {
   OWNER: 'Store Owner',
@@ -45,7 +46,7 @@ export function ProfileClient({ user }: ProfileClientProps) {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    fetch('/api/user/profile')
+    apiFetch('/api/user/profile')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.user) {
@@ -67,7 +68,7 @@ export function ProfileClient({ user }: ProfileClientProps) {
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/user/profile', {
+      const res = await apiFetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, phone }),
@@ -79,7 +80,9 @@ export function ProfileClient({ user }: ProfileClientProps) {
       toast.success('Profile updated')
       router.refresh()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to update profile')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to update profile')
+      }
     } finally {
       setSaving(false)
     }

@@ -19,6 +19,7 @@ import {
   Navigation,
 } from 'lucide-react'
 import { CustomerTrackingMap } from '@/components/customer/customer-tracking-map'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface DriverInfo {
   id: string
@@ -86,7 +87,7 @@ export function OrderTrackingClient() {
 
   const fetchOrder = useCallback(async () => {
     try {
-      const res = await fetch(`/api/user/orders/${orderId}`)
+      const res = await apiFetch(`/api/user/orders/${orderId}`)
       if (res.ok) {
         const data = await res.json()
         setOrder(data.order)

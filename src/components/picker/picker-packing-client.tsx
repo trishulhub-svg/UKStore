@@ -15,6 +15,7 @@ import {
   RefreshCw,
   MapPin,
 } from 'lucide-react'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface OrderItem {
   id: string
@@ -61,7 +62,7 @@ export function PickerPackingClient() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/picker/orders')
+      const res = await apiFetch('/api/picker/orders')
       if (res.ok) {
         const data = await res.json()
         setOrders(data.orders || [])
@@ -88,7 +89,7 @@ export function PickerPackingClient() {
   const handleTogglePicked = async (orderId: string, itemId: string, currentPicked: boolean) => {
     setActionLoading(itemId)
     try {
-      const res = await fetch(`/api/picker/orders/${orderId}`, {
+      const res = await apiFetch(`/api/picker/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId, picked: !currentPicked }),
@@ -108,7 +109,7 @@ export function PickerPackingClient() {
   const handleMarkPacked = async (orderId: string) => {
     setActionLoading(orderId)
     try {
-      const res = await fetch(`/api/picker/orders/${orderId}`, {
+      const res = await apiFetch(`/api/picker/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ markPacked: true }),

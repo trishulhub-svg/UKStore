@@ -16,6 +16,7 @@ import {
   MapPin,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface OrderItem {
   id: string
@@ -64,7 +65,7 @@ export function OrdersClient() {
   const fetchOrders = async (status = '') => {
     try {
       const url = status ? `/api/user/orders?status=${status}` : '/api/user/orders'
-      const res = await fetch(url)
+      const res = await apiFetch(url)
       if (res.ok) {
         const data = await res.json()
         setOrders(data.orders || [])
@@ -85,7 +86,7 @@ export function OrdersClient() {
     e.stopPropagation()
     setReorderLoading(orderId)
     try {
-      const res = await fetch(`/api/user/orders/${orderId}/reorder`, { method: 'POST' })
+      const res = await apiFetch(`/api/user/orders/${orderId}/reorder`, { method: 'POST' })
       if (res.ok) {
         const data = await res.json()
         // Add items to cart using cart store

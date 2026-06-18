@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Banner {
   id: string
@@ -47,12 +48,15 @@ export default function AdminBannersPage() {
 
   const fetchBanners = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/banners')
+      const res = await apiFetch('/api/admin/banners')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setBanners(data.banners || [])
-    } catch {
-      toast.error('Failed to load banners')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load banners')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -60,7 +64,7 @@ export default function AdminBannersPage() {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/categories')
+      const res = await apiFetch('/api/admin/categories')
       if (!res.ok) return
       const data = await res.json()
       setCategories(data.categories || [])
@@ -71,7 +75,7 @@ export default function AdminBannersPage() {
 
   const fetchStoreDefaults = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/store/profile')
+      const res = await apiFetch('/api/admin/store/profile')
       if (!res.ok) return
       const data = await res.json()
       setStoreDefaults({
@@ -132,7 +136,7 @@ export default function AdminBannersPage() {
     }
     setSaving(`default-${slot}`)
     try {
-      const res = await fetch('/api/admin/store/profile', {
+      const res = await apiFetch('/api/admin/store/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -142,8 +146,11 @@ export default function AdminBannersPage() {
       if (!res.ok) throw new Error()
       toast.success(`Default banner ${slot} saved`)
       fetchStoreDefaults()
-    } catch {
-      toast.error('Failed to save default banner')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to save default banner')
+      }
+
     } finally {
       setSaving(null)
     }
@@ -207,7 +214,7 @@ export default function AdminBannersPage() {
         isActive: banner.isActive,
       }
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -217,8 +224,11 @@ export default function AdminBannersPage() {
 
       toast.success(`Banner ${slotIndex + 1} saved successfully`)
       fetchBanners()
-    } catch {
-      toast.error('Failed to save banner')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to save banner')
+      }
+
     } finally {
       setSaving(null)
     }
@@ -231,12 +241,15 @@ export default function AdminBannersPage() {
     }
 
     try {
-      const res = await fetch(`/api/admin/banners/${bannerId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/admin/banners/${bannerId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
       toast.success('Banner deleted')
       fetchBanners()
-    } catch {
-      toast.error('Failed to delete banner')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to delete banner')
+      }
+
     }
   }
 

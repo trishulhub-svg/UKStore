@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -115,14 +116,17 @@ export function NotificationEditor() {
 
   const fetchTemplates = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/store/status')
+      const res = await apiFetch('/api/admin/store/status')
       if (!res.ok) throw new Error()
       const data = await res.json()
       if (data.notificationTemplate) {
         setTemplates({ ...DEFAULT_TEMPLATES, ...data.notificationTemplate })
       }
-    } catch {
-      toast.error('Failed to load notification templates')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load notification templates')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -135,15 +139,18 @@ export function NotificationEditor() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const res = await fetch('/api/admin/store/status', {
+      const res = await apiFetch('/api/admin/store/status', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notificationTemplate: templates }),
       })
       if (!res.ok) throw new Error()
       toast.success('Notification templates saved')
-    } catch {
-      toast.error('Failed to save notification templates')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to save notification templates')
+      }
+
     } finally {
       setSaving(false)
     }

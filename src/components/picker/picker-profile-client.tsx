@@ -14,6 +14,7 @@ import {
   KeyRound,
 } from 'lucide-react'
 import Link from 'next/link'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface PickerProfile {
   id: string
@@ -33,9 +34,13 @@ export function PickerProfileClient() {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    fetch('/api/picker/profile')
-      .then((res) => res.json())
+    apiFetch('/api/picker/profile')
+      .then(async (res) => {
+        if (!res.ok) return null
+        return await res.json()
+      })
       .then((data) => {
+        if (!data) return  // 401 already redirected; or null on other error
         setProfile(data.user)
         setPhone(data.user?.phone || '')
       })
@@ -47,7 +52,7 @@ export function PickerProfileClient() {
     if (!profile) return
     setSaving(true)
     try {
-      const res = await fetch('/api/picker/profile', {
+      const res = await apiFetch('/api/picker/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone }),

@@ -36,6 +36,7 @@ import { useStoreInfo } from '@/lib/store-info'
 import { useDeliveryLocation, geocodePostcode, requestBrowserLocation } from '@/lib/delivery-location'
 import { StoreLogo } from '@/components/layout/store-logo'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 const UK_POSTCODE_REGEX = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i
 const POSTCODE_STORAGE_KEY = 'delivery_postcode'
@@ -100,9 +101,9 @@ export function Navbar() {
     authGetSession().then(({ user }) => setUser(user))
   }, [])
 
-  // Fetch store status for delivery timer
+  // Fetch store status for delivery timer (navbar is on every page, don't redirect on 401)
   useEffect(() => {
-    fetch('/api/store/status')
+    apiFetch('/api/store/status', { redirectOn401: false })
       .then((r) => r.json())
       .then((data) => setStoreStatus(data))
       .catch(() => {})

@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Category {
   id: string
@@ -64,12 +65,14 @@ export default function AdminCategoriesPage() {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/categories')
+      const res = await apiFetch('/api/admin/categories')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setCategories(data.categories)
-    } catch {
-      toast.error('Failed to load categories')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load categories')
+      }
     } finally {
       setLoading(false)
     }
@@ -107,7 +110,7 @@ export default function AdminCategoriesPage() {
     try {
       const url = editingId ? `/api/admin/categories/${editingId}` : '/api/admin/categories'
       const method = editingId ? 'PATCH' : 'POST'
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -120,7 +123,9 @@ export default function AdminCategoriesPage() {
       setDialogOpen(false)
       fetchCategories()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save category')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to save category')
+      }
     } finally {
       setSaving(false)
     }
@@ -130,7 +135,7 @@ export default function AdminCategoriesPage() {
     if (!deleteId) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/admin/categories/${deleteId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/admin/categories/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed')
@@ -139,7 +144,9 @@ export default function AdminCategoriesPage() {
       setDeleteId(null)
       fetchCategories()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to delete category')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to delete category')
+      }
     } finally {
       setDeleting(false)
     }
@@ -147,7 +154,7 @@ export default function AdminCategoriesPage() {
 
   const handleToggleActive = async (id: string, value: boolean) => {
     try {
-      const res = await fetch(`/api/admin/categories/${id}`, {
+      const res = await apiFetch(`/api/admin/categories/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: value }),
@@ -155,8 +162,10 @@ export default function AdminCategoriesPage() {
       if (!res.ok) throw new Error()
       toast.success('Category status updated')
       fetchCategories()
-    } catch {
-      toast.error('Failed to update category')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update category')
+      }
     }
   }
 

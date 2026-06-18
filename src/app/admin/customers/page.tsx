@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
 import { exportTableToPdf } from '@/lib/client-pdf'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Customer {
   id: string
@@ -72,13 +73,16 @@ export default function AdminCustomersPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const res = await fetch(`/api/admin/customers?${params}`)
+      const res = await apiFetch(`/api/admin/customers?${params}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setCustomers(data.customers)
       setTotal(data.total)
-    } catch {
-      toast.error('Failed to load customers')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load customers')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -92,12 +96,15 @@ export default function AdminCustomersPage() {
     setDetailLoading(true)
     setSheetOpen(true)
     try {
-      const res = await fetch(`/api/admin/customers/${customerId}`)
+      const res = await apiFetch(`/api/admin/customers/${customerId}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setSelectedCustomer(data.customer)
-    } catch {
-      toast.error('Failed to load customer details')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load customer details')
+      }
+
     } finally {
       setDetailLoading(false)
     }
@@ -106,7 +113,7 @@ export default function AdminCustomersPage() {
   const handleToggleBan = async (customerId: string, currentIsActive: boolean) => {
     setBanningId(customerId)
     try {
-      const res = await fetch(`/api/admin/customers/${customerId}`, {
+      const res = await apiFetch(`/api/admin/customers/${customerId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: !currentIsActive }),
@@ -126,8 +133,11 @@ export default function AdminCustomersPage() {
           ? 'Customer has been unbanned'
           : 'Customer has been banned'
       )
-    } catch {
-      toast.error('Failed to update customer status')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update customer status')
+      }
+
     } finally {
       setBanningId(null)
     }
@@ -156,8 +166,11 @@ export default function AdminCustomersPage() {
         footer: `Total revenue from listed customers: ${formatPrice(customers.reduce((s, c) => s + c.totalSpent, 0))}`,
       })
       toast.success('PDF exported')
-    } catch {
-      toast.error('Failed to export PDF')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to export PDF')
+      }
+
     }
   }
 

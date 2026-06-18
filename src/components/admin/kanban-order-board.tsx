@@ -28,6 +28,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -371,7 +372,7 @@ function BatchSuggestionsPanel({ drivers, onBatchAssigned }: { drivers: Driver[]
 
   const fetchBatches = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/orders/batching')
+      const res = await apiFetch('/api/admin/orders/batching')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setBatches(data.batches || [])
@@ -394,7 +395,7 @@ function BatchSuggestionsPanel({ drivers, onBatchAssigned }: { drivers: Driver[]
 
     setAssigning(true)
     try {
-      const res = await fetch('/api/admin/orders/batching', {
+      const res = await apiFetch('/api/admin/orders/batching', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -408,8 +409,11 @@ function BatchSuggestionsPanel({ drivers, onBatchAssigned }: { drivers: Driver[]
       setAssigningDriver(null)
       fetchBatches()
       onBatchAssigned()
-    } catch {
-      toast.error('Failed to assign batch')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to assign batch')
+      }
+
     } finally {
       setAssigning(false)
     }
@@ -511,7 +515,7 @@ export function KanbanOrderBoard() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/orders?limit=100')
+      const res = await apiFetch('/api/admin/orders?limit=100')
       if (!res.ok) throw new Error()
       const data = await res.json()
       const newOrders: Order[] = data.orders || []
@@ -524,8 +528,11 @@ export function KanbanOrderBoard() {
         }
         return newOrders
       })
-    } catch {
-      toast.error('Failed to load orders')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load orders')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -543,7 +550,7 @@ export function KanbanOrderBoard() {
 
   // Fetch drivers
   useEffect(() => {
-    fetch('/api/admin/drivers')
+    apiFetch('/api/admin/drivers')
       .then((r) => r.json())
       .then((d) => setDrivers(d.drivers || []))
       .catch(() => {})
@@ -551,7 +558,7 @@ export function KanbanOrderBoard() {
 
   const handleMove = async (orderId: string, newStatus: string) => {
     try {
-      const res = await fetch('/api/admin/orders', {
+      const res = await apiFetch('/api/admin/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, status: newStatus }),
@@ -559,14 +566,17 @@ export function KanbanOrderBoard() {
       if (!res.ok) throw new Error()
       toast.success(`Order moved to ${newStatus.replace(/_/g, ' ')}`)
       fetchOrders()
-    } catch {
-      toast.error('Failed to update order status')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update order status')
+      }
+
     }
   }
 
   const handleAssignDriver = async (orderId: string, driverId: string) => {
     try {
-      const res = await fetch('/api/admin/orders', {
+      const res = await apiFetch('/api/admin/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, driverId, status: 'out_for_delivery' }),
@@ -574,14 +584,17 @@ export function KanbanOrderBoard() {
       if (!res.ok) throw new Error()
       toast.success('Driver assigned & order dispatched')
       fetchOrders()
-    } catch {
-      toast.error('Failed to assign driver')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to assign driver')
+      }
+
     }
   }
 
   const handleRefund = async (orderId: string, reason: string) => {
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}/refund`, {
+      const res = await apiFetch(`/api/admin/orders/${orderId}/refund`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason }),

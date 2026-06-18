@@ -20,6 +20,7 @@ import {
   Legend,
 } from 'recharts'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface AnalyticsData {
   summary: {
@@ -76,8 +77,14 @@ export default function AdminAnalyticsPage() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/admin/analytics')
-      .then((r) => r.json())
+    apiFetch('/api/admin/analytics')
+      .then(async (r) => {
+        if (!r.ok) return null
+        const d = await r.json()
+        // Only set data if it has the expected shape (summary object)
+        if (d && d.summary) return d
+        return null
+      })
       .then((d) => setData(d))
       .catch(() => {})
       .finally(() => setLoading(false))

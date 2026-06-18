@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -108,12 +109,15 @@ export function BankHolidayManager() {
 
   const fetchHolidays = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/bank-holidays')
+      const res = await apiFetch('/api/admin/bank-holidays')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setHolidays(data.holidays || [])
-    } catch {
-      toast.error('Failed to load bank holidays')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load bank holidays')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -127,7 +131,7 @@ export function BankHolidayManager() {
     setAdding(true)
     try {
       const generated = generateUKBankHolidays(selectedYear)
-      const res = await fetch('/api/admin/bank-holidays', {
+      const res = await apiFetch('/api/admin/bank-holidays', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ holidays: generated }),
@@ -136,8 +140,11 @@ export function BankHolidayManager() {
       const data = await res.json()
       toast.success(`Added ${data.added} bank holidays for ${selectedYear}${data.skipped > 0 ? ` (${data.skipped} already existed)` : ''}`)
       fetchHolidays()
-    } catch {
-      toast.error('Failed to add bank holidays')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to add bank holidays')
+      }
+
     } finally {
       setAdding(false)
     }
@@ -145,12 +152,15 @@ export function BankHolidayManager() {
 
   const handleDeleteHoliday = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/bank-holidays/${id}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/admin/bank-holidays/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
       toast.success('Bank holiday removed')
       fetchHolidays()
-    } catch {
-      toast.error('Failed to delete bank holiday')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to delete bank holiday')
+      }
+
     }
   }
 
@@ -161,15 +171,19 @@ export function BankHolidayManager() {
     try {
       const holiday = holidays.find((h) => h.id === id)
       if (!holiday) return
-      await fetch(`/api/admin/bank-holidays/${id}`, { method: 'DELETE' })
-      await fetch('/api/admin/bank-holidays', {
+      const deleteRes = await apiFetch(`/api/admin/bank-holidays/${id}`, { method: 'DELETE' })
+      if (!deleteRes.ok) throw new Error('Failed to delete old holiday')
+      const postRes = await apiFetch('/api/admin/bank-holidays', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: holiday.name, date: holiday.date, mode }),
       })
+      if (!postRes.ok) throw new Error('Failed to add updated holiday')
       fetchHolidays()
-    } catch {
-      toast.error('Failed to update holiday mode')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update holiday mode')
+      }
       fetchHolidays()
     }
   }

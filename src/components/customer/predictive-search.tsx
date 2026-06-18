@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Search, X, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 const PLACEHOLDER_SUGGESTIONS = [
   'Semi-Skimmed Milk',
@@ -86,7 +87,7 @@ export function PredictiveSearch() {
 
     setIsSearching(true)
     try {
-      const res = await fetch(`/api/products/search?q=${encodeURIComponent(searchQuery.trim())}`)
+      const res = await apiFetch(`/api/products/search?q=${encodeURIComponent(searchQuery.trim())}`)
       const data = await res.json()
       setResults(data.products || [])
       setIsOpen(true)

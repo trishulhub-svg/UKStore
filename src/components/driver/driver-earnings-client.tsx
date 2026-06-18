@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PoundSterling, TrendingUp, Calendar, Package } from 'lucide-react'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface DeliveryOrder {
   id: string
@@ -31,8 +32,14 @@ export function DriverEarningsClient() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/driver/earnings')
-      .then((res) => res.json())
+    apiFetch('/api/driver/earnings')
+      .then(async (res) => {
+        if (!res.ok) return null
+        const body = await res.json()
+        // Defensive: only set data if it has the expected shape
+        if (body && body.today && body.thisWeek && body.thisMonth) return body
+        return null
+      })
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false))

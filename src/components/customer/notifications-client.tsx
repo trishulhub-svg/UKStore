@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   ExternalLink,
 } from 'lucide-react'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Notification {
   id: string
@@ -42,7 +43,7 @@ export function NotificationsClient() {
 
   const fetchNotifications = async (filter = 'all') => {
     try {
-      const res = await fetch(`/api/user/notifications?filter=${filter}`)
+      const res = await apiFetch(`/api/user/notifications?filter=${filter}`)
       if (res.ok) {
         const data = await res.json()
         setNotifications(data.notifications || [])
@@ -61,7 +62,7 @@ export function NotificationsClient() {
 
   const handleMarkRead = async (id: string) => {
     try {
-      const res = await fetch(`/api/user/notifications/${id}`, {
+      const res = await apiFetch(`/api/user/notifications/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isRead: true }),
@@ -79,12 +80,19 @@ export function NotificationsClient() {
 
   const handleMarkAllRead = async () => {
     try {
-      const res = await fetch(`/api/user/notifications/notifications`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markAllRead: true }),
-      })
-      // Fallback: mark all locally
+      // Loop through all unread notifications and mark each one read.
+      // The /api/user/notifications/[id] PATCH endpoint handles one id at a time.
+      const unread = notifications.filter((n) => !n.isRead)
+      await Promise.all(
+        unread.map((n) =>
+          apiFetch(`/api/user/notifications/${n.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isRead: true }),
+          })
+        )
+      )
+      // Update local state to reflect the change
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
       setUnreadCount(0)
     } catch (err) {

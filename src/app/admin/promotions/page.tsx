@@ -29,6 +29,7 @@ import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Category {
   id: string
@@ -77,12 +78,15 @@ export default function AdminPromotionsPage() {
 
   const fetchPromotions = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/promotions')
+      const res = await apiFetch('/api/admin/promotions')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setPromotions(data.promotions)
-    } catch {
-      toast.error('Failed to load promotions')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load promotions')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -90,7 +94,7 @@ export default function AdminPromotionsPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch('/api/admin/categories')
+      const res = await apiFetch('/api/admin/categories')
       if (!res.ok) return
       const data = await res.json()
       setCategories(data.categories.map((c: any) => ({ id: c.id, name: c.name })))
@@ -134,7 +138,7 @@ export default function AdminPromotionsPage() {
     try {
       const url = editingId ? `/api/admin/promotions/${editingId}` : '/api/admin/promotions'
       const method = editingId ? 'PATCH' : 'POST'
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -147,7 +151,10 @@ export default function AdminPromotionsPage() {
       setDialogOpen(false)
       fetchPromotions()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save promotion')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to save promotion')
+      }
+
     } finally {
       setSaving(false)
     }
@@ -157,7 +164,7 @@ export default function AdminPromotionsPage() {
     if (!deleteId) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/admin/promotions/${deleteId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/admin/promotions/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed')
@@ -166,7 +173,10 @@ export default function AdminPromotionsPage() {
       setDeleteId(null)
       fetchPromotions()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to delete promotion')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to delete promotion')
+      }
+
     } finally {
       setDeleting(false)
     }
@@ -174,7 +184,7 @@ export default function AdminPromotionsPage() {
 
   const handleToggleActive = async (id: string, value: boolean) => {
     try {
-      const res = await fetch(`/api/admin/promotions/${id}`, {
+      const res = await apiFetch(`/api/admin/promotions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: value }),
@@ -182,8 +192,11 @@ export default function AdminPromotionsPage() {
       if (!res.ok) throw new Error()
       toast.success('Promotion status updated')
       fetchPromotions()
-    } catch {
-      toast.error('Failed to update promotion')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update promotion')
+      }
+
     }
   }
 

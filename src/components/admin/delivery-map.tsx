@@ -5,6 +5,7 @@ import { MapPin, Loader2, Package, Truck, Navigation } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import dynamic from 'next/dynamic'
+import { apiFetch } from '@/lib/api-fetch'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -244,7 +245,7 @@ export function DeliveryMap() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/delivery-map')
+      const res = await apiFetch('/api/admin/delivery-map')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setStore(data.store)

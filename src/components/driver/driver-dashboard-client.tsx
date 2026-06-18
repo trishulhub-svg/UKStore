@@ -15,6 +15,7 @@ import {
   ChevronRight,
   RefreshCw,
 } from 'lucide-react'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface OrderItem {
   id: string
@@ -80,7 +81,7 @@ export function DriverDashboardClient() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/driver/orders')
+      const res = await apiFetch('/api/driver/orders')
       if (res.ok) {
         const data = await res.json()
         setAssignedOrders(data.assignedOrders || [])
@@ -102,7 +103,7 @@ export function DriverDashboardClient() {
 
   const handleClaimOrder = async (orderId: string) => {
     try {
-      const res = await fetch(`/api/driver/orders/${orderId}`, {
+      const res = await apiFetch(`/api/driver/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignToMe: true }),

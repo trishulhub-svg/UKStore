@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { MapPin, Phone, Mail, Building2, Save, Loader2, ImagePlus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { validateImageFile, fileToDataUrl } from '@/lib/upload'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface StoreProfile {
   name: string
@@ -39,7 +40,7 @@ export function StoreProfileEditor() {
 
   const fetchProfile = async () => {
     try {
-      const res = await fetch('/api/admin/store/profile')
+      const res = await apiFetch('/api/admin/store/profile')
       if (res.ok) {
         const data = await res.json()
         if (data.store) {
@@ -69,7 +70,7 @@ export function StoreProfileEditor() {
 
     setSaving(true)
     try {
-      const res = await fetch('/api/admin/store/profile', {
+      const res = await apiFetch('/api/admin/store/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -90,7 +91,7 @@ export function StoreProfileEditor() {
         // Refresh the store info context so navbar/footer/favicon update immediately.
         // Trigger a full page refresh so the dynamic favicon (served by /icon route) reloads too.
         try {
-          await fetch('/api/store/info', { cache: 'no-store' })
+          await apiFetch('/api/store/info', { cache: 'no-store' })
         } catch {
           // Non-critical
         }
@@ -266,8 +267,11 @@ export function StoreProfileEditor() {
                       const dataUrl = await fileToDataUrl(file)
                       setProfile({ ...profile, logoUrl: dataUrl })
                       toast.success('Logo ready — click Save Changes to apply')
-                    } catch {
-                      toast.error('Failed to process logo')
+                    } catch (err: any) {
+                      if (err?.message !== 'Session expired — redirecting to login') {
+                        toast.error('Failed to process logo')
+                      }
+
                     } finally {
                       setUploadingLogo(false)
                     }

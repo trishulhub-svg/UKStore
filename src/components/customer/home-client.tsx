@@ -13,6 +13,7 @@ import type { Store, Category, ProductWithCategory } from '@/types'
 import { PostcodeGate, getSavedPostcode, clearSavedPostcode } from '@/components/customer/postcode-gate'
 import { BannerCarousel } from '@/components/customer/banner-carousel'
 import { CategoryProductSlider } from '@/components/customer/category-product-slider'
+import { apiFetch } from '@/lib/api-fetch'
 
 // Category icons for the sub-category slider
 const categoryIcons: Record<string, string> = {
@@ -83,7 +84,7 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
 
   // Check store status
   useEffect(() => {
-    fetch('/api/store/status')
+    apiFetch('/api/store/status')
       .then((r) => r.json())
       .then((data) => {
         setStoreOpen(data.isOpen)
@@ -96,7 +97,7 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
 
   // Fetch products grouped by category
   useEffect(() => {
-    fetch('/api/products/by-category')
+    apiFetch('/api/products/by-category')
       .then((r) => r.json())
       .then((data) => {
         setCategoriesWithProducts(data.categories || [])

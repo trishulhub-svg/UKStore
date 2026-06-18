@@ -26,6 +26,7 @@ import {
   Upload,
   Image as ImageIcon,
 } from 'lucide-react'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface ProductInfo {
   id: string
@@ -107,7 +108,7 @@ export function DriverOrderFlowClient() {
 
   const fetchOrder = useCallback(async () => {
     try {
-      const res = await fetch(`/api/driver/orders/${orderId}`)
+      const res = await apiFetch(`/api/driver/orders/${orderId}`)
       if (res.ok) {
         const data = await res.json()
         setOrder(data.order)
@@ -126,7 +127,7 @@ export function DriverOrderFlowClient() {
   const handleMarkPicked = async (itemId: string) => {
     setActionLoading(itemId)
     try {
-      const res = await fetch(`/api/driver/orders/${orderId}`, {
+      const res = await apiFetch(`/api/driver/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId, picked: true }),
@@ -145,7 +146,7 @@ export function DriverOrderFlowClient() {
   const handleClaimOrder = async () => {
     setActionLoading('claim')
     try {
-      const res = await fetch(`/api/driver/orders/${orderId}`, {
+      const res = await apiFetch(`/api/driver/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignToMe: true }),
@@ -164,7 +165,7 @@ export function DriverOrderFlowClient() {
   const handleUpdateStatus = async (newStatus: string) => {
     setActionLoading(newStatus)
     try {
-      const res = await fetch(`/api/driver/orders/${orderId}`, {
+      const res = await apiFetch(`/api/driver/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, assignToMe: true }),
@@ -183,7 +184,7 @@ export function DriverOrderFlowClient() {
   const handleConfirmDelivery = async () => {
     setActionLoading('deliver')
     try {
-      const res = await fetch(`/api/driver/orders/${orderId}/deliver`, {
+      const res = await apiFetch(`/api/driver/orders/${orderId}/deliver`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -306,7 +307,7 @@ export function DriverOrderFlowClient() {
 
     setActionLoading('challenge25')
     try {
-      const res = await fetch(`/api/driver/orders/${orderId}`, {
+      const res = await apiFetch(`/api/driver/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challenge25Verified: true }),

@@ -27,6 +27,7 @@ import {
   ArrowLeft,
   CheckCircle2,
 } from 'lucide-react'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Address {
   id: string
@@ -62,7 +63,7 @@ export function AddressesClient() {
 
   const fetchAddresses = async () => {
     try {
-      const res = await fetch('/api/user/addresses')
+      const res = await apiFetch('/api/user/addresses')
       if (res.ok) {
         const data = await res.json()
         setAddresses(data.addresses || [])
@@ -110,7 +111,7 @@ export function AddressesClient() {
     setSaving(true)
     try {
       if (editingId) {
-        const res = await fetch(`/api/user/addresses/${editingId}`, {
+        const res = await apiFetch(`/api/user/addresses/${editingId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ label, addressLine1, addressLine2, city, postcode, isDefault }),
@@ -121,7 +122,7 @@ export function AddressesClient() {
           resetForm()
         }
       } else {
-        const res = await fetch('/api/user/addresses', {
+        const res = await apiFetch('/api/user/addresses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ label, addressLine1, addressLine2, city, postcode, isDefault }),
@@ -143,7 +144,7 @@ export function AddressesClient() {
     if (!confirm('Are you sure you want to delete this address?')) return
 
     try {
-      const res = await fetch(`/api/user/addresses/${addressId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/user/addresses/${addressId}`, { method: 'DELETE' })
       if (res.ok) {
         await fetchAddresses()
       }
@@ -154,7 +155,7 @@ export function AddressesClient() {
 
   const handleSetDefault = async (addressId: string) => {
     try {
-      const res = await fetch(`/api/user/addresses/${addressId}`, {
+      const res = await apiFetch(`/api/user/addresses/${addressId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isDefault: true }),

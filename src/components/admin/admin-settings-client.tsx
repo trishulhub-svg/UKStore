@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
 import { SETTING_DEFINITIONS, type StoreSetting } from '@/types'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface AdminSettingsClientProps {
   settings: StoreSetting[]
@@ -97,7 +98,7 @@ export function AdminSettingsClient({ settings, userId }: AdminSettingsClientPro
         last_updated_by: userId,
       }))
 
-      const response = await fetch('/api/admin/settings', {
+      const response = await apiFetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ settings: updates }),

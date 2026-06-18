@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface LowStockProduct {
   id: string
@@ -39,12 +40,15 @@ export function LowStockAlerts() {
 
   const fetchLowStock = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/products/low-stock')
+      const res = await apiFetch('/api/admin/products/low-stock')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setProducts(data.products)
-    } catch {
-      toast.error('Failed to load low-stock products')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load low-stock products')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -61,7 +65,7 @@ export function LowStockAlerts() {
       return
     }
     try {
-      const res = await fetch(`/api/admin/products/${id}`, {
+      const res = await apiFetch(`/api/admin/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stockQuantity: qty }),
@@ -74,8 +78,11 @@ export function LowStockAlerts() {
         return next
       })
       fetchLowStock()
-    } catch {
-      toast.error('Failed to update stock')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update stock')
+      }
+
     }
   }
 
@@ -90,7 +97,7 @@ export function LowStockAlerts() {
     try {
       const product = products.find((p) => p.id === restockId)
       const newQty = (product?.stockQuantity || 0) + qty
-      const res = await fetch(`/api/admin/products/${restockId}`, {
+      const res = await apiFetch(`/api/admin/products/${restockId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stockQuantity: newQty }),
@@ -100,8 +107,11 @@ export function LowStockAlerts() {
       setRestockId(null)
       setRestockQty('')
       fetchLowStock()
-    } catch {
-      toast.error('Failed to restock')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to restock')
+      }
+
     } finally {
       setRestocking(false)
     }

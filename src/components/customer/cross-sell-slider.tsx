@@ -8,6 +8,7 @@ import { useCartStore } from '@/store/cart'
 import { formatPrice } from '@/lib/vat'
 import { toast } from 'sonner'
 import type { ProductWithCategory } from '@/types'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface CrossSellSliderProps {
   title: string
@@ -156,7 +157,7 @@ export function CrossSellSection({
         if (excludeProductId) params.set('excludeProductId', excludeProductId)
         params.set('limit', String(limit))
 
-        const res = await fetch(`/api/products?${params.toString()}`)
+        const res = await apiFetch(`/api/products?${params.toString()}`)
         if (res.ok) {
           const data = await res.json()
           setProducts(data.products || [])
@@ -185,7 +186,7 @@ export function CrossSellSection({
             if (excludeProductId) params.set('excludeProductId', excludeProductId)
             params.set('limit', String(perCategory))
 
-            const res = await fetch(`/api/products?${params.toString()}`)
+            const res = await apiFetch(`/api/products?${params.toString()}`)
             if (res.ok) {
               const data = await res.json()
               if (data.products) {

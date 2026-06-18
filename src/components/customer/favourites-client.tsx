@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useCartStore } from '@/stores/cart-store'
 import type { Product } from '@/types'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface Favourite {
   id: string
@@ -40,7 +41,7 @@ export function FavouritesClient() {
 
   const fetchFavourites = async () => {
     try {
-      const res = await fetch('/api/user/favourites')
+      const res = await apiFetch('/api/user/favourites')
       if (res.ok) {
         const data = await res.json()
         setFavourites(data.favourites || [])
@@ -58,7 +59,7 @@ export function FavouritesClient() {
 
   const handleRemove = async (productId: string) => {
     try {
-      const res = await fetch(`/api/user/favourites?productId=${productId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/user/favourites?productId=${productId}`, { method: 'DELETE' })
       if (res.ok) {
         setFavourites((prev) => prev.filter((f) => f.productId !== productId))
       }

@@ -29,6 +29,7 @@ import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface DeliveryZone {
   id: string
@@ -61,12 +62,15 @@ export default function AdminDeliveryZonesPage() {
 
   const fetchZones = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/delivery-zones')
+      const res = await apiFetch('/api/admin/delivery-zones')
       if (!res.ok) throw new Error()
       const data = await res.json()
       setZones(data.zones)
-    } catch {
-      toast.error('Failed to load delivery zones')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to load delivery zones')
+      }
+
     } finally {
       setLoading(false)
     }
@@ -103,7 +107,7 @@ export default function AdminDeliveryZonesPage() {
     try {
       const url = editingId ? `/api/admin/delivery-zones/${editingId}` : '/api/admin/delivery-zones'
       const method = editingId ? 'PATCH' : 'POST'
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -116,7 +120,10 @@ export default function AdminDeliveryZonesPage() {
       setDialogOpen(false)
       fetchZones()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save delivery zone')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to save delivery zone')
+      }
+
     } finally {
       setSaving(false)
     }
@@ -126,7 +133,7 @@ export default function AdminDeliveryZonesPage() {
     if (!deleteId) return
     setDeleting(true)
     try {
-      const res = await fetch(`/api/admin/delivery-zones/${deleteId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/admin/delivery-zones/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed')
@@ -135,7 +142,10 @@ export default function AdminDeliveryZonesPage() {
       setDeleteId(null)
       fetchZones()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to delete delivery zone')
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to delete delivery zone')
+      }
+
     } finally {
       setDeleting(false)
     }
@@ -143,7 +153,7 @@ export default function AdminDeliveryZonesPage() {
 
   const handleToggleActive = async (id: string, value: boolean) => {
     try {
-      const res = await fetch(`/api/admin/delivery-zones/${id}`, {
+      const res = await apiFetch(`/api/admin/delivery-zones/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: value }),
@@ -151,8 +161,11 @@ export default function AdminDeliveryZonesPage() {
       if (!res.ok) throw new Error()
       toast.success('Zone status updated')
       fetchZones()
-    } catch {
-      toast.error('Failed to update zone')
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error('Failed to update zone')
+      }
+
     }
   }
 

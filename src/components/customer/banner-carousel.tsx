@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from '@/components/ui/carousel'
 import type { Banner } from '@/types'
+import { apiFetch } from '@/lib/api-fetch'
 
 // Gradient placeholders shown only when there are no real banners AND no
 // admin-uploaded default banner images. Once the owner uploads default banner
@@ -65,7 +66,7 @@ export function BannerCarousel({ banners: propBanners }: BannerCarouselProps) {
     if (propBanners && propBanners.length > 0) return
 
     let cancelled = false
-    fetch('/api/banners')
+    apiFetch('/api/banners')
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return

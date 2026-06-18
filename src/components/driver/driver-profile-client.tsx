@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface DriverProfileData {
   id: string
@@ -53,9 +54,13 @@ export function DriverProfileClient() {
   const drivingLicenseRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    fetch('/api/driver/profile')
-      .then((res) => res.json())
+    apiFetch('/api/driver/profile')
+      .then(async (res) => {
+        if (!res.ok) return null
+        return await res.json()
+      })
       .then((data) => {
+        if (!data) return  // 401 already redirected; or null on other error
         setProfile(data.profile)
         setUserInfo(data.user)
         setVehicleType(data.profile?.vehicleType || '')
@@ -68,7 +73,7 @@ export function DriverProfileClient() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const res = await fetch('/api/driver/profile', {
+      const res = await apiFetch('/api/driver/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vehicleType, vehicleReg }),
@@ -98,7 +103,7 @@ export function DriverProfileClient() {
     setUploadingDoc(type)
     try {
       const dataUrl = await fileToDataUrl(file)
-      const res = await fetch('/api/driver/profile', {
+      const res = await apiFetch('/api/driver/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [type]: dataUrl }),

@@ -313,3 +313,44 @@ Stage Summary:
 - Files added: src/lib/use-idle-timeout.tsx, src/app/api/auth/refresh/route.ts, scripts/test-idle-timeout.mjs.
 - Files modified: src/lib/auth/index.ts, src/lib/auth/edge.ts, src/app/layout.tsx, src/components/auth/login-client.tsx.
 - User experience: 30s before timeout, a warning toast appears ("Session expiring in 30s — click or press a key to stay logged in"). If they interact, the timer resets. If they don't, they're redirected to /auth/login with an amber "You were logged out due to inactivity" banner and will be sent back to their previous page after re-login.
+
+---
+Task ID: 7
+Agent: Main
+Task: Allow store owner to change their own email from the profile page
+
+Work Log:
+- Root cause: the profile page (/account/profile) had the email field disabled for EVERYONE, including the owner. The UI said "Email changes must be made by the store owner" — but the owner had no UI to do it. The only way for an owner to change their email was to navigate to /admin/employees, find themselves in the list, click Edit, and change it there. Dead-end UX.
+- The /api/admin/employees/[id] PATCH route already allowed OWNER to change emails (verified by curl test).
+- The /api/user/profile PATCH route did NOT accept the email field at all — it only accepted name/phone/avatarUrl.
+- Fixes:
+  1. src/app/api/user/profile/route.ts (PATCH handler):
+     - Added email field handling: if the user is OWNER (case-insensitive), validate the new email (format + uniqueness), update the DB, and re-issue the session token (the token payload contains the email, so we need a fresh token with the new email).
+     - Non-OWNER roles get 403 with a clear message: "Only the store owner can change their own email address. Please ask the store owner to update it for you."
+     - Session token re-issue uses createSessionToken() with the same uid/role but updated email + name (falls back to email local-part if name is null).
+     - Session token is NOT re-issued if email wasn't changed (preserves the existing sliding-window expiry).
+  2. src/components/account/profile-client.tsx:
+     - Email field is now editable when user.role === 'OWNER' (case-insensitive). Remains readOnly+disabled for all other roles.
+     - Added originalEmail state to track the dirty flag — email is only included in the PATCH body if it actually changed. This prevents unnecessary session re-issues on every profile save.
+     - Email validation on the client side before sending (regex).
+     - Visual feedback: amber warning shows when there are unsaved email changes ("You have unsaved email changes — click Save to apply. Your session will be re-issued with the new email.").
+     - Updated CardDescription and footer text to reflect the owner's ability to self-change email.
+     - Toast on success: "Profile updated — your new email is now active" (when email changed) vs just "Profile updated" (when only name/phone changed).
+  3. scripts/test-owner-email-change.mjs — new end-to-end test (8 scenarios):
+     - Owner changes own email → 200 + new cookie issued ✅
+     - Verify email actually changed in DB (via /api/user/profile GET) ✅
+     - Invalid email format → 400 ✅
+     - Email already in use → 409 ✅
+     - Customer tries to change email → 403 with helpful message ✅
+     - Driver tries to change email → 403 ✅
+     - Owner saves profile WITHOUT email change → 200, no new cookie (correct — no token re-issue needed) ✅
+     - Restore email back to admin@freshmart.co.uk for test cleanliness ✅
+- TypeScript clean (npx tsc --noEmit --skipLibCheck) on both modified files.
+- Note: the test script refreshes the session token before each request because the server enforces a 5-min inactivity timeout (Task 6). Without the refresh, long-running tests would fail with spurious 401s.
+
+Stage Summary:
+- The store owner can now change their own email directly from /account/profile — no more dead-end UX.
+- The session is re-issued on email change so the new email takes effect immediately in the token payload (and the user doesn't need to log out and back in).
+- Other roles (manager, driver, picker, customer) still see the email field locked, with a clear message telling them to ask the owner.
+- Email uniqueness is enforced (409 if email already in use).
+- Email format is validated (400 if invalid).

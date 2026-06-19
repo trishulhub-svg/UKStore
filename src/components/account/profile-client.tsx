@@ -40,10 +40,17 @@ export function ProfileClient({ user }: ProfileClientProps) {
   const [name, setName] = useState(user.name || '')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState(user.email)
+  const [originalEmail, setOriginalEmail] = useState(user.email)
   const [role, setRole] = useState(user.role)
   const [mustReset, setMustReset] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // The store owner is allowed to change their own email. All other roles
+  // see the field as read-only and must ask the owner to change it for them
+  // (via /admin/employees).
+  const isOwner = role === 'OWNER' || role === 'owner'
+  const emailDirty = email !== originalEmail
 
   useEffect(() => {
     apiFetch('/api/user/profile')
@@ -53,6 +60,7 @@ export function ProfileClient({ user }: ProfileClientProps) {
           setName(data.user.name || '')
           setPhone(data.user.phone || '')
           setEmail(data.user.email)
+          setOriginalEmail(data.user.email)
           setRole(data.user.role)
           setMustReset(data.user.mustResetPassword === true)
         }
@@ -66,22 +74,51 @@ export function ProfileClient({ user }: ProfileClientProps) {
       toast.error('Name is required')
       return
     }
+
+    // Validate email format if the owner is changing it
+    if (isOwner && emailDirty) {
+      const trimmed = email.trim().toLowerCase()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        toast.error('Please enter a valid email address')
+        return
+      }
+    }
+
     setSaving(true)
     try {
+      // Build the PATCH body — only include email if the owner has actually
+      // changed it. This avoids triggering the email-change code path on
+      // every profile save (which would re-issue the session token and
+      // reset the sliding-window clock unnecessarily).
+      const body: Record<string, unknown> = { name, phone }
+      if (isOwner && emailDirty) {
+        body.email = email.trim().toLowerCase()
+      }
+
       const res = await apiFetch('/api/user/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed')
       }
-      toast.success('Profile updated')
+      const data = await res.json()
+      if (data?.user?.email) {
+        setEmail(data.user.email)
+        setOriginalEmail(data.user.email)
+      }
+      if (isOwner && emailDirty) {
+        toast.success('Profile updated — your new email is now active')
+      } else {
+        toast.success('Profile updated')
+      }
       router.refresh()
     } catch (err: any) {
-      if (err?.message !== 'Session expired — redirecting to login') {
-        toast.error(err.message || 'Failed to update profile')
+      const msg = err?.message
+      if (msg !== 'Session expired — redirecting to login') {
+        toast.error(msg || 'Failed to update profile')
       }
     } finally {
       setSaving(false)
@@ -132,7 +169,9 @@ export function ProfileClient({ user }: ProfileClientProps) {
               Personal Details
             </CardTitle>
             <CardDescription>
-              Update your name and phone number. Email can only be changed by the store owner.
+              {isOwner
+                ? 'Update your name, phone, and email address. As the store owner, you can change your own email.'
+                : 'Update your name and phone number. Email can only be changed by the store owner.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -148,20 +187,46 @@ export function ProfileClient({ user }: ProfileClientProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">
+                Email{isOwner ? ' (editable — you are the store owner)' : ''}
+              </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   id="email"
+                  type="email"
                   value={email}
-                  readOnly
-                  disabled
-                  className="pl-9 h-11 bg-gray-50 text-gray-500"
+                  onChange={(e) => setEmail(e.target.value)}
+                  readOnly={!isOwner}
+                  disabled={!isOwner}
+                  placeholder="you@example.com"
+                  className={`pl-9 h-11 ${
+                    isOwner
+                      ? 'bg-white text-gray-900 border-gray-300 focus:border-[#16a34a] focus:ring-[#16a34a]'
+                      : 'bg-gray-50 text-gray-500'
+                  }`}
+                  autoComplete="email"
                 />
               </div>
               <p className="text-xs text-gray-500 flex items-center gap-1">
-                <Lock className="h-3 w-3" />
-                Email changes must be made by the store owner.
+                {isOwner ? (
+                  emailDirty ? (
+                    <span className="text-amber-700">
+                      <AlertCircle className="h-3 w-3 inline mr-1" />
+                      You have unsaved email changes — click Save to apply. Your session will be re-issued with the new email.
+                    </span>
+                  ) : (
+                    <>
+                      <Mail className="h-3 w-3" />
+                      You can edit your email because you are the store owner.
+                    </>
+                  )
+                ) : (
+                  <>
+                    <Lock className="h-3 w-3" />
+                    Email changes must be made by the store owner.
+                  </>
+                )}
               </p>
             </div>
 
@@ -232,7 +297,9 @@ export function ProfileClient({ user }: ProfileClientProps) {
         <Separator className="my-6" />
 
         <p className="text-xs text-gray-500 text-center">
-          For security, only you can edit your personal details. The store owner can change your email.
+          {isOwner
+            ? 'As the store owner, you can edit your own email and personal details. Other staff must ask you to change their email.'
+            : 'For security, only you can edit your personal details. The store owner can change your email.'}
         </p>
       </div>
     </div>

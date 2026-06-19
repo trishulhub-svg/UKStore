@@ -4,6 +4,17 @@
 //
 // This isolates whether the bug is server-side (token not updated) or
 // client-side (Navbar showing stale cached value).
+//
+// ⚠️ EMAIL SAFETY (Task 9):
+// This test does NOT hard-code "admin@freshmart.co.uk" as the restore
+// value. It saves the original email and restores it at the end.
+//
+// Usage:
+//   OWNER_EMAIL=kiranpradhan2057@gmail.com OWNER_PASSWORD=Admin@2026 \
+//     node scripts/test-email-change-session.mjs
+
+const OWNER_EMAIL = process.env.OWNER_EMAIL || 'admin@freshmart.co.uk'
+const OWNER_PASSWORD = process.env.OWNER_PASSWORD || 'Admin@2026'
 
 function extractCookie(setCookie) {
   if (!setCookie) return ''
@@ -29,10 +40,7 @@ async function login(email, password) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   })
-  if (!res.ok) {
-    console.log(`  Login failed for ${email}: ${res.status} ${await res.text()}`)
-    return null
-  }
+  if (!res.ok) return null
   return extractCookie(res.headers.get('set-cookie'))
 }
 
@@ -66,19 +74,17 @@ async function changeEmail(cookie, newEmail) {
   }
 }
 
-// Try to log in as the owner — email may be admin@ or newowner@ from previous tests
-let cookie = await login('admin@freshmart.co.uk', 'Admin@2026')
-let currentEmail = 'admin@freshmart.co.uk'
+let cookie = await login(OWNER_EMAIL, OWNER_PASSWORD)
 if (!cookie) {
-  cookie = await login('newowner@freshmart.co.uk', 'Admin@2026')
-  currentEmail = 'newowner@freshmart.co.uk'
-}
-if (!cookie) {
-  console.log('Cannot login — aborting')
+  console.log(`❌ Cannot login as ${OWNER_EMAIL}`)
   process.exit(1)
 }
 
-console.log(`\n[1] Initial login as: ${currentEmail}`)
+cookie = await refreshCookie(cookie)
+const originalProfile = await getProfile(cookie)
+const originalEmail = originalProfile.data?.user?.email
+
+console.log(`\n[1] Initial login as: ${originalEmail}`)
 console.log(`    Cookie length: ${cookie.length}`)
 
 console.log(`\n[2] Pre-change /api/auth/session response:`)
@@ -93,13 +99,11 @@ let profile = await getProfile(cookie)
 console.log(`    Status: ${profile.status}`);
 console.log(`    Email:  ${profile.data?.user?.email}`)
 
-const newEmail = currentEmail === 'admin@freshmart.co.uk'
-  ? 'newowner@freshmart.co.uk'
-  : 'admin@freshmart.co.uk'
+const TEST_EMAIL = `test-debug-${Date.now()}@freshmart-test.co.uk`
 
-console.log(`\n[4] Changing email: ${currentEmail} → ${newEmail}`)
+console.log(`\n[4] Changing email: ${originalEmail} → ${TEST_EMAIL}`)
 cookie = await refreshCookie(cookie)
-const result = await changeEmail(cookie, newEmail)
+const result = await changeEmail(cookie, TEST_EMAIL)
 console.log(`    PATCH status: ${result.status}`)
 console.log(`    PATCH body.email: ${result.data?.user?.email}`)
 console.log(`    New Set-Cookie issued: ${result.setCookie ? 'YES' : 'NO'}`)
@@ -111,17 +115,16 @@ if (result.setCookie) {
 console.log(`\n[5] Post-change /api/auth/session response (with NEW cookie):`)
 session = await getSession(cookie)
 console.log(`    Status: ${session.status}`)
-console.log(`    Email:  ${session.data?.user?.email}  ← should be ${newEmail}`)
+console.log(`    Email:  ${session.data?.user?.email}  ← should be ${TEST_EMAIL}`)
 console.log(`    Name:   ${session.data?.user?.name}`)
 console.log(`    Role:   ${session.data?.user?.role}`)
 
 console.log(`\n[6] Post-change /api/user/profile response (with NEW cookie):`)
 profile = await getProfile(cookie)
 console.log(`    Status: ${profile.status}`);
-console.log(`    Email:  ${profile.data?.user?.email}  ← should be ${newEmail}`)
+console.log(`    Email:  ${profile.data?.user?.email}  ← should be ${TEST_EMAIL}`)
 
 console.log(`\n[7] Decode the JWT-style token to inspect payload:`)
-// Token format is base64url-encoded JSON payload between two dots (HMAC signed)
 const parts = cookie.split('.')
 if (parts.length === 3) {
   try {
@@ -134,19 +137,25 @@ if (parts.length === 3) {
   console.log(`    Token does not have 3 parts — format: ${parts.length} parts`)
 }
 
-console.log(`\n[8] Verify the OLD cookie no longer works (email-wise):`)
-// Use the OLD cookie (before the change) — it should still authenticate but
-// carry the OLD email. This confirms the server is reading from the token,
-// not the DB.
-// We don't have the OLD cookie here since we overwrote it. But we can test
-// that the NEW cookie works.
+// ─── CLEANUP: restore the original email ───
+console.log(`\n[8] CLEANUP: restoring email to ${originalEmail}`)
+cookie = await refreshCookie(cookie)
+const restoreResult = await changeEmail(cookie, originalEmail)
+if (restoreResult.status === 200) {
+  console.log(`    ✅ Email restored to ${originalEmail}`)
+} else {
+  console.log(`    ❌ Could not restore: ${restoreResult.status} ${JSON.stringify(restoreResult.data)}`)
+  console.log(`       ⚠️  MANUAL RESTORE REQUIRED: login as ${TEST_EMAIL} / ${OWNER_PASSWORD}`)
+  console.log(`       and change email back to ${originalEmail}`)
+}
 
 console.log(`\n=== Test complete ===`)
 console.log(`\nSummary:`)
 console.log(`  - Server-side email change: ${result.status === 200 ? 'WORKS' : 'FAILS'}`)
 console.log(`  - New session cookie issued: ${result.setCookie ? 'YES' : 'NO'}`)
-console.log(`  - /api/auth/session returns new email: ${session.data?.user?.email === newEmail ? 'YES' : 'NO'}`)
-console.log(`  - /api/user/profile returns new email: ${profile.data?.user?.email === newEmail ? 'YES' : 'NO'}`)
+console.log(`  - /api/auth/session returns new email: ${session.data?.user?.email === TEST_EMAIL ? 'YES' : 'NO'}`)
+console.log(`  - /api/user/profile returns new email: ${profile.data?.user?.email === TEST_EMAIL ? 'YES' : 'NO'}`)
+console.log(`  - Original email restored: ${restoreResult.status === 200 ? 'YES' : 'NO'}`)
 console.log(`\nIf the server-side is all YES, then the bug is client-side — the Navbar`)
 console.log(`(and any other component that caches the user in state) is showing the`)
 console.log(`OLD email because its useEffect only runs on mount.`)

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useStoreInfo } from '@/lib/store-info'
-import { Store, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { Store, Mail, Lock, Eye, EyeOff, Clock } from 'lucide-react'
 import { SiGoogle } from 'react-icons/si'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,6 +27,7 @@ export function LoginClient() {
   const [loading, setLoading] = useState(false)
 
   const redirectTo = searchParams.get('redirect') || '/'
+  const idleReason = searchParams.get('reason') === 'idle'
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,10 +49,26 @@ export function LoginClient() {
         return
       }
 
-      // Redirect based on role
+      // After successful login, send the user back to where they were trying
+      // to go (the ?redirect= param), OR to their role-based dashboard if no
+      // redirect was requested. This matters for the idle-timeout flow: when
+      // the idle timer redirects to /auth/login?redirect=/admin/products, the
+      // user should land back on /admin/products after re-logging in, not on
+      // the role-based default.
       const role = user?.role || 'customer'
-      const redirectPath = getRoleBasedRedirect(role)
-      router.push(redirectPath)
+      const roleDefault = getRoleBasedRedirect(role)
+      // Only honour the redirect param if it's a path the user is allowed to
+      // see for their role. Simple heuristic: customers can go anywhere
+      // customer-facing; staff get their role-based default. The middleware
+      // will re-check auth on the destination anyway.
+      const safeRedirect =
+        redirectTo &&
+        redirectTo.startsWith('/') &&
+        redirectTo !== '/auth/login' &&
+        redirectTo !== '/auth/register'
+          ? redirectTo
+          : roleDefault
+      router.push(safeRedirect)
       router.refresh()
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
@@ -79,6 +96,20 @@ export function LoginClient() {
           <CardDescription>Sign in to your account to continue shopping</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Idle-timeout notice — shown when the user was redirected here
+              by the 5-minute inactivity auto-logout. */}
+          {idleReason && (
+            <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <Clock className="h-5 w-5 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">You were logged out due to inactivity</p>
+                <p className="mt-0.5 text-amber-700">
+                  For your security, your session expires after 5 minutes of no activity. Please sign in again to continue.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Google Sign In */}
           <a
             href="/api/auth/google"

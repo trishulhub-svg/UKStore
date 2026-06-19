@@ -15,6 +15,16 @@ const SALT_ROUNDS = 12
 const SESSION_SECRET = process.env.AUTH_SECRET || 'fresh-mart-local-dev-secret-change-in-production'
 const TOKEN_VERSION = 1
 
+// ─── Session Lifetime ─────────────────────────────────────
+// Inactivity timeout: 5 minutes. After 5 minutes of no activity the session
+// is considered expired both on the server (token `iat` is checked) and on
+// the client (idle timer redirects to /auth/login).
+// NOTE: this is an *absolute* expiry from token issuance, NOT a sliding
+// window. For a true sliding window, the client also pings a refresh
+// endpoint on activity — see src/lib/use-idle-timeout.ts for the companion
+// client-side idle timer.
+export const SESSION_MAX_AGE_SECONDS = 5 * 60 // 5 minutes
+
 // ─── Password Hashing ────────────────────────────────────
 
 export async function hashPassword(password: string): Promise<string> {
@@ -76,9 +86,8 @@ export function verifySessionToken(token: string): SessionPayload | null {
     // Check token version
     if (payload.ver !== TOKEN_VERSION) return null
 
-    // Check expiry (7 days)
-    const maxAge = 7 * 24 * 60 * 60 // 7 days in seconds
-    if (Math.floor(Date.now() / 1000) - payload.iat > maxAge) return null
+    // Check expiry (5 minutes — inactivity timeout)
+    if (Math.floor(Date.now() / 1000) - payload.iat > SESSION_MAX_AGE_SECONDS) return null
 
     return payload
   } catch {
@@ -95,7 +104,7 @@ export const SESSION_COOKIE_OPTIONS = {
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax' as const,
   path: '/',
-  maxAge: 7 * 24 * 60 * 60, // 7 days
+  maxAge: SESSION_MAX_AGE_SECONDS, // 5 minutes (inactivity timeout)
 }
 
 // ─── Re-export role utilities (defined in roles.ts for Edge compatibility) ──

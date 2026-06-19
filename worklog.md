@@ -266,3 +266,50 @@ Stage Summary:
 - Both server-side and client-side are fixed; lat/lng are now safely optional
   in the PUT body. If the user clears the lat/lng inputs, the existing values
   in the DB are preserved instead of causing an error or being zeroed out.
+
+---
+Task ID: 6
+Agent: Main
+Task: Implement 5-minute inactivity auto-logout across the entire website
+
+Work Log:
+- Audited existing session lifetime: 7 days across 3 places (auth/index.ts, auth/edge.ts, SESSION_COOKIE_OPTIONS).
+- Implemented SLIDING-WINDOW inactivity timeout (not absolute timeout):
+  * Server token expires 5 minutes after issuance (SESSION_MAX_AGE_SECONDS = 300).
+  * Client-side idle timer in src/lib/use-idle-timeout.tsx listens for user activity (mousemove, mousedown, keydown, scroll, touchstart, click, wheel, pointerdown) and:
+    - Resets the client countdown on any activity.
+    - Throttled (max once per 60s) POSTs /api/auth/refresh to issue a fresh server-side token with a new 5-min lease.
+    - When 5 min of inactivity elapses, redirects to /auth/login?redirect=<currentPath>&reason=idle.
+    - Shows a "Session expiring in 30s" warning toast 30s before timeout.
+  * IdleTimeoutHandler wired into src/app/layout.tsx so it runs on EVERY page.
+  * Skipped on public pages (/, /auth/login, /auth/register, etc.) — no point timing out anonymous users.
+- Created src/app/api/auth/refresh/route.ts — POST endpoint that:
+  * Verifies the current token.
+  * If valid, issues a fresh token (new iat) with the same user payload.
+  * Sets the new cookie via Set-Cookie header.
+  * If the current token is already expired/invalid, returns 401 (can't refresh an expired session — user must log in again).
+- Reduced session lifetime in 3 places:
+  * src/lib/auth/index.ts: SESSION_MAX_AGE_SECONDS = 5 * 60 (exported constant); used by verifySessionToken() and SESSION_COOKIE_OPTIONS.maxAge.
+  * src/lib/auth/edge.ts: same constant (must match — middleware uses edge runtime); used by verifySessionTokenEdge().
+- Updated src/components/auth/login-client.tsx:
+  * Shows an amber "You were logged out due to inactivity" banner when ?reason=idle is present.
+  * Now honours the ?redirect= query param after login (was previously ignored in favour of role-based redirect). This means a user who was idle on /admin/products gets sent back to /admin/products after re-logging in, not to the role default.
+  * Safety: redirect param must start with "/" and not point to /auth/login or /auth/register.
+- Verified apiFetch() (from Task 4) still handles 401s on regular API calls — it auto-redirects to /auth/login?redirect=<currentPath>. This means even if the JS idle timer is somehow bypassed (laptop closed, tab backgrounded, JS paused), the server-side 5-min token expiry ensures the next API call returns 401 and the user is redirected.
+- End-to-end test (scripts/test-idle-timeout.mjs) — all 8 scenarios pass:
+  1. Login → 200 + session cookie ✅
+  2. Immediate API call with fresh token → 200 ✅
+  3. /api/auth/session auth check → 200 ✅
+  4. /api/auth/refresh with valid token → 200 + new cookie with new iat ✅
+  5. Token payload inspection (iat, ver) ✅
+  6. Expired token (iat 10 min ago, correctly signed) → 401 ✅
+  7. /api/auth/refresh with expired token → 401 (can't refresh expired) ✅
+  8. Middleware edge check: /admin with expired token → 307 redirect to /auth/login?redirect=%2Fadmin ✅
+- TypeScript clean on all modified files.
+
+Stage Summary:
+- Implemented true sliding-window inactivity timeout: 5 min of NO activity → auto logout, but active users stay logged in indefinitely (their token gets refreshed on activity).
+- Defense in depth: server-side token expiry + client-side idle timer + apiFetch 401 handler all redirect to /auth/login independently. Any one of them catching an expired session is enough.
+- Files added: src/lib/use-idle-timeout.tsx, src/app/api/auth/refresh/route.ts, scripts/test-idle-timeout.mjs.
+- Files modified: src/lib/auth/index.ts, src/lib/auth/edge.ts, src/app/layout.tsx, src/components/auth/login-client.tsx.
+- User experience: 30s before timeout, a warning toast appears ("Session expiring in 30s — click or press a key to stay logged in"). If they interact, the timer resets. If they don't, they're redirected to /auth/login with an amber "You were logged out due to inactivity" banner and will be sent back to their previous page after re-login.

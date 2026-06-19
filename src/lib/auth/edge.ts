@@ -7,6 +7,12 @@
 const SESSION_SECRET = process.env.AUTH_SECRET || 'fresh-mart-local-dev-secret-change-in-production'
 const TOKEN_VERSION = 1
 
+// Inactivity timeout: 5 minutes. Must match src/lib/auth/index.ts.
+// Both the middleware (edge) and API routes (node) treat tokens older
+// than this as expired. The client-side idle timer in
+// src/lib/use-idle-timeout.ts mirrors this on the browser side.
+const SESSION_MAX_AGE_SECONDS = 5 * 60
+
 export interface SessionPayload {
   uid: string
   email: string
@@ -50,9 +56,8 @@ export async function verifySessionTokenEdge(token: string): Promise<SessionPayl
     // Check token version
     if (payload.ver !== TOKEN_VERSION) return null
 
-    // Check expiry (7 days)
-    const maxAge = 7 * 24 * 60 * 60
-    if (Math.floor(Date.now() / 1000) - payload.iat > maxAge) return null
+    // Check expiry (5 minutes — inactivity timeout)
+    if (Math.floor(Date.now() / 1000) - payload.iat > SESSION_MAX_AGE_SECONDS) return null
 
     return payload
   } catch {

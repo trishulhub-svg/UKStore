@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistration } from "@/components/pwa-sw-register";
 import { StoreInfoProvider } from "@/lib/store-info";
 import { DeliveryLocationProvider } from "@/lib/delivery-location";
+import { IdleTimeoutHandler } from "@/lib/use-idle-timeout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -73,6 +74,11 @@ export default function RootLayout({
         <StoreInfoProvider>
           <DeliveryLocationProvider>
             {children}
+            {/* 5-minute inactivity auto-logout. Renders nothing — pure
+                side-effect handler that listens for user activity and
+                redirects to /auth/login when the user has been idle for
+                5 minutes. See src/lib/use-idle-timeout.tsx for details. */}
+            <IdleTimeoutHandler />
           </DeliveryLocationProvider>
         </StoreInfoProvider>
         <Toaster />

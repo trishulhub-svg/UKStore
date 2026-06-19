@@ -42,7 +42,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { email, password, fullName } = body
+    const { email: rawEmail, password, fullName: rawFullName } = body
+
+    // Normalize email: trim + lowercase. Same rationale as the login route —
+    // mobile keyboards often insert whitespace.
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : ''
+    const fullName = typeof rawFullName === 'string' ? rawFullName.trim() : ''
 
     // Validate input
     if (!email || !password) {
@@ -95,7 +100,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email },
     })
 
     if (existingUser) {
@@ -103,7 +108,7 @@ export async function POST(request: NextRequest) {
         'An account with this email already exists.',
         'AUTH_EMAIL_EXISTS',
         409,
-        `A user with email "${email.toLowerCase()}" already exists (user ID: ${existingUser.id}, created: ${existingUser.createdAt.toISOString()}). Try logging in instead, or use a different email address.`,
+        `A user with email "${email}" already exists (user ID: ${existingUser.id}, created: ${existingUser.createdAt.toISOString()}). Try logging in instead, or use a different email address.`,
         endpoint,
       )
     }
@@ -112,7 +117,7 @@ export async function POST(request: NextRequest) {
     const passwordHash = await hashPassword(password)
     const user = await prisma.user.create({
       data: {
-        email: email.toLowerCase(),
+        email,
         name: fullName || null,
         passwordHash,
         role: 'CUSTOMER',

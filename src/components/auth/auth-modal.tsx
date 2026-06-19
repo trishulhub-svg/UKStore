@@ -63,7 +63,10 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
     setLoading(true)
 
     try {
-      const { error: authError, user } = await authLogin(email, password)
+      // Trim whitespace from email (mobile keyboards often insert
+      // leading/trailing spaces). Server trims too, but trimming here
+      // keeps error messages and session token clean.
+      const { error: authError, user } = await authLogin(email.trim(), password)
 
       if (authError) {
         setError(authError)

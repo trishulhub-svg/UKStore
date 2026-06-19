@@ -59,7 +59,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { email, password } = body
+    const { email: rawEmail, password: rawPassword } = body
+
+    // Normalize email: trim whitespace + lowercase. Mobile keyboards often
+    // auto-insert a leading/trailing space (especially after autocorrect),
+    // and without trimming, "kiranpradhan2057@gmail.com " (note the trailing
+    // space) would fail the DB lookup even though the user exists. This was
+    // the root cause of Task 9's "wrong password" bug report — the email
+    // was correct but had surrounding whitespace.
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : ''
+    const password = typeof rawPassword === 'string' ? rawPassword : ''
 
     // Validate input
     if (!email || !password) {
@@ -74,7 +83,7 @@ export async function POST(request: NextRequest) {
 
     // Find user
     const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email },
     })
 
     if (!user || !user.passwordHash) {
@@ -82,7 +91,7 @@ export async function POST(request: NextRequest) {
         'Invalid email or password.',
         'AUTH_INVALID_CREDENTIALS',
         401,
-        `No user found with email "${email.toLowerCase()}" or the user has no password set. If you registered via OAuth, try signing in with that provider instead.`,
+        `No user found with email "${email}" or the user has no password set. If you registered via OAuth, try signing in with that provider instead.`,
         endpoint,
       )
     }
@@ -94,7 +103,7 @@ export async function POST(request: NextRequest) {
         'Invalid email or password.',
         'AUTH_INVALID_CREDENTIALS',
         401,
-        `Password verification failed for user "${email.toLowerCase()}". Check that you are using the correct password.`,
+        `Password verification failed for user "${email}". Check that you are using the correct password.`,
         endpoint,
       )
     }

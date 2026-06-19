@@ -31,10 +31,13 @@ export interface AuthResponse {
 export async function authRegister(email: string, password: string, fullName: string): Promise<AuthResponse> {
   const endpoint = '/api/auth/register'
   try {
+    // Trim email + fullName defensively (mobile keyboards often insert whitespace)
+    const cleanEmail = (email || '').trim()
+    const cleanFullName = (fullName || '').trim()
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, fullName }),
+      body: JSON.stringify({ email: cleanEmail, password, fullName: cleanFullName }),
     })
 
     if (!res.ok) {
@@ -73,10 +76,13 @@ export async function authRegister(email: string, password: string, fullName: st
 export async function authLogin(email: string, password: string): Promise<AuthResponse> {
   const endpoint = '/api/auth/login'
   try {
+    // Trim email defensively — mobile keyboards often insert leading/trailing
+    // whitespace. The server trims too, but this keeps the request body clean.
+    const cleanEmail = (email || '').trim()
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: cleanEmail, password }),
     })
 
     if (!res.ok) {

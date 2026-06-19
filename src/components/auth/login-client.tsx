@@ -35,7 +35,15 @@ export function LoginClient() {
     setLoading(true)
 
     try {
-      const { error: authError, user, mustResetPassword } = await authLogin(email, password)
+      // Trim whitespace from the email before sending. Mobile keyboards
+      // (especially with autocorrect) often insert a leading/trailing
+      // space. The server also trims defensively, but trimming here too
+      // means the error messages and session token reflect the clean
+      // email, not the whitespace-padded one.
+      const { error: authError, user, mustResetPassword } = await authLogin(
+        email.trim(),
+        password
+      )
 
       if (authError) {
         setError(authError)

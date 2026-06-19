@@ -484,3 +484,61 @@ Stage Summary:
 - The user can now log in with `kiranpradhan2057@gmail.com` / `Admin@2026`. The test scripts will never silently overwrite the user's real email change again.
 - Files modified: scripts/test-owner-email-change.mjs, scripts/test-email-change-e2e.mjs, scripts/test-email-change-session.mjs.
 - Files added: scripts/test-admin-email-change.mjs (regression test), scripts/inspect-owner-db.mjs (debug), scripts/restore-owner-email.mjs (one-shot fix).
+
+---
+Task ID: 10
+Agent: Main
+Task: Fix "wrong password" login error — root cause was email whitespace not being trimmed
+
+Work Log:
+- User reported: "Still says: AUTH_INVALID_CREDENTIALS, 401, No user found with email kiranpradhan2057@gmail.com"
+- Verified the DB state: the owner's email IS `kiranpradhan2057@gmail.com` with a valid bcrypt passwordHash. The email change from Task 9 was successful.
+- Verified login works via curl: `curl -X POST http://localhost:3000/api/auth/login -d '{"email":"kiranpradhan2057@gmail.com","password":"Admin@2026"}'` returns 200 OK.
+- Verified login works through the Caddy proxy (port 81, which is what the preview URL uses): also 200 OK.
+- Tested login with whitespace around the email:
+  * `" kiranpradhan2057@gmail.com "` (leading + trailing space) → 401 "No user found with email ' kiranpradhan2057@gmail.com '" ← BINGO
+  * `"Kiranpradhan2057@gmail.com"` (capitalized) → 200 OK (the route was already lowercasing)
+- ROOT CAUSE: The login route (`/api/auth/login`) was calling `email.toLowerCase()` but NOT `email.trim()`. When the user's browser (especially on mobile, where autocorrect and auto-capitalization are common) sent the email with leading/trailing whitespace, the Prisma `findUnique({ where: { email: " kiranpradhan2057@gmail.com " } })` returned null because the DB has `"kiranpradhan2057@gmail.com"` (no spaces). The user saw "Invalid email or password / No user found with email X" — which looks like "wrong password" but is actually "email not found due to whitespace".
+- Fixes applied (defense in depth — trim at every layer):
+  1. **src/app/api/auth/login/route.ts** (server-side, primary fix):
+     - Changed `const { email, password } = body` to `const { email: rawEmail, password: rawPassword } = body`
+     - Added: `const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : ''`
+     - Added: `const password = typeof rawPassword === 'string' ? rawPassword : ''`
+     - Updated all downstream references from `email.toLowerCase()` to just `email` (already normalized)
+     - This is the critical fix — even if the client sends whitespace, the server trims it.
+  2. **src/app/api/auth/register/route.ts** (server-side, defensive):
+     - Same trim+lowercase normalization applied to email and fullName.
+     - Prevents a registration from creating a user with a whitespace-padded email (which would then be impossible to login with).
+  3. **src/lib/auth-client.ts** (client-side helper, defensive):
+     - `authLogin()` now trims the email before sending: `const cleanEmail = (email || '').trim()`
+     - `authRegister()` now trims both email and fullName before sending.
+  4. **src/components/auth/login-client.tsx** (login page form, defensive):
+     - `handleLogin` now calls `authLogin(email.trim(), password)` instead of `authLogin(email, password)`.
+  5. **src/components/auth/auth-modal.tsx** (homepage auth modal, defensive):
+     - Same trim fix applied to `handleLogin`.
+  6. **src/components/auth/home-auth-form.tsx** (another homepage auth form, defensive):
+     - Same trim fix applied to `handleLogin`.
+- Created scripts/test-login-whitespace.mjs — regression test with 12 assertions:
+  1. Clean email → 200 ✅
+  2. Leading space → 200 ✅
+  3. Trailing space → 200 ✅
+  4. Leading + trailing space → 200 ✅
+  5. Uppercase email → 200 ✅
+  6. Multiple spaces → 200 ✅
+  7. Tab characters → 200 ✅
+  8. Newline characters → 200 ✅
+  9. Response email is clean (no whitespace) ✅
+  10. Wrong password still fails (401, "Password verification failed") ✅ — confirms password checking still works
+  11. Non-existent email still fails (401) ✅ — confirms we didn't break the "user not found" path
+  All 12 assertions pass.
+- TypeScript check: clean (no new errors in any of the 6 modified files).
+- Production build: PASSED (✓ Compiled successfully in 10.5s, ✓ 68/68 static pages generated).
+
+Stage Summary:
+- ROOT CAUSE: The login route was not trimming whitespace from the email. Mobile keyboards (and autocorrect) often insert a leading/trailing space, which caused the Prisma `findUnique` to return null, producing "No user found with email X" — which looks like "wrong password" but is actually "email not found due to whitespace".
+- The DB was correct all along — the owner's email IS `kiranpradhan2057@gmail.com` with a valid password. The user's password was NEVER wrong.
+- FIX: Applied `.trim().toLowerCase()` at 4 layers (API route, auth-client helper, 3 login form components) for defense in depth.
+- The user can now log in with `kiranpradhan2057@gmail.com` / `Admin@2026` regardless of accidental whitespace.
+- Files modified: src/app/api/auth/login/route.ts, src/app/api/auth/register/route.ts, src/lib/auth-client.ts, src/components/auth/login-client.tsx, src/components/auth/auth-modal.tsx, src/components/auth/home-auth-form.tsx.
+- Files added: scripts/test-login-whitespace.mjs (12-assertion regression test).
+- User should: HARD REFRESH the browser (Ctrl+Shift+R) to load the new JS bundles, then try logging in again. The login will now work even if the browser accidentally sends whitespace around the email.

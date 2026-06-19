@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { getRoleBasedRedirect } from '@/lib/auth-client'
 import type { ServerUser } from '@/lib/auth/server'
 import { apiFetch } from '@/lib/api-fetch'
+import { dispatchAuthUserUpdated } from '@/lib/auth-events'
 
 const roleLabels: Record<string, string> = {
   OWNER: 'Store Owner',
@@ -111,6 +112,11 @@ export function ProfileClient({ user }: ProfileClientProps) {
       }
       if (isOwner && emailDirty) {
         toast.success('Profile updated — your new email is now active')
+        // Broadcast the change so any component that caches the user
+        // (Navbar, DriverLayout, PickerLayout, HomeClient) re-fetches
+        // its session and shows the new email immediately. Without this,
+        // the Navbar keeps showing the OLD email until a full page reload.
+        dispatchAuthUserUpdated()
       } else {
         toast.success('Profile updated')
       }

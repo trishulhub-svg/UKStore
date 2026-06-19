@@ -30,6 +30,7 @@ import {
 import { useCartStore } from '@/store/cart'
 import { formatPrice } from '@/lib/vat'
 import { authGetSession, authLogout, type AuthUser } from '@/lib/auth-client'
+import { onAuthUserUpdated } from '@/lib/auth-events'
 import { AuthModal } from '@/components/auth/auth-modal'
 import { PredictiveSearch } from '@/components/customer/predictive-search'
 import { useStoreInfo } from '@/lib/store-info'
@@ -99,6 +100,16 @@ export function Navbar() {
   // Check auth
   useEffect(() => {
     authGetSession().then(({ user }) => setUser(user))
+  }, [])
+
+  // Re-fetch the session when another component (e.g., profile page after
+  // an email change) broadcasts that the user has been updated. Without
+  // this, the Navbar keeps showing the OLD email until a full page reload.
+  useEffect(() => {
+    const unsubscribe = onAuthUserUpdated(() => {
+      authGetSession().then(({ user }) => setUser(user))
+    })
+    return unsubscribe
   }, [])
 
   // Fetch store status for delivery timer (navbar is on every page, don't redirect on 401)

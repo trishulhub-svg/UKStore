@@ -354,3 +354,58 @@ Stage Summary:
 - Other roles (manager, driver, picker, customer) still see the email field locked, with a clear message telling them to ask the owner.
 - Email uniqueness is enforced (409 if email already in use).
 - Email format is validated (400 if invalid).
+
+---
+Task ID: 8
+Agent: Main
+Task: Fix "changed email showing not correct" — Navbar (and other client components) showing stale email after owner email change
+
+Work Log:
+- Reproduced the issue: After the owner changes their email on /account/profile:
+  * Server-side: DB updated ✅, new session cookie issued ✅, /api/auth/session returns new email ✅, /api/user/profile returns new email ✅ (verified by scripts/test-email-change-session.mjs and scripts/test-email-change-e2e.mjs — 15/15 pass)
+  * Client-side: The profile page itself shows the new email correctly (state is updated in handleSave). BUT the Navbar (top-right corner + mobile menu) keeps showing the OLD email until a full browser reload.
+- Root cause: The Navbar caches `user` in useState after a single authGetSession() call in useEffect. The useEffect only runs on mount (empty dependency array), so when the email is changed and router.refresh() is called, the Navbar does NOT re-fetch the session. The new server-rendered user prop is passed to the page-level components, but the Navbar is in the root layout and doesn't receive user props from the server — it fetches its own user via /api/auth/session.
+- Same potential issue exists in 3 other components that call authGetSession() in useEffect: picker-layout.tsx, driver-layout.tsx, home-client.tsx. However, those 3 components only use user.role (for access control), not user.email, so they don't visibly exhibit the bug. Only the Navbar displays user.email.
+- Schema check: Prisma schema (User.email String @unique) is correct and in sync with the DB. No schema migration needed. Confirmed via `npx prisma db pull --print` — the DB schema matches the file.
+- Fix: Created a tiny pub/sub on top of window.dispatchEvent:
+  * src/lib/auth-events.ts (new file):
+    - AUTH_USER_UPDATED_EVENT = 'freshmart:auth-user-updated'
+    - dispatchAuthUserUpdated() — fire the event (SSR-safe, no-ops when window is undefined)
+    - onAuthUserUpdated(callback) — subscribe to the event, returns an unsubscribe function
+  * src/components/account/profile-client.tsx:
+    - After a successful email change, call dispatchAuthUserUpdated() so any subscribed component re-fetches its session. This is the broadcast side.
+  * src/components/layout/navbar.tsx:
+    - Added a second useEffect that subscribes to onAuthUserUpdated() and re-runs authGetSession() when the event fires. This is the subscriber side. Without this, the Navbar keeps showing the OLD email until a full page reload.
+- Created scripts/test-email-change-session.mjs — debug test that verifies:
+  * Pre-change /api/auth/session returns OLD email
+  * PATCH /api/user/profile succeeds, new Set-Cookie issued
+  * Post-change /api/auth/session (with new cookie) returns NEW email
+  * Post-change /api/user/profile returns NEW email
+  * All four checks pass — confirms the bug is client-side, not server-side.
+- Created scripts/test-email-change-e2e.mjs — comprehensive 10-step E2E test (15 assertions, all pass):
+  1. Pre-change session check
+  2. Change email via PATCH
+  3. New session reflects new email
+  4. Profile endpoint reflects new email
+  5. OLD email no longer works for login
+  6. NEW email works for login
+  7. Email uniqueness enforced (409)
+  8. Invalid email format rejected (400)
+  9. Non-owner cannot change email (403) + helpful error message
+  10. Restore email to admin@freshmart.co.uk for test cleanliness
+- TypeScript check: No new errors introduced by the changes. Pre-existing errors (Stripe/nodemailer optional deps, Prisma type mismatches in API routes) remain unchanged.
+- Production build: PASSED (✓ Compiled successfully in 10.8s, ✓ 68/68 static pages generated). Only pre-existing Stripe warnings.
+- Verified the fix logic by reading the modified files:
+  * profile-client.tsx: dispatchAuthUserUpdated() is called inside the `if (isOwner && emailDirty)` branch, AFTER setEmail/setOriginalEmail, BEFORE router.refresh(). Order is correct.
+  * navbar.tsx: Second useEffect subscribes via onAuthUserUpdated() and returns the unsubscribe function as cleanup. Re-runs authGetSession() when event fires.
+  * auth-events.ts: SSR-safe (checks typeof window), uses CustomEvent for proper event dispatch.
+
+Stage Summary:
+- BUG: After owner changes email in /account/profile, the Navbar kept showing the OLD email because its authGetSession() useEffect only runs on mount.
+- FIX: Added a global auth-user-updated event. profile-client dispatches it after email change; navbar listens and re-fetches the session.
+- Server-side: All 15 E2E assertions pass — DB update, session re-issue, /api/auth/session, /api/user/profile, login with new email, uniqueness, format validation, role-based access all work correctly.
+- Client-side: TypeScript clean, production build passes. The fix uses a standard pub/sub pattern via window.dispatchEvent — no new dependencies, no global state libraries.
+- Schema: No changes needed. User.email String @unique is correct.
+- Files added: src/lib/auth-events.ts, scripts/test-email-change-session.mjs, scripts/test-email-change-e2e.mjs.
+- Files modified: src/components/account/profile-client.tsx (1 import + 1 dispatchAuthUserUpdated() call), src/components/layout/navbar.tsx (1 import + 1 useEffect).
+- User should: HARD REFRESH the browser (Ctrl+Shift+R) to load the new JS bundles, then test by changing the owner email at /account/profile — the navbar (top-right + mobile menu) should now show the new email immediately without requiring a page reload.

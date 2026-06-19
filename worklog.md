@@ -194,3 +194,75 @@ Stage Summary:
 - ALSO FIXED: 5 silent-failure bugs that crashed pages on auth errors, 1 wrong-URL bug in notifications, 1 partial-failure data-loss bug in bank-holiday mode change
 - Build passes, all endpoints verified, pushed to GitHub
 - User should now: (1) HARD REFRESH the browser (Ctrl+Shift+R) to load the new JS bundles, (2) if on a deployed Vercel build, wait for the auto-deploy to complete, (3) if session expired, they'll be auto-redirected to login instead of seeing "Failed to load" toasts
+
+---
+Task ID: 5
+Agent: Main
+Task: Fix "Failed to update store profile" error when uploading logo / updating store profile
+
+Work Log:
+- Reproduced the issue by testing all scenarios against the live dev server:
+  * 496KB logo upload → 200 OK (works fine — not a payload-size issue)
+  * latitude: null → 500 Internal Server Error "Failed to update store profile" ← ROOT CAUSE
+  * latitude: "" (empty string) → 200 OK but silently saved as 0 (data corruption bug)
+  * latitude: undefined (omitted) → 200 OK (correct)
+  * latitude: 999 (out of range) → 400 Bad Request (correct)
+  * Missing/invalid/tampered session cookie → 401 (correct)
+  * Non-owner role → 403 (correct)
+- Root cause #1 (the actual "Failed to update store profile" error):
+  The Store schema has `latitude Float NOT NULL` and `longitude Float NOT NULL`.
+  The client's onChange handler sets `latitude: null` when the user clears the
+  input field (`e.target.value ? parseFloat(...) : null`). The PUT body then
+  sends `latitude: null`. The API route's validation explicitly allowed null
+  through (skipped the lat/lng validation block), then `updateData.latitude = null`,
+  then Prisma's `store.update({ data: { latitude: null } })` threw a NOT NULL
+  constraint violation, which the catch block reported as the generic
+  "Failed to update store profile" 500 error.
+- Root cause #2 (UX bug — user's hypothesis was partially right):
+  When the session IS expired (401), `apiFetch` correctly redirects to login,
+  BUT `handleSave`'s catch block showed a misleading "Network error — please
+  try again" toast before the redirect fired. This contradicted the pattern
+  established in Task 4 for all other admin components, which suppress the
+  toast when `err.message === 'Session expired — redirecting to login'`.
+- Root cause #3 (silent data corruption):
+  Sending `latitude: ""` (empty string) was previously accepted — `Number("")`
+  is `0`, so the store's latitude was silently overwritten to 0 (coordinates
+  in the ocean off Africa).
+- Fixes applied to src/app/api/admin/store/profile/route.ts (PUT handler):
+  1. latitude/longitude validation block rewritten: null/undefined/empty-string
+     now SKIP the field entirely (treat as "no change") instead of falling
+     through to write null to a NOT NULL column.
+  2. `name` field is now trimmed before save (prevents "  " being accepted).
+  3. Added explicit `isNaN` check with a clear 400 error message.
+  4. Catch block now logs the FULL error message + stack (was just a label).
+  5. In dev mode, the 500 response includes `details: <actual error message>`
+     so the developer can see what actually went wrong.
+- Fixes applied to src/components/admin/store-profile-editor.tsx (handleSave):
+  1. Lat/lng only included in PUT body when they are non-null valid numbers.
+  2. Catch block now distinguishes:
+     - "Session expired — redirecting to login" → toast.info("Your session
+       has expired. Redirecting to login...") (no scary "Network error")
+     - All other errors → toast.error("Network error — please try again")
+  3. Error toast now prefers `data.details` (dev) > `data.error` > generic
+     fallback, so the user sees the actual server-side error message.
+  4. The follow-up /api/store/info refresh uses `redirectOn401: false` so
+     it doesn't trigger a duplicate redirect if the session died mid-save.
+- Verification:
+  * Re-ran scripts/test-store-profile-latlng.mjs — all 5 scenarios now pass
+    (null/empty previously failed or corrupted data; now both 200 OK with
+    lat/lng preserved at the existing DB value).
+  * Re-ran scripts/test-store-profile-put.mjs — 496KB logo upload still 200 OK.
+  * Re-ran scripts/test-store-profile-auth.mjs — 401/403 still returned correctly.
+  * TypeScript clean (npx tsc --noEmit --skipLibCheck) on both modified files.
+
+Stage Summary:
+- The "Failed to update store profile" error was NOT caused by session expiry
+  (the user's hypothesis). It was caused by the latitude/longitude field being
+  sent as null when the user cleared the input, hitting a NOT NULL constraint
+  in the DB schema, and surfacing as a generic 500 error with no diagnostic
+  info. The session-expiry path also had a UX bug (wrong toast message) which
+  is now fixed so users see "Session expired — redirecting to login" instead
+  of the confusing "Network error — please try again".
+- Both server-side and client-side are fixed; lat/lng are now safely optional
+  in the PUT body. If the user clears the lat/lng inputs, the existing values
+  in the DB are preserved instead of causing an error or being zeroed out.

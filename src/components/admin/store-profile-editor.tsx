@@ -76,8 +76,16 @@ export function StoreProfileEditor() {
         body: JSON.stringify({
           name: profile.name.trim(),
           address: profile.address.trim(),
-          latitude: profile.latitude,
-          longitude: profile.longitude,
+          // Send lat/lng only if they have a real value. The DB columns are
+          // NOT NULL, so sending null would cause a 500. The API now also
+          // skips null/empty values defensively, but doing it client-side
+          // too means the request body matches what will actually be saved.
+          ...(profile.latitude != null && !isNaN(profile.latitude)
+            ? { latitude: profile.latitude }
+            : {}),
+          ...(profile.longitude != null && !isNaN(profile.longitude)
+            ? { longitude: profile.longitude }
+            : {}),
           phone: profile.phone?.trim() || null,
           email: profile.email?.trim() || null,
           logoUrl: profile.logoUrl,
@@ -91,18 +99,30 @@ export function StoreProfileEditor() {
         // Refresh the store info context so navbar/footer/favicon update immediately.
         // Trigger a full page refresh so the dynamic favicon (served by /icon route) reloads too.
         try {
-          await apiFetch('/api/store/info', { cache: 'no-store' })
+          await apiFetch('/api/store/info', { cache: 'no-store', redirectOn401: false })
         } catch {
           // Non-critical
         }
         // Small delay so the new favicon has time to be regenerated
         setTimeout(() => window.location.reload(), 800)
       } else {
-        toast.error(data.error || 'Failed to update store profile')
+        // Server returned a non-OK response with a parseable body.
+        // Show the specific error from the API (e.g., "Latitude must be between -90 and 90")
+        // or fall back to the generic message. In dev, the API also returns `details`.
+        const errMsg = data.details || data.error || 'Failed to update store profile'
+        toast.error(errMsg)
       }
     } catch (err) {
-      toast.error('Network error — please try again')
-      console.error('Failed to save store profile:', err)
+      // apiFetch throws 'Session expired — redirecting to login' on 401 (after
+      // triggering the redirect). In that case, show a clear session-expired
+      // toast and let the redirect happen — do NOT show "Network error".
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg === 'Session expired — redirecting to login') {
+        toast.info('Your session has expired. Redirecting to login...')
+      } else {
+        toast.error('Network error — please try again')
+        console.error('Failed to save store profile:', err)
+      }
     } finally {
       setSaving(false)
     }

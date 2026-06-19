@@ -92,7 +92,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
 
-    // Build update object with only allowed fields
+    // Build update object with only allowed fields.
+    // NOTE: `latitude` and `longitude` are NOT NULL in the schema. If the client
+    // sends null/empty/undefined for them, we SKIP the field entirely (treat as
+    // "don't update") rather than letting Prisma throw a NOT NULL constraint
+    // violation, which previously surfaced as a generic 500 error.
     const updateData: Record<string, unknown> = {}
 
     for (const [key, value] of Object.entries(body)) {
@@ -101,29 +105,40 @@ export async function PUT(request: NextRequest) {
       }
 
       // Validate specific fields
-      if (key === 'name' && (!value || typeof value !== 'string' || value.trim().length === 0)) {
-        return NextResponse.json({ error: 'Store name cannot be empty' }, { status: 400 })
+      if (key === 'name') {
+        if (!value || typeof value !== 'string' || value.trim().length === 0) {
+          return NextResponse.json({ error: 'Store name cannot be empty' }, { status: 400 })
+        }
+        updateData[key] = value.trim()
+        continue
       }
 
       if (key === 'address' && typeof value !== 'string') {
         return NextResponse.json({ error: 'Address must be a string' }, { status: 400 })
       }
 
-      if (key === 'latitude' && value !== null && value !== undefined) {
-        const lat = Number(value)
-        if (isNaN(lat) || lat < -90 || lat > 90) {
+      if (key === 'latitude' || key === 'longitude') {
+        // Skip null / undefined / empty string → treat as "no change".
+        // This prevents the NOT NULL constraint violation that previously
+        // caused the 500 "Failed to update store profile" error when the
+        // user cleared the lat/lng input field.
+        if (value === null || value === undefined || value === '') {
+          continue
+        }
+        const num = Number(value)
+        if (isNaN(num)) {
+          return NextResponse.json(
+            { error: `${key === 'latitude' ? 'Latitude' : 'Longitude'} must be a valid number` },
+            { status: 400 }
+          )
+        }
+        if (key === 'latitude' && (num < -90 || num > 90)) {
           return NextResponse.json({ error: 'Latitude must be between -90 and 90' }, { status: 400 })
         }
-        updateData[key] = lat
-        continue
-      }
-
-      if (key === 'longitude' && value !== null && value !== undefined) {
-        const lng = Number(value)
-        if (isNaN(lng) || lng < -180 || lng > 180) {
+        if (key === 'longitude' && (num < -180 || num > 180)) {
           return NextResponse.json({ error: 'Longitude must be between -180 and 180' }, { status: 400 })
         }
-        updateData[key] = lng
+        updateData[key] = num
         continue
       }
 
@@ -178,7 +193,22 @@ export async function PUT(request: NextRequest) {
       message: 'Store profile updated successfully',
     })
   } catch (err) {
-    console.error('[Admin Store Profile PUT]', err)
-    return NextResponse.json({ error: 'Failed to update store profile' }, { status: 500 })
+    // Log the FULL error server-side so we can actually debug it.
+    // Previously this only logged a generic label which made 500s
+    // impossible to diagnose.
+    const errMsg = err instanceof Error ? err.message : String(err)
+    const errStack = err instanceof Error ? err.stack : undefined
+    console.error('[Admin Store Profile PUT] Error:', errMsg, errStack)
+
+    // In dev, surface the actual error so the admin/developer can see what
+    // went wrong instead of the generic "Failed to update store profile".
+    const isDev = process.env.NODE_ENV !== 'production'
+    return NextResponse.json(
+      {
+        error: 'Failed to update store profile',
+        ...(isDev ? { details: errMsg } : {}),
+      },
+      { status: 500 }
+    )
   }
 }

@@ -15,7 +15,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   // Verify admin
-  const { error: authError } = await requireAdmin()
+  const { error: authError } = await requireAdmin({ feature: 'orders' })
   if (authError) return authError
 
   try {

@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 
 // GET /api/admin/drivers — list drivers
 export async function GET(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'drivers' })
   if (error) return error
 
   try {
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
 // PATCH /api/admin/drivers — approve/reject/toggle driver
 export async function PATCH(request: NextRequest) {
-  const { error, user: adminUser } = await requireAdmin()
+  const { error, user: adminUser } = await requireAdmin({ feature: 'drivers' })
   if (error) return error
 
   try {

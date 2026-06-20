@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/products — list products with filters
 export async function GET(request: NextRequest) {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'products' })
   if (error) return error
 
   try {
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/products — create a product
 export async function POST(request: NextRequest) {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'products' })
   if (error) return error
 
   try {

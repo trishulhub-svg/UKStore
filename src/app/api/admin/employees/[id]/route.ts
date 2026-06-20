@@ -20,7 +20,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'employees' })
   if (error) return error
 
   const isOwner = user.role === 'OWNER'

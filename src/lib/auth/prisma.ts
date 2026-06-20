@@ -388,6 +388,32 @@ CREATE TABLE IF NOT EXISTS "employee_profiles" (
   FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "employee_profiles_userId_key" ON "employee_profiles"("userId");
+
+CREATE TABLE IF NOT EXISTS "sessions" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "userId" TEXT NOT NULL,
+  "tokenHash" TEXT NOT NULL,
+  "deviceType" TEXT NOT NULL DEFAULT 'unknown',
+  "deviceName" TEXT,
+  "userAgent" TEXT,
+  "ipAddress" TEXT,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lastSeenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "expiresAt" DATETIME NOT NULL,
+  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "sessions_userId_idx" ON "sessions"("userId");
+CREATE INDEX IF NOT EXISTS "sessions_expiresAt_idx" ON "sessions"("expiresAt");
+
+CREATE TABLE IF NOT EXISTS "employee_feature_permissions" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "userId" TEXT NOT NULL,
+  "features" TEXT NOT NULL DEFAULT '[]',
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "employee_feature_permissions_userId_key" ON "employee_feature_permissions"("userId");
 `
 
 // ─── Schema Creation ────────────────────────────────────────────

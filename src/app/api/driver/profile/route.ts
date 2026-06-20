@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
-import { getServerUser } from '@/lib/auth/server'
+import { requireDriver } from '@/lib/feature-permissions'
 
 // GET /api/driver/profile — driver profile
 export async function GET() {
-  const user = await getServerUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
-  if (user.role.toLowerCase() !== 'driver') {
-    return NextResponse.json({ error: 'Forbidden — driver role required' }, { status: 403 })
-  }
+  const { error, user } = await requireDriver({ feature: 'driver_profile' })
+  if (error) return error
 
   try {
     const prisma = await getPrisma()
@@ -43,13 +38,8 @@ export async function GET() {
 
 // PATCH /api/driver/profile — update vehicle info, upload documents
 export async function PATCH(request: NextRequest) {
-  const user = await getServerUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
-  if (user.role.toLowerCase() !== 'driver') {
-    return NextResponse.json({ error: 'Forbidden — driver role required' }, { status: 403 })
-  }
+  const { error, user } = await requireDriver({ feature: 'driver_profile' })
+  if (error) return error
 
   try {
     const prisma = await getPrisma()

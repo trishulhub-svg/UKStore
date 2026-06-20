@@ -9,7 +9,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'settings' })
   if (error) return error
 
   try {

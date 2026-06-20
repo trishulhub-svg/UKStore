@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getServerUser } from '@/lib/auth/server'
 import { AdminShell } from '@/components/admin/admin-shell'
+import { getEnabledFeaturesList } from '@/lib/feature-permissions'
 import type { Profile } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -40,6 +41,10 @@ export default async function AdminLayout({
     )
   }
 
+  // Fetch feature permissions for the user (null = full access, array = restricted to listed features)
+  // OWNER always returns null (full access). MANAGER may have a restriction row.
+  const enabledFeatures = await getEnabledFeaturesList(user.id, user.role)
+
   // Construct a Profile-like object from the local auth user
   const profile: Profile = {
     id: user.id,
@@ -58,6 +63,8 @@ export default async function AdminLayout({
     <AdminShell
       profile={profile}
       userEmail={user.email}
+      userRole={user.role}
+      enabledFeatures={enabledFeatures}
     >
       {children}
     </AdminShell>

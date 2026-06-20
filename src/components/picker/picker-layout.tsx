@@ -9,11 +9,12 @@ import { useStoreInfo } from '@/lib/store-info'
 import { StoreLogo } from '@/components/layout/store-logo'
 import { useEffect, useState } from 'react'
 import type { AuthUser } from '@/lib/auth-client'
+import { apiFetch } from '@/lib/api-fetch'
 
 const navItems = [
-  { href: '/picker', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/picker/packing', label: 'Packing', icon: Package },
-  { href: '/picker/profile', label: 'Profile', icon: User },
+  { href: '/picker', label: 'Dashboard', icon: LayoutDashboard, feature: 'picker_dashboard' },
+  { href: '/picker/packing', label: 'Packing', icon: Package, feature: 'picker_packing' },
+  { href: '/picker/profile', label: 'Profile', icon: User, feature: 'picker_profile' },
 ]
 
 export function PickerLayout({ children }: { children: React.ReactNode }) {
@@ -21,26 +22,51 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const { store } = useStoreInfo()
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [enabledFeatures, setEnabledFeatures] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(true)
 
   const storeName = store?.name || 'Fresh Mart'
 
   useEffect(() => {
-    import('@/lib/auth-client').then(({ authGetSession }) => {
-      authGetSession().then(({ user }) => {
-        setUser(user)
-        setLoading(false)
-        if (user && user.role.toLowerCase() !== 'picker') {
-          router.push('/')
+    let cancelled = false
+    async function init() {
+      const { authGetSession } = await import('@/lib/auth-client')
+      const { user } = await authGetSession()
+      if (cancelled) return
+      setUser(user)
+      if (user && user.role.toLowerCase() !== 'picker') {
+        router.push('/')
+        return
+      }
+      // Fetch feature permissions for this user
+      if (user) {
+        try {
+          const res = await apiFetch(`/api/user/permissions`, { redirectOn401: false })
+          if (res.ok) {
+            const data = await res.json()
+            if (cancelled) return
+            setEnabledFeatures(data.features)
+          }
+        } catch {
+          // Non-critical — fail open
         }
-      })
-    })
+      }
+      if (!cancelled) setLoading(false)
+    }
+    init()
+    return () => { cancelled = true }
   }, [router])
 
   const handleLogout = async () => {
     await authLogout()
     router.push('/')
   }
+
+  const visibleNavItems = navItems.filter((item) => {
+    if (!item.feature) return true
+    if (enabledFeatures === null) return true
+    return enabledFeatures.includes(item.feature)
+  })
 
   if (loading) {
     return (
@@ -100,7 +126,7 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
         <div className="max-w-lg mx-auto flex items-center justify-around h-16">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = pathname === item.href ||
               (item.href !== '/picker' && pathname.startsWith(item.href))
             const Icon = item.icon

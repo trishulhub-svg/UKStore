@@ -21,6 +21,7 @@ export interface SessionPayload {
   iat: number
   ver: number
   authProvider?: 'local'
+  sid?: string  // session row ID — used by server-side session validation
 }
 
 export const SESSION_COOKIE_NAME = 'fresh_mart_session'

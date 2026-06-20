@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
-import { getServerUser } from '@/lib/auth/server'
+import { requirePicker } from '@/lib/feature-permissions'
 
 // PATCH /api/picker/orders/[id] — mark item as picked or mark order as packed
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await getServerUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
-
-  if (user.role.toLowerCase() !== 'picker') {
-    return NextResponse.json({ error: 'Forbidden — picker role required' }, { status: 403 })
-  }
+  const { error, user } = await requirePicker({ feature: 'picker_packing' })
+  if (error) return error
 
   try {
     const { id } = await params

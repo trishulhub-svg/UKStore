@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
-import { getServerUser } from '@/lib/auth/server'
+import { requirePicker } from '@/lib/feature-permissions'
 
 // GET /api/picker/profile — get picker profile
 export async function GET() {
-  const user = await getServerUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
-
-  if (user.role.toLowerCase() !== 'picker') {
-    return NextResponse.json({ error: 'Forbidden — picker role required' }, { status: 403 })
-  }
+  const { error, user } = await requirePicker({ feature: 'picker_profile' })
+  if (error) return error
 
   try {
     const prisma = await getPrisma()
@@ -45,14 +39,8 @@ export async function GET() {
 
 // PATCH /api/picker/profile — update picker profile (phone number)
 export async function PATCH(request: NextRequest) {
-  const user = await getServerUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
-
-  if (user.role.toLowerCase() !== 'picker') {
-    return NextResponse.json({ error: 'Forbidden — picker role required' }, { status: 403 })
-  }
+  const { error, user } = await requirePicker({ feature: 'picker_profile' })
+  if (error) return error
 
   try {
     const prisma = await getPrisma()

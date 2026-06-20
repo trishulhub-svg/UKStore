@@ -21,24 +21,27 @@ interface AdminShellProps {
   children: React.ReactNode
   profile: Profile
   userEmail: string
+  userRole?: string
+  /** List of feature keys the user can access. null = full access (no restrictions). */
+  enabledFeatures?: string[] | null
 }
 
 const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/products', label: 'Products', icon: Package },
-  { href: '/admin/categories', label: 'Categories', icon: FolderOpen },
-  { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
-  { href: '/admin/customers', label: 'Customers', icon: Users },
-  { href: '/admin/drivers', label: 'Drivers', icon: Truck },
-  { href: '/admin/employees', label: 'Employees', icon: UserCog },
-  { href: '/admin/banners', label: 'Banners', icon: Image },
-  { href: '/admin/shifts', label: 'Shifts', icon: CalendarDays },
-  { href: '/admin/finance', label: 'Finance', icon: PoundSterling },
-  { href: '/admin/wastage', label: 'Wastage', icon: Trash2 },
-  { href: '/admin/promotions', label: 'Promotions', icon: Tag },
-  { href: '/admin/delivery-zones', label: 'Delivery Zones', icon: MapPin },
-  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, feature: null as string | null },
+  { href: '/admin/products', label: 'Products', icon: Package, feature: 'products' },
+  { href: '/admin/categories', label: 'Categories', icon: FolderOpen, feature: 'categories' },
+  { href: '/admin/orders', label: 'Orders', icon: ShoppingBag, feature: 'orders' },
+  { href: '/admin/customers', label: 'Customers', icon: Users, feature: 'customers' },
+  { href: '/admin/drivers', label: 'Drivers', icon: Truck, feature: 'drivers' },
+  { href: '/admin/employees', label: 'Employees', icon: UserCog, feature: 'employees' },
+  { href: '/admin/banners', label: 'Banners', icon: Image, feature: 'banners' },
+  { href: '/admin/shifts', label: 'Shifts', icon: CalendarDays, feature: 'shifts' },
+  { href: '/admin/finance', label: 'Finance', icon: PoundSterling, feature: 'finance' },
+  { href: '/admin/wastage', label: 'Wastage', icon: Trash2, feature: 'wastage' },
+  { href: '/admin/promotions', label: 'Promotions', icon: Tag, feature: 'promotions' },
+  { href: '/admin/delivery-zones', label: 'Delivery Zones', icon: MapPin, feature: 'delivery_zones' },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, feature: 'analytics' },
+  { href: '/admin/settings', label: 'Settings', icon: Settings, feature: 'settings' },
 ]
 
 function getPageTitle(pathname: string): string {
@@ -48,12 +51,21 @@ function getPageTitle(pathname: string): string {
   return item?.label ?? 'Admin'
 }
 
-export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
+export function AdminShell({ children, profile, userEmail, userRole, enabledFeatures }: AdminShellProps) {
   const { store: storeInfo } = useStoreInfo()
   const storeName = storeInfo?.name || 'Fresh Mart'
   const pathname = usePathname()
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Filter nav items based on feature permissions.
+  // enabledFeatures === null means the user has full access (no restrictions).
+  // enabledFeatures === [...] means only those features are visible.
+  const visibleNavItems = navItems.filter((item) => {
+    if (!item.feature) return true // Dashboard is always visible
+    if (enabledFeatures === null || enabledFeatures === undefined) return true
+    return enabledFeatures.includes(item.feature)
+  })
 
   const handleLogout = async () => {
     await authLogout()
@@ -78,7 +90,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-4 space-y-1">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href ||
               (item.href !== '/admin' && pathname.startsWith(item.href))
@@ -110,6 +122,14 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{profile.full_name}</p>
               <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+              {userRole && (
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mt-0.5">
+                  {userRole}
+                  {enabledFeatures !== null && enabledFeatures !== undefined && (
+                    <span className="ml-1 text-amber-600">· Restricted</span>
+                  )}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex gap-2">
@@ -168,7 +188,7 @@ export function AdminShell({ children, profile, userEmail }: AdminShellProps) {
 
                 {/* Navigation */}
                 <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-                  {navItems.map((item) => {
+                  {visibleNavItems.map((item) => {
                     const Icon = item.icon
                     const isActive = pathname === item.href ||
                       (item.href !== '/admin' && pathname.startsWith(item.href))

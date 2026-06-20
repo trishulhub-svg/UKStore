@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/wastage — list wastage logs with filters
 export async function GET(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'wastage' })
   if (error) return error
 
   try {
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/wastage — create a new wastage log
 export async function POST(request: NextRequest) {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'wastage' })
   if (error) return error
 
   try {

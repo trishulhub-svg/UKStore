@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/orders/batching — Suggest batches based on postcode area prefix
 export async function GET() {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'orders' })
   if (error) return error
 
   try {
@@ -70,7 +70,7 @@ export async function GET() {
 
 // POST /api/admin/orders/batching — Assign a batch to a driver
 export async function POST(request: Request) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'orders' })
   if (error) return error
 
   try {

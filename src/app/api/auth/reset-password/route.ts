@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { verifyPassword, hashPassword } from '@/lib/auth'
-import { getServerUser } from '@/lib/auth/server'
+import { getServerUser, invalidateSessionCache } from '@/lib/auth/server'
+import { revokeAllUserSessions } from '@/lib/session-manager'
 
 /**
  * POST /api/auth/reset-password
@@ -79,6 +80,30 @@ export async function POST(request: NextRequest) {
         mustResetPassword: false,
       },
     })
+
+    // For forced reset (first login of a new employee), revoke any other
+    // sessions that may have been created with the temp password. This is
+    // a security best practice — the temp password may have been shared.
+    if (isForced) {
+      try {
+        // Revoke all OTHER sessions except the current one (user.sid).
+        // The current session is the one used to make this request.
+        const currentSid = user.sid
+        const sessions = await prisma.session.findMany({
+          where: { userId: user.id },
+          select: { id: true },
+        })
+        const otherSessions = sessions.filter((s) => s.id !== currentSid)
+        if (otherSessions.length > 0) {
+          await prisma.session.deleteMany({
+            where: { id: { in: otherSessions.map((s) => s.id) } },
+          })
+        }
+        invalidateSessionCache()
+      } catch (err) {
+        console.warn('[Reset Password] Failed to revoke other sessions:', err)
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

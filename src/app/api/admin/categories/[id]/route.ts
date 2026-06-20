@@ -9,7 +9,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'categories' })
   if (error) return error
 
   try {
@@ -40,7 +40,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'categories' })
   if (error) return error
 
   try {
@@ -81,7 +81,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'categories' })
   if (error) return error
 
   try {

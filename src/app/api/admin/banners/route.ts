@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/banners — list all banners
 export async function GET() {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'banners' })
   if (error) return error
 
   try {
@@ -25,7 +25,7 @@ export async function GET() {
 
 // POST /api/admin/banners — create a banner
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'banners' })
   if (error) return error
 
   try {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
-import { hashPassword, createSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
+import { hashPassword, createSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
+import { parseUserAgent, getClientIp, createSession } from '@/lib/session-manager'
 
 function buildApiError(
   message: string,
@@ -124,13 +125,46 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Create session token
-    const token = createSessionToken({
+    // Create session token (with sid embedded for session tracking)
+    const userAgent = request.headers.get('user-agent') || ''
+    const ipAddress = getClientIp(request)
+    const { deviceType, deviceName } = parseUserAgent(userAgent)
+
+    // First create a token without sid so we can hash it for the session row
+    const tokenWithoutSid = createSessionToken({
       uid: user.id,
       email: user.email,
       role: user.role,
       name: user.name || '',
     })
+
+    // Create the session row (customers have no device limit but we still track)
+    const sid = await createSession(user.id, tokenWithoutSid, {
+      deviceType,
+      deviceName,
+      userAgent,
+      ipAddress,
+    })
+
+    // Regenerate the token with the sid embedded
+    const token = createSessionToken({
+      uid: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name || '',
+      sid,
+    })
+
+    // Update the session row's tokenHash to match the final token
+    const finalTokenHash = hashSessionToken(token)
+    try {
+      await prisma.session.update({
+        where: { id: sid },
+        data: { tokenHash: finalTokenHash },
+      })
+    } catch (err) {
+      console.warn('[Auth Register] Failed to update session token hash:', err)
+    }
 
     // Build response with cookie
     const response = NextResponse.json({

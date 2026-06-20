@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/delivery-map — Return active orders with addresses and driver locations
 export async function GET() {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'delivery_zones' })
   if (error) return error
 
   try {

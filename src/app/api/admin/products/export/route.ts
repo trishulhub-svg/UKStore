@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/products/export — Export all products as CSV
 export async function GET() {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'products' })
   if (error) return error
 
   try {

@@ -17,7 +17,7 @@ import { autoExpireProducts } from '@/lib/product-expiry'
  *   { dryRun?: boolean }  — if true, returns what *would* be logged without writing
  */
 export async function POST(request: NextRequest) {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'wastage' })
   if (error) return error
 
   let dryRun = false
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
  * POST with { dryRun: true } but uses GET so it can be fetched on page load.
  */
 export async function GET() {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'wastage' })
   if (error) return error
 
   try {

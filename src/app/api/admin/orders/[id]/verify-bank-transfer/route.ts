@@ -14,7 +14,7 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'orders' })
   if (error) return error
 
   try {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Users, Edit2, Loader2, AlertTriangle, Package, Truck, UserPlus, Copy, Check, Mail, KeyRound, AlertCircle } from 'lucide-react'
+import { Users, Edit2, Loader2, AlertTriangle, Package, Truck, UserPlus, Copy, Check, Mail, KeyRound, AlertCircle, Shield, Monitor } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,6 +19,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { formatPrice } from '@/lib/vat'
 import { apiFetch } from '@/lib/api-fetch'
+import { EmployeePermissionsDialog } from '@/components/admin/employee-permissions-dialog'
+import { EmployeeSessionsDialog } from '@/components/admin/employee-sessions-dialog'
 
 interface EmployeeProfile {
   id: string
@@ -69,6 +71,12 @@ export default function AdminEmployeesPage() {
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // Permissions + Sessions dialogs
+  const [permissionsEmployee, setPermissionsEmployee] = useState<Employee | null>(null)
+  const [permissionsOpen, setPermissionsOpen] = useState(false)
+  const [sessionsEmployee, setSessionsEmployee] = useState<Employee | null>(null)
+  const [sessionsOpen, setSessionsOpen] = useState(false)
 
   // Create employee dialog state
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -345,13 +353,39 @@ export default function AdminEmployeesPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(emp)}
-                          >
-                            <Edit2 className="h-3.5 w-3.5 mr-1" /> Edit
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEdit(emp)}
+                            >
+                              <Edit2 className="h-3.5 w-3.5 mr-1" /> Edit
+                            </Button>
+                            {emp.role !== 'OWNER' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setPermissionsEmployee(emp)
+                                  setPermissionsOpen(true)
+                                }}
+                                title="Manage feature permissions"
+                              >
+                                <Shield className="h-3.5 w-3.5 mr-1" /> Permissions
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSessionsEmployee(emp)
+                                setSessionsOpen(true)
+                              }}
+                              title="View and revoke active sessions"
+                            >
+                              <Monitor className="h-3.5 w-3.5 mr-1" /> Sessions
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -413,14 +447,42 @@ export default function AdminEmployeesPage() {
                     </div>
                   </div>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full min-h-10"
-                    onClick={() => handleEdit(emp)}
-                  >
-                    <Edit2 className="h-4 w-4 mr-1" /> Edit Details
-                  </Button>
+                  <div className="grid grid-cols-1 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full min-h-10"
+                      onClick={() => handleEdit(emp)}
+                    >
+                      <Edit2 className="h-4 w-4 mr-1" /> Edit Details
+                    </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      {emp.role !== 'OWNER' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="min-h-10"
+                          onClick={() => {
+                            setPermissionsEmployee(emp)
+                            setPermissionsOpen(true)
+                          }}
+                        >
+                          <Shield className="h-4 w-4 mr-1" /> Permissions
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`min-h-10 ${emp.role === 'OWNER' ? 'col-span-2' : ''}`}
+                        onClick={() => {
+                          setSessionsEmployee(emp)
+                          setSessionsOpen(true)
+                        }}
+                      >
+                        <Monitor className="h-4 w-4 mr-1" /> Sessions
+                      </Button>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -790,6 +852,30 @@ export default function AdminEmployeesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Permissions Dialog */}
+      <EmployeePermissionsDialog
+        employee={permissionsEmployee ? {
+          id: permissionsEmployee.id,
+          name: permissionsEmployee.name,
+          email: permissionsEmployee.email,
+          role: permissionsEmployee.role,
+        } : null}
+        open={permissionsOpen}
+        onOpenChange={setPermissionsOpen}
+      />
+
+      {/* Sessions Dialog */}
+      <EmployeeSessionsDialog
+        employee={sessionsEmployee ? {
+          id: sessionsEmployee.id,
+          name: sessionsEmployee.name,
+          email: sessionsEmployee.email,
+          role: sessionsEmployee.role,
+        } : null}
+        open={sessionsOpen}
+        onOpenChange={setSessionsOpen}
+      />
     </div>
   )
 }

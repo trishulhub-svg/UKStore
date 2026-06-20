@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/bank-holidays — List all bank holidays for the store
 export async function GET() {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'settings' })
   if (error) return error
 
   try {
@@ -33,7 +33,7 @@ export async function GET() {
 
 // POST /api/admin/bank-holidays — Add one or more bank holidays
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'settings' })
   if (error) return error
 
   try {

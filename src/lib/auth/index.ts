@@ -36,8 +36,12 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 // ─── Session Token ───────────────────────────────────────
-// Format: base64(JSON({uid, email, role, name, iat, ver})).signature
-// The signature is HMAC-SHA256 of the payload with the server secret
+// Format: base64(JSON({uid, email, role, name, iat, ver, sid?})).signature
+// The signature is HMAC-SHA256 of the payload with the server secret.
+//
+// `sid` is the session row ID from the Session table. It is included
+// in the token so that getServerUser() can look up the session row
+// and verify it still exists (supports device-limit revocation).
 
 export interface SessionPayload {
   uid: string       // user ID
@@ -46,6 +50,7 @@ export interface SessionPayload {
   name: string      // display name
   iat: number       // issued at (epoch seconds)
   ver: number       // token version
+  sid?: string      // session row ID (for revocation checks). Optional for backwards compat.
 }
 
 export function createSessionToken(payload: Omit<SessionPayload, 'iat' | 'ver'>): string {
@@ -62,6 +67,18 @@ export function createSessionToken(payload: Omit<SessionPayload, 'iat' | 'ver'>)
     .digest('base64url')
 
   return `${payloadStr}.${signature}`
+}
+
+/**
+ * Hash a session token (payload.signature) for storage in the Session table.
+ * We store a hash rather than the raw token so that even DB read access
+ * cannot be used to forge a valid cookie.
+ */
+export function hashSessionToken(token: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(token)
+    .digest('hex')
 }
 
 export function verifySessionToken(token: string): SessionPayload | null {

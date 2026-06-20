@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/expenses
 export async function GET(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'finance' })
   if (error) return error
 
   try {
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/expenses
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'finance' })
   if (error) return error
 
   try {

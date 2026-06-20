@@ -1,18 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
-import { getServerUser } from '@/lib/auth/server'
+import { requireDriver } from '@/lib/feature-permissions'
 
 const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/driver/earnings — earnings summary
 export async function GET() {
-  const user = await getServerUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
-  if (user.role.toLowerCase() !== 'driver') {
-    return NextResponse.json({ error: 'Forbidden — driver role required' }, { status: 403 })
-  }
+  const { error, user } = await requireDriver({ feature: 'driver_earnings' })
+  if (error) return error
 
   try {
     const prisma = await getPrisma()

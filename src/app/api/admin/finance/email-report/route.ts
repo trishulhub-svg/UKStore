@@ -19,7 +19,7 @@ const STORE_ID = 'store-fresh-mart-001'
  * In production, set the SMTP_* env vars in Vercel to enable real email.
  */
 export async function POST(request: NextRequest) {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'finance' })
   if (error) return error
 
   let startDate: string | undefined

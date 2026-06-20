@@ -20,7 +20,7 @@ const STORE_ID = 'store-fresh-mart-001'
  *   - endDate   (YYYY-MM-DD, default: today)
  */
 export async function GET(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'finance' })
   if (error) return error
 
   try {

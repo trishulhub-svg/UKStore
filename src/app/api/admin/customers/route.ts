@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 
 // GET /api/admin/customers — list customers
 export async function GET(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'customers' })
   if (error) return error
 
   try {

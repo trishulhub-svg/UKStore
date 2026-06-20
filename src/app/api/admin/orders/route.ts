@@ -6,7 +6,7 @@ const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/admin/orders — list orders with filters
 export async function GET(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'orders' })
   if (error) return error
 
   try {
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
 // PATCH /api/admin/orders — update order status
 export async function PATCH(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'orders' })
   if (error) return error
 
   try {

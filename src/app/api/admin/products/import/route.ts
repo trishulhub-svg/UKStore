@@ -24,7 +24,7 @@ interface CSVRow {
 
 // POST /api/admin/products/import — Import products from CSV
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'products' })
   if (error) return error
 
   try {

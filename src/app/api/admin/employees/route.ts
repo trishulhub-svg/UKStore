@@ -36,7 +36,7 @@ function generateTempPassword(length = 12): string {
 
 // GET /api/admin/employees — list all non-customer users with employee profiles and today's order counts
 export async function GET() {
-  const { error } = await requireAdmin()
+  const { error } = await requireAdmin({ feature: 'employees' })
   if (error) return error
 
   try {
@@ -143,7 +143,7 @@ export async function GET() {
  * to the employee's email automatically.
  */
 export async function POST(request: NextRequest) {
-  const { error, user } = await requireAdmin()
+  const { error, user } = await requireAdmin({ feature: 'employees' })
   if (error) return error
 
   try {

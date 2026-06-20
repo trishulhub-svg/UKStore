@@ -83,6 +83,8 @@ model User {
   attendanceLogs  AttendanceLog[]
   shifts          Shift[]       @relation("StaffShifts")
   employeeProfile EmployeeProfile?
+  sessions        Session[]
+  featurePermission EmployeeFeaturePermission?
 
   @@map("users")
 }
@@ -499,4 +501,54 @@ model EmployeeProfile {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("employee_profiles")
+}
+
+// ─── Active Session Tracking ────────────────────────────────────
+// Used to enforce device-login limits:
+//   - OWNER (admin): 1 device maximum — new login revokes all prior sessions
+//   - DRIVER / PICKER (employees): 2 devices max — 1 mobile + 1 desktop
+//   - CUSTOMER: unlimited (sessions are still recorded for audit but not capped)
+//
+// The session row is created on login and deleted on logout / revocation.
+// `getServerUser()` validates the `sid` in the JWT against this table to
+// support immediate revocation.
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   // sha256(payload.signature) — for identification only
+  deviceType  String   @default("unknown")  // 'mobile' | 'desktop' | 'tablet' | 'unknown'
+  deviceName  String?  // Human-readable summary e.g. "Chrome on iPhone"
+  userAgent   String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  expiresAt   DateTime
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ─── Employee Feature Permissions ───────────────────────────────
+// Per-employee feature access toggles. The owner (admin) chooses which
+// features each employee (MANAGER / DRIVER / PICKER) can access.
+//
+// If no row exists for a user → ALL features are enabled (default open).
+// If a row exists → only the listed feature keys are accessible.
+//
+// Feature keys are defined in src/lib/feature-permissions.ts (FEATURE_CATALOG).
+model EmployeeFeaturePermission {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  features  String   @default("[]")  // JSON array of feature keys, e.g. '["kanban","orders"]'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("employee_feature_permissions")
 }

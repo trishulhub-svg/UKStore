@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
-import { getServerUser } from '@/lib/auth/server'
+import { requirePicker } from '@/lib/feature-permissions'
 
 const STORE_ID = 'store-fresh-mart-001'
 
 // GET /api/picker/orders — get orders that need packing
 export async function GET(request: NextRequest) {
-  const user = await getServerUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
-
-  if (user.role.toLowerCase() !== 'picker') {
-    return NextResponse.json({ error: 'Forbidden — picker role required' }, { status: 403 })
-  }
+  const { error, user } = await requirePicker({ feature: 'picker_packing' })
+  if (error) return error
 
   try {
     const prisma = await getPrisma()

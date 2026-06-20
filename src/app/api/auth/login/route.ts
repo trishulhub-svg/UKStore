@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { verifyPassword, createSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
+import {
+  parseUserAgent,
+  getClientIp,
+  enforceDeviceLimit,
+  createSession,
+} from '@/lib/session-manager'
 
 function buildApiError(
   message: string,
@@ -108,13 +114,78 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create session token with the user's role from the database
-    const token = createSessionToken({
+    // Check if user is active (prevents banned / deactivated users from logging in)
+    if (user.isActive === false) {
+      return buildApiError(
+        'Your account has been deactivated. Please contact the store owner.',
+        'ACCOUNT_DEACTIVATED',
+        403,
+        `User "${email.toLowerCase()}" is inactive. An admin must re-activate the account.`,
+        endpoint,
+      )
+    }
+
+    // ─── Device-Limit Enforcement ────────────────────────────
+    // Parse User-Agent + IP for session tracking
+    const userAgent = request.headers.get('user-agent') || ''
+    const ipAddress = getClientIp(request)
+    const { deviceType, deviceName } = parseUserAgent(userAgent)
+
+    // Enforce device limit BEFORE creating the new session
+    const limitResult = await enforceDeviceLimit(user.id, user.role, deviceType)
+    if (!limitResult.allowed) {
+      return buildApiError(
+        limitResult.reason || 'Device limit reached. Please log out from another device first.',
+        'DEVICE_LIMIT_REACHED',
+        403,
+        `User "${email.toLowerCase()}" (role: ${user.role}) already has the maximum number of active sessions for their role. Active sessions: ${limitResult.remainingSessions.length}. New device type: ${deviceType}.`,
+        endpoint,
+      )
+    }
+
+    // Create session token (without sid first — we'll regenerate with sid)
+    // We need the sid in the token, so we create the token, then create the
+    // session row using the token hash, then re-create the token with the sid.
+    const tokenWithoutSid = createSessionToken({
       uid: user.id,
       email: user.email,
       role: user.role,
       name: user.name || '',
     })
+
+    // Create the session row using this token's hash
+    const sid = await createSession(user.id, tokenWithoutSid, {
+      deviceType,
+      deviceName,
+      userAgent,
+      ipAddress,
+    })
+
+    // Regenerate the token with the sid embedded
+    const token = createSessionToken({
+      uid: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name || '',
+      sid,
+    })
+
+    // The token hash stored in the DB was based on the tokenWithoutSid.
+    // We need to update it to use the final token hash so logout & revocation work.
+    // (Or alternatively, store a deterministic hash that doesn't depend on the sid.)
+    // For simplicity, update the session row's tokenHash to the final token's hash.
+    const { hashSessionToken } = await import('@/lib/auth')
+    const finalTokenHash = hashSessionToken(token)
+    try {
+      await prisma.session.update({
+        where: { id: sid },
+        data: { tokenHash: finalTokenHash },
+      })
+    } catch (err) {
+      console.warn('[Auth] Failed to update session token hash:', err)
+      // Non-critical — the session row exists, just the hash lookup on logout won't work.
+      // The sid-based revocation still works.
+    }
 
     // Build response with cookie
     const response = NextResponse.json({
@@ -128,6 +199,12 @@ export async function POST(request: NextRequest) {
       // True for newly-created employee accounts that haven't reset their temp password yet.
       // The client uses this to redirect to /auth/reset-password after login.
       mustResetPassword: user.mustResetPassword === true,
+      // Session info for the client (so login page can show "you replaced another session")
+      sessionInfo: {
+        deviceType,
+        deviceName,
+        revokedSessions: limitResult.revokedSessionIds.length,
+      },
     })
 
     response.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS)

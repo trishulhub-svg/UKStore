@@ -1,0 +1,338 @@
+     1→---
+     2→Task ID: 1
+     3→Agent: Main
+     4→Task: Implement location-based delivery zone detection with GPS and postcode geocoding
+     5→
+     6→Work Log:
+     7→- Explored codebase: Prisma Store model already had deliveryRadiusKm, latitude, longitude, address, phone, email fields
+     8→- Admin StoreStatusManager already had UI for editing deliveryRadiusKm
+     9→- Admin StoreProfileEditor already had UI for editing address, lat/lng, phone, email
+    10→- Footer already showed dynamic address/phone/email from StoreInfoProvider
+    11→- Created DeliveryLocationProvider context (src/lib/delivery-location.tsx) with:
+    12→  - User location tracking (GPS, postcode, manual address)
+    13→  - Distance calculation from store using Haversine formula
+    14→  - Delivery zone validation (within radius or not)
+    15→  - Persistence to localStorage
+    16→  - Geocoding helpers (geocodePostcode via postcodes.io, geocodeAddress, requestBrowserLocation)
+    17→- Created /api/geocode route (src/app/api/geocode/route.ts) for server-side UK postcode geocoding
+    18→- Rewrote PostcodeGate component with:
+    19→  - "Use My Current Location" GPS button using navigator.geolocation
+    20→  - Postcode geocoding via postcodes.io
+    21→  - Delivery zone check after geocoding
+    22→  - "In Zone" success animation with distance display
+    23→  - "Outside Zone" error state with retry option
+    24→- Updated CartSidebar to use useDeliveryLocation() for real distance-based fee calculation
+    25→- Updated CartClient with real distance, delivery zone warnings, and zone-aware checkout button
+    26→- Replaced hardcoded distanceKm=2 in CheckoutClient with:
+    27→  - Real distance from DeliveryLocationProvider context
+    28→  - Address geocoding on "Continue" button click
+    29→  - Delivery zone validation blocking checkout if outside radius
+    30→  - Visual delivery zone info (green/red) showing distance and fee breakdown
+    31→- Updated Navbar location picker with:
+    32→  - GPS detection button ("Use My Current Location")
+    33→  - Postcode geocoding with delivery zone check
+    34→  - Zone status display (green for in-zone, red for outside)
+    35→  - Distance info in the top bar
+    36→- Added DeliveryLocationProvider to root layout alongside StoreInfoProvider
+    37→- Build succeeded, all APIs tested, pushed to main
+    38→
+    39→Stage Summary:
+    40→- Customers can now use GPS or enter postcode to check delivery zone
+    41→- Owner can set/change delivery radius in admin settings (already existed)
+    42→- Real distance-based delivery fee calculation replaces hardcoded values
+    43→- Checkout blocked if delivery address is outside the delivery radius
+    44→- Manual address entry at checkout geocoded and validated against zone
+    45→- All changes pushed to main branch (commit b8039bd)
+    46→
+    47→---
+    48→Task ID: 2
+    49→Agent: Main
+    50→Task: Product expiry auto-wastage, remove attendance, PDF export drivers/customers, employee creation with temp password + force-reset, self-service profile + password change, owner-only email change, customer data protection, default banner images + delete option, visualized finance PDF, wastage PDF export, responsiveness audit
+    51→
+    52→Work Log:
+    53→- Updated Prisma schema (prisma/schema.prisma): added `mustResetPassword` to User, `defaultBanner1Url`/`defaultBanner2Url` to Store
+    54→- Updated runtime SQL schema in src/lib/auth/prisma.ts:
+    55→  - Added columns to CREATE TABLE statements (users.mustResetPassword, stores.logoUrl/defaultBanner1Url/defaultBanner2Url, products.expiryDate/bestBeforeDate, shifts.manualHours)
+    56→  - Added idempotent COLUMN_MIGRATIONS runner that uses PRAGMA table_info to add missing columns to existing DBs without dropping data
+    57→  - Wired migration runner into all DB init paths (existing DB, bundled DB copy, fresh DB create)
+    58→- Regenerated Prisma client (npx prisma generate)
+    59→- Removed attendance section completely:
+    60→  - Deleted src/app/admin/attendance/, src/app/picker/attendance/
+    61→  - Deleted src/app/api/admin/attendance/, src/app/api/attendance/
+    62→  - Deleted src/components/admin/attendance-client.tsx, src/components/picker/picker-attendance-client.tsx
+    63→  - Deleted src/components/shared/clock-in-out-button.tsx
+    64→  - Removed attendance nav link from picker-layout, removed ClockInOutButton from picker-layout + driver-layout
+    65→  - Cleaned picker-dashboard-client to remove attendance state, timer, and clock-in/out card
+    66→- Added PDF export to admin/drivers page (handleExportPdf with all driver fields, deliveries total in footer)
+    67→- Employee creation flow:
+    68→  - POST /api/admin/employees: creates user with bcrypt-hashed temp password, mustResetPassword=true, generates 12-char secure temp password (upper+lower+digits+symbols), creates empty EmployeeProfile (and DriverProfile if DRIVER role)
+    69→  - /api/auth/login: returns mustResetPassword flag in response
+    70→  - /api/auth/reset-password POST: handles both forced (first login, no current password needed) and self-initiated (requires current password)
+    71→  - Created /auth/reset-password page with strength hints, forced flag handling, role-based redirect after reset
+    72→  - Updated auth-client.ts to propagate mustResetPassword flag
+    73→  - Updated login-client to redirect to /auth/reset-password?forced=1 when mustResetPassword is true
+    74→  - Added "Add Employee" button + dialog on admin/employees page with role select (PICKER/DRIVER/MANAGER), shows generated temp password once with copy-to-clipboard
+    75→- Self-service profile + password change:
+    76→  - Created /api/user/profile (GET + PATCH) — self-only updates for name/phone/avatarUrl
+    77→  - Created /account/profile page (works for ALL roles: customer/driver/picker/manager/owner) with ProfileClient
+    78→  - Added "Profile" links in admin shell (desktop sidebar + mobile drawer), picker profile card, driver profile card, customer account page
+    79→  - Customer account page now has "My Profile & Settings" button
+    80→- Owner-only email change + customer data protection:
+    81→  - PATCH /api/admin/employees/[id] now accepts name/phone/email/role/isActive + salary fields
+    82→  - Email/role/isActive changes restricted to OWNER role (managers get 403)
+    83→  - Prevents self-demotion and self-deactivation
+    84→  - Admin customer PATCH (/api/admin/customers/[id]) only allows isActive toggle — personal data (name/email/phone) only changeable by customer themselves via /api/user/profile
+    85→- Default banner images + delete option:
+    86→  - Added defaultBanner1Url/defaultBanner2Url to Store schema + API
+    87→  - Updated /api/banners to return defaultBanners array
+    88→  - Updated BannerCarousel to use: 1) promotional banners, 2) default banners, 3) gradient placeholders (last resort)
+    89→  - Added "Default Banner Images" section at top of /admin/banners page with 2 upload slots, replace-only (no delete)
+    90→  - Promotional banners below have existing toggle + delete option
+    91→- Visualized finance PDF:
+    92→  - Rewrote finance-client.tsx to draw bar chart (daily revenue vs expenses with axis labels, gridlines, legend) and pie/donut chart (expense breakdown by category with color-coded slices, legend, center total)
+    93→  - 3-page PDF: cover+summary+charts, top orders+expenses tables, payment methods breakdown
+    94→- Wastage logs PDF export: already exists in wastage-client.tsx (jsPDF + autotable with red-themed header)
+    95→- Responsiveness audit: all major pages already had mobile card views + responsive grids. Verified admin shell, customers, drivers, employees, products, orders, banners, finance, shifts, picker pages, driver pages, customer navbar/catalog/checkout/account all responsive
+    96→- Build succeeded with no new errors (only pre-existing Stripe optional-dep warnings)
+    97→
+    98→Stage Summary:
+    99→- Products: expiry/best-before fields + auto-expire-to-wastage flow already in place from prior session (verified)
+   100→- Attendance: completely removed from UI, APIs, components, nav (table kept in DB schema for safety)
+   101→- PDF export: added to drivers, customers, products, wastage, finance (now visualized with charts)
+   102→- Employee lifecycle: admin creates with temp password → emailed/shared manually → employee forced to reset on first login → can self-edit name/phone/password → owner can change email/role/status
+   103→- Customer data: only customer themselves can edit personal data; admin can only ban/unban
+   104→- Banners: 2 default images (admin-uploadable, not deletable) shown when no promotional banners; promotional banners have toggle + delete
+   105→- All changes build cleanly and pass TypeScript checks
+   106→
+   107→---
+   108→Task ID: 3
+   109→Agent: Main
+   110→Task: Fix "failed to load employees" + all admin data loading failures (products, categories, drivers, customers, banners, shifts, wastage, finance)
+   111→
+   112→Work Log:
+   113→- Investigated root cause: existing SQLite DB at db/custom.db was created with an OLDER schema and never had its missing tables/columns added.
+   114→- DB inspection revealed:
+   115→  * Missing tables: `banners`, `employee_profiles` (never created because SCHEMA_SQL had CREATE TABLE IF NOT EXISTS, but the DB was already considered "valid" by verifyDatabaseSchema() which only checks 6 core tables)
+   116→  * Missing columns on `users`: `mustResetPassword`
+   117→  * Missing columns on `products`: `originalPrice`, `images`, `brand`, `rating`, `reviewCount`, `expiryDate`, `bestBeforeDate`
+   118→  * Missing columns on `stores`: `logoUrl`, `defaultBanner1Url`, `defaultBanner2Url`
+   119→  * Missing columns on `shifts`: `manualHours`
+   120→  * Missing columns on `orders`: `promotionId`, `discountAmount`
+   121→- Root cause in src/lib/auth/prisma.ts:
+   122→  * `initializeDatabaseAtPath()` for existing DBs only ran `runColumnMigrations()`, never `executeSchemaSql()` — so newly-added tables (banners, employee_profiles) never got created on existing DBs
+   123→  * `SCHEMA_SQL` block was missing `banners` and `employee_profiles` table definitions entirely
+   124→  * `COLUMN_MIGRATIONS` list was missing 5 columns: `products.originalPrice`, `products.images`, `products.brand`, `products.rating`, `products.reviewCount`
+   125→- Fixes applied to src/lib/auth/prisma.ts:
+   126→  1. Added `banners` table definition to SCHEMA_SQL block (with all columns including `linkUrl`, `linkCategory`, `sortOrder`, `isActive`)
+   127→  2. Added `employee_profiles` table definition to SCHEMA_SQL block (with `userId` unique index)
+   128→  3. Added 5 missing columns to COLUMN_MIGRATIONS: products.originalPrice, products.images, products.brand, products.rating, products.reviewCount
+   129→  4. Added 11 more missing columns to COLUMN_MIGRATIONS: orders.promotionId, orders.discountAmount, orders.bankTransferRef, orders.bankTransferVerified, orders.deliveryPhotoUrl, orders.batchGroup, orders.packedAt, orders.dispatchedAt, orders.deliveredAt, orders.hasChallenge25, orders.challenge25Verified, order_items.picked
+   130→  5. Created new helper `ensureAllTablesExist()` that wraps `executeSchemaSql()` — runs all CREATE TABLE IF NOT EXISTS statements (idempotent)
+   131→  6. Updated both existing-DB code paths (existing-DB-valid path + bundled-DB-valid path) to call `ensureAllTablesExist()` THEN `runColumnMigrations()` — so new tables get created AND new columns get added on every restart
+   132→- Direct DB patch script: scripts/patch-db-schema.py — runs the same ALTER TABLE / CREATE TABLE operations directly against the existing DB file via sqlite3 module (so the fix takes effect immediately without requiring a server restart)
+   133→- Verified fix by running patch-db-schema.py + curl-testing all admin API endpoints:
+   134→  * /api/admin/employees ✅ returned 2 employees (Store Owner + Demo Driver)
+   135→  * /api/admin/products ✅ returned empty array (no data seeded, no error)
+   136→  * /api/admin/categories ✅ returned empty array (no data seeded, no error)
+   137→  * /api/admin/drivers ✅ returned driver with full profile
+   138→  * /api/admin/customers ✅ returned Demo Customer
+   139→  * /api/admin/banners ✅ returned empty array (table now exists)
+   140→  * /api/admin/shifts ✅ returned shifts + staff list
+   141→  * /api/admin/wastage ✅ returned wastage logs + summary
+   142→  * /api/admin/finance/report ✅ returned full finance report with daily chart data
+   143→- TypeScript check confirmed no new errors introduced by the prisma.ts changes (only pre-existing Stripe/nodemailer optional-dep warnings remain)
+   144→
+   145→Stage Summary:
+   146→- Root cause: stale DB schema (older than current Prisma schema) combined with incomplete runtime migration logic in prisma.ts
+   147→- Fix has two layers: (1) permanent fix in prisma.ts so future DBs are always migrated correctly, (2) one-time DB patch script that brings the current DB up to date immediately
+   148→- All admin pages should now load data correctly when the user refreshes the browser
+   149→- The patch-db-schema.py script is safe to re-run (idempotent) and can be deleted after this fix is verified
+   150→
+   151→---
+   152→Task ID: 4
+   153→Agent: Main
+   154→Task: Fix "Failed to load products/employees/etc" across all admin pages — comprehensive data-loading audit + fix + push
+   155→
+   156→Work Log:
+   157→- Server-side investigation: All 20 admin API endpoints + 9 customer-facing endpoints return 200 OK when tested with a valid session cookie (via curl). Server logs show successful 200 responses for every endpoint.
+   158→- Root cause: EXPIRED SESSION COOKIE. When the user's session cookie expires or is missing, the middleware returns 401 { error: 'Authentication required' } for any /api/admin/* request. Each admin page's `if (!res.ok) throw new Error()` triggered the catch block → `toast.error('Failed to load X')`. The user sees the toast but stays on the broken page with no auto-redirect to login.
+   159→- Ran a comprehensive audit via Explore subagent across 30+ admin/customer/driver/picker pages and 16 API routes. Confirmed:
+   160→  * Zero client↔API response-shape mismatches (all `data.products`, `data.employees`, etc. match)
+   161→  * The "Failed to load" symptom is purely a 401 handling issue
+   162→  * 5 specific silent-failure bugs that crash pages on 401 (analytics, driver-earnings, driver-profile, picker-profile, bank-holiday-mode-change)
+   163→  * 1 wrong-URL bug in notifications-client.tsx (duplicate `notifications` segment)
+   164→- Created src/lib/api-fetch.ts — global fetch wrapper:
+   165→  * apiFetch(url, init) — on 401, redirects to /auth/login?redirect=<currentPath> and throws 'Session expired — redirecting to login'
+   166→  * apiFetchJson<T>(url, init) — convenience wrapper that also throws on non-OK
+   167→  * redirectOn401: false option for endpoints where 401 is acceptable (navbar, footer)
+   168→- Bulk-converted ALL raw fetch() calls across 42 client components to apiFetch():
+   169→  * 14 admin pages (products, categories, customers, drivers, employees, orders, banners, shifts, wastage, finance, promotions, delivery-zones, analytics, settings)
+   170→  * 12 admin components (kanban, low-stock, bank-holidays, notification-editor, store-status, store-profile, csv-import-export, delivery-map, shifts-client, admin-settings, admin-dashboard, finance-client)
+   171→  * 11 customer pages (home, orders, favourites, addresses, notifications, banner-carousel, checkout, cross-sell-slider, order-tracking, predictive-search, product-detail)
+   172→  * 4 driver pages (dashboard, order-flow, earnings, profile)
+   173→  * 3 picker pages (dashboard, packing, profile)
+   174→  * Profile page (works for all roles — customer/driver/picker/manager/owner)
+   175→  * Navbar + Footer (with redirectOn401: false since they're on every page including login)
+   176→- Updated toast error catch blocks to skip the toast when err.message === 'Session expired — redirecting to login' — so users don't see a confusing error message right before being redirected to login.
+   177→- Fixed 5 specific bugs:
+   178→  1. admin/analytics/page.tsx — added res.ok check + shape validation. On 401, was setting data = {error: '...'} which then crashed on summary.totalRevenue access (TypeError).
+   179→  2. driver/driver-earnings-client.tsx — same fix. Was crashing on data.today.earnings.toFixed(2) when data was the error object.
+   180→  3. driver/driver-profile-client.tsx — added res.ok check + null data guard.
+   181→  4. picker/picker-profile-client.tsx — same fix.
+   182→  5. customer/notifications-client.tsx — fixed handleMarkAllRead URL bug. Was calling /api/user/notifications/notifications (duplicate segment, 404). Now loops through unread notifications and marks each one read via the existing /api/user/notifications/[id] PATCH endpoint.
+   183→  6. admin/bank-holiday-manager.tsx — handleModeChange was DELETE-then-POST without checking res.ok on either. If POST failed, holiday was deleted but never recreated (silent data loss). Now checks res.ok on both.
+   184→- Auth fetches intentionally NOT converted: src/lib/auth-client.ts and src/components/auth/reset-password-client.tsx — these call /api/auth/login, /api/auth/register, /api/auth/reset-password, /api/auth/session where 401 means "wrong credentials" not "session expired". Converting them would cause an infinite redirect loop on the login page.
+   185→- External API fetches (postcodes.io, Google OAuth) NOT converted — they're server-side and don't go through our session system.
+   186→- TypeScript check: All pre-existing errors remain (Stripe/nodemailer optional deps, Prisma type mismatches in API routes). No NEW errors introduced by the apiFetch conversion.
+   187→- Production build: PASSED (✓ Compiled successfully in 14.4s, ✓ 67/67 static pages generated).
+   188→- Runtime verification: All admin endpoints return 200 OK with valid session, 401 without session (correct behavior).
+   189→- Committed as 4efa831 and pushed to origin/main.
+   190→
+   191→Stage Summary:
+   192→- ROOT CAUSE: Expired session cookie → 401 from middleware → each page's catch block shows "Failed to load X" toast with no redirect to login
+   193→- FIX: Created global apiFetch() wrapper that auto-redirects to /auth/login on 401, and converted every client-side fetch() call across 42 components
+   194→- ALSO FIXED: 5 silent-failure bugs that crashed pages on auth errors, 1 wrong-URL bug in notifications, 1 partial-failure data-loss bug in bank-holiday mode change
+   195→- Build passes, all endpoints verified, pushed to GitHub
+   196→- User should now: (1) HARD REFRESH the browser (Ctrl+Shift+R) to load the new JS bundles, (2) if on a deployed Vercel build, wait for the auto-deploy to complete, (3) if session expired, they'll be auto-redirected to login instead of seeing "Failed to load" toasts
+   197→
+   198→---
+   199→Task ID: 11
+   200→Agent: Main
+   201→Task: Implement device-login limits per role (Admin=1, Employee=2 mobile+desktop, Customer=unlimited) + admin-controlled per-employee feature permission toggles
+   202→
+   203→Work Log:
+   204→- Added two new Prisma models:
+   205→  * `Session` (id, userId, tokenHash, deviceType, deviceName, userAgent, ipAddress, createdAt, lastSeenAt, expiresAt) — for device-tracking and revocation
+   206→  * `EmployeeFeaturePermission` (id, userId unique, features JSON array, createdAt, updatedAt) — for feature toggles
+   207→- Updated `src/lib/auth/prisma.ts` SCHEMA_SQL block to include CREATE TABLE statements for both new tables (idempotent — runs on every DB init via ensureAllTablesExist)
+   208→- Updated `src/lib/auth/index.ts`:
+   209→  * Added `sid?: string` (session row ID) to SessionPayload — embeds the session row ID in the JWT for revocation checks
+   210→  * Added `hashSessionToken(token)` helper for storing token hashes in the Session table
+   211→- Updated `src/lib/auth/edge.ts` — added `sid?` field to Edge SessionPayload (mirror of Node version)
+   212→- Updated `src/lib/auth/server.ts`:
+   213→  * `getServerUser()` now validates the session row exists in DB (when `sid` is present in the token)
+   214→  * If session row is missing or expired → returns null (effectively logs the user out on next API call)
+   215→  * Added 10-second in-memory cache (keyed by token) to avoid hitting DB on every request
+   216→  * Updates `lastSeenAt` on each session hit
+   217→  * Added `invalidateSessionCache(token)` for use after revocation
+   218→- Created `src/lib/session-manager.ts`:
+   219→  * `parseUserAgent(ua)` — detects deviceType (mobile/tablet/desktop) + human-readable name (e.g. "Chrome on iPhone")
+   220→  * `getClientIp(request)` — respects X-Forwarded-For
+   221→  * `enforceDeviceLimit(userId, role, newDeviceType)` — the core device-limit logic:
+   222→    - CUSTOMER: no limit
+   223→    - OWNER: max 1 device — revoke ALL prior sessions on new login
+   224→    - DRIVER/PICKER: max 2 devices (1 mobile + 1 desktop). Tablet/unknown normalize to mobile.
+   225→      - If a same-type session exists → revoke it (replace)
+   226→      - If 2 opposite-type sessions exist → reject with DEVICE_LIMIT_REACHED
+   227→      - Otherwise → allow (creates new session)
+   228→  * `createSession`, `revokeSession`, `revokeAllUserSessions`, `revokeSessionByToken`, `listUserSessions`
+   229→- Updated `src/app/api/auth/login/route.ts`:
+   230→  * Parses User-Agent + IP for device info
+   231→  * Calls `enforceDeviceLimit()` BEFORE creating the new session
+   232→  * If rejected → returns 403 with code `DEVICE_LIMIT_REACHED` + helpful message
+   233→  * If allowed → creates session row, embeds `sid` in token, sets cookie
+   234→  * Also checks `user.isActive === false` → returns 403 `ACCOUNT_DEACTIVATED`
+   235→- Updated `src/app/api/auth/register/route.ts` — same pattern (creates session for new customers, no limit)
+   236→- Updated `src/app/api/auth/logout/route.ts` — deletes session row by sid (or token hash for legacy tokens)
+   237→- Updated `src/app/api/auth/reset-password/route.ts` — on forced reset (first login), revokes all OTHER sessions (security best practice for shared temp passwords)
+   238→- Created `src/lib/feature-permissions.ts`:
+   239→  * `FEATURE_CATALOG` — 22 features grouped by Admin/Driver/Picker (kanban, orders, products, categories, customers, drivers, employees, banners, shifts, finance, wastage, promotions, delivery_zones, analytics, settings, admin_dashboard, driver_dashboard, driver_earnings, driver_profile, picker_dashboard, picker_packing, picker_profile)
+   240→  * `getEnabledFeatures(userId, role)` — returns null (full access) or Set<featureKey>
+   241→  * `hasFeatureAccess(userId, role, featureKey)` — OWNER always true, no row = true (default open), row exists = check list
+   242→  * `setEnabledFeatures(userId, features | null)` — set or clear restriction
+   243→  * `getFeatureKeyForAdminRoute(pathname)`, `getFeatureKeyForDriverRoute`, `getFeatureKeyForPickerRoute`, `getFeatureKeyForAdminApiRoute`, `getFeatureKeyForEmployeeApiRoute` — route-prefix → feature-key mappers
+   244→  * `requireDriver({ feature })` — inline guard for /api/driver/* routes (replaces manual `getServerUser() + role check` pattern)
+   245→  * `requirePicker({ feature })` — same for /api/picker/*
+   246→- Updated `src/lib/admin-auth.ts`:
+   247→  * `requireAdmin({ feature })` — added optional feature parameter. OWNER bypasses; MANAGER is checked against the permission list.
+   248→  * Added `requireEmployee({ feature })` for non-admin employee endpoints
+   249→- Updated 37 admin API route files via `scripts/add-feature-checks.py`:
+   250→  * Replaced `await requireAdmin()` with `await requireAdmin({ feature: '<key>' })` based on path prefix
+   251→  * E.g. /api/admin/products/* → feature: 'products'; /api/admin/finance/* → 'finance'; /api/admin/expenses/* → 'finance'; /api/admin/bank-holidays/* → 'settings'; /api/admin/store/* → 'settings'
+   252→  * Skipped /api/admin/sessions/* (admin-only by default, no feature check needed) and /api/admin/employees/[id]/permissions (OWNER-only check inside route)
+   253→- Updated 5 driver API route files + 3 picker API route files via `scripts/add-employee-feature-checks.py`:
+   254→  * Replaced `const user = await getServerUser(); if (!user) ...; if (user.role.toLowerCase() !== 'driver') ...` with `const { error, user } = await requireDriver({ feature: '...' }); if (error) return error`
+   255→  * Driver routes: /api/driver/orders/* → driver_dashboard; /api/driver/earnings → driver_earnings; /api/driver/profile → driver_profile
+   256→  * Picker routes: /api/picker/orders/* → picker_packing; /api/picker/profile → picker_profile
+   257→- Created new API endpoints:
+   258→  * `GET /api/admin/employees/[id]/permissions` — returns features list + applicable catalog (filtered by user's role)
+   259→  * `PUT /api/admin/employees/[id]/permissions` — OWNER-only; sets feature list (null = full access, array = restricted)
+   260→  * `GET /api/admin/employees/[id]/sessions` — lists all active sessions for one employee
+   261→  * `GET /api/admin/sessions?userId=X` — lists all sessions across all employees (for admin monitoring)
+   262→  * `DELETE /api/admin/sessions` — bulk revoke: `{ userId }` revokes all for one user; `{ allEmployees: true }` revokes all employee sessions
+   263→  * `DELETE /api/admin/sessions/[id]` — revokes one session by ID
+   264→  * `GET /api/user/permissions` — self-service lookup (for driver/picker layouts to filter nav items)
+   265→- Updated `src/app/admin/layout.tsx`:
+   266→  * Now fetches `enabledFeatures` for the current user via `getEnabledFeaturesList(user.id, user.role)`
+   267→  * Passes `userRole` and `enabledFeatures` to AdminShell
+   268→- Updated `src/components/admin/admin-shell.tsx`:
+   269→  * Nav items now have a `feature` key (e.g. 'products', 'orders')
+   270→  * Filters `visibleNavItems` based on `enabledFeatures` (null = show all, array = show only listed)
+   271→  * User info panel shows role badge + "Restricted" indicator when permissions are limited
+   272→  * Both desktop sidebar and mobile drawer use the filtered nav list
+   273→- Updated `src/components/driver/driver-layout.tsx` and `src/components/picker/picker-layout.tsx`:
+   274→  * Fetch current user's permissions from /api/user/permissions on mount
+   275→  * Filter nav items based on enabledFeatures
+   276→- Updated `src/app/admin/employees/page.tsx`:
+   277→  * Added "Permissions" button per employee row (hidden for OWNER — OWNER can't be restricted)
+   278→  * Added "Sessions" button per employee row
+   279→  * Both buttons appear in desktop table Actions column AND in mobile card layout
+   280→- Created `src/components/admin/employee-permissions-dialog.tsx`:
+   281→  * Modal with "Full Access" vs "Restricted Access" toggle
+   282→  * When restricted: shows checkboxes for each feature, grouped by Admin/Driver/Picker
+   283→  * "Select All" / "Clear All" buttons
+   284→  * Shows the feature label, description, and On/Off badge per row
+   285→  * Warns when 0 features selected (user can still log in but sees nothing)
+   286→- Created `src/components/admin/employee-sessions-dialog.tsx`:
+   287→  * Lists all active sessions with device icon (mobile/tablet/desktop), device name, IP, created/last-seen/expires timestamps
+   288→  * "Revoke" button per session (immediately logs out that device on its next API call)
+   289→  * "Revoke All" button with confirmation
+   290→  * Shows the device-limit policy for the user's role (e.g. "2 devices max (1 mobile + 1 desktop)")
+   291→- Generated Prisma client with `npx prisma generate`
+   292→- Verified DB schema: both `sessions` and `employee_feature_permissions` tables exist with correct columns
+   293→- End-to-end tested:
+   294→  * Admin login on desktop → session created with deviceName="Chrome on Linux", deviceType="desktop"
+   295→  * Admin login on mobile → previous desktop session revoked, mobile session created (admin max 1 device ✓)
+   296→  * Old admin session cookie → 401 on next API call (revocation works ✓)
+   297→  * Driver device-limit logic tested via scripts/test-device-limit.ts — all 5 scenarios pass:
+   298→    1. First desktop login → allowed
+   299→    2. Mobile login → allowed (1+1)
+   300→    3. Tablet login → allowed (replaces existing mobile — tablet normalizes to mobile)
+   301→    4. Desktop replacement → revokes old desktop
+   302→    5. Owner replacement → revokes ALL prior owner sessions
+   303→  * Feature permissions API:
+   304→    - GET returns `features: null` (full access) for users with no restriction row
+   305→    - PUT accepts `features: [...]` array or `null` (clears restriction)
+   306→    - PUT on OWNER → 400 "Cannot restrict the store owner account"
+   307→    - GET on OWNER → returns full catalog (22 features), canRestrict=false
+   308→    - GET on DRIVER → returns applicable catalog (5 features: kanban, orders, driver_dashboard, driver_earnings, driver_profile), canRestrict=true
+   309→  * /api/user/permissions self-service endpoint works (returns user's own features + catalog)
+   310→  * /api/admin/sessions lists all sessions across users with user info
+   311→  * All admin pages render 200 (admin, admin/employees, admin/products)
+   312→  * Driver page renders 200
+   313→- TypeScript check: NO NEW ERRORS introduced (all remaining errors are pre-existing Stripe/Supabase/nodemailer/prisma optional-dep issues)
+   314→- Production build: ✓ Compiled successfully in 11.5s, all routes generated
+   315→
+   316→Stage Summary:
+   317→- DEVICE-LOGIN LIMITS (per user request):
+   318→  * Admin (OWNER): 1 device max — new login kicks out the old device
+   319→  * Employees (DRIVER/PICKER): 2 devices max (1 mobile + 1 desktop) — same-type login replaces the old session; if both type slots are full and a new device of a different type tries to log in, the login is rejected with a clear error message
+   320→  * Customers: unlimited (sessions are tracked for audit but not capped)
+   321→  * Revocation takes effect immediately on the next API call (the user is redirected to /auth/login by the apiFetch wrapper)
+   322→  * Admin can view and revoke any employee's sessions from /admin/employees → Sessions button
+   323→
+   324→- FEATURE PERMISSION TOGGLES (per user request):
+   325→  * Admin (OWNER) opens /admin/employees → clicks "Permissions" on any employee → chooses "Full Access" or "Restricted Access"
+   326→  * When restricted, admin sees a categorized checkbox list of features applicable to that employee's role (e.g. a DRIVER sees driver_dashboard, driver_earnings, driver_profile, kanban, orders; a MANAGER sees all admin features)
+   327→  * OWNER cannot be restricted (full access always)
+   328→  * Default = full access (no row exists) — existing employees keep working unchanged
+   329→  * Enforcement is two-layered:
+   330→    1. SERVER-SIDE: every /api/admin/* route calls `requireAdmin({ feature: 'X' })` which returns 403 FEATURE_NOT_ENABLED if the user lacks the feature
+   331→    2. CLIENT-SIDE: AdminShell filters nav items so the user doesn't see links to features they don't have
+   332→  * Same pattern for /api/driver/* and /api/picker/* via requireDriver/requirePicker guards
+   333→  * Driver and Picker layouts fetch /api/user/permissions on mount and filter their bottom nav accordingly
+   334→  * Example: Admin can give Employee A access to "Orders" + "Kanban" but not "Products" or "Finance" — Employee A will only see those nav links and only those API endpoints will return 200
+   335→
+   336→- All changes build cleanly, run cleanly, and pass TypeScript checks (no new errors)
+   337→- Dev server running at http://localhost:3000 — ready for manual testing
+   338→

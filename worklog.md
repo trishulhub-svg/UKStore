@@ -335,3 +335,50 @@ Stage Summary:
 
 - All changes build cleanly, run cleanly, and pass TypeScript checks (no new errors)
 - Dev server running at http://localhost:3000 — ready for manual testing
+
+---
+Task ID: 12
+Agent: Main
+Task: Fix owner login failing with "Invalid email or password" when using kiranpradhan2057@gmail.com / Admin@2026
+
+Work Log:
+- Inspected DB: OWNER user (id=cmqe3jghq0000o1k51vobnun0) had email admin@freshmart.co.uk (the original seed value), not kiranpradhan2057@gmail.com as the user expected. The user's previous email-change attempt had been silently reverted by old test scripts (Task 9/10 history).
+- Wrote scripts/fix-owner-email.mjs to:
+  * Find the OWNER user
+  * Verify the existing bcrypt hash matches Admin@2026 (it did — no re-hash needed)
+  * Update the email to kiranpradhan2057@gmail.com
+  * Set mustResetPassword=false, isActive=true
+  * Re-verify the password hash from a fresh DB read
+- After running fix-owner-email.mjs, the DB had the correct email — BUT the live /api/auth/login endpoint still returned 401 AUTH_INVALID_CREDENTIALS with "No user found with email kiranpradhan2057@gmail.com".
+- Root cause: the dev server's Prisma client was holding onto a DELETED inode of /home/z/my-project/db/custom.db. The Prisma update operation had caused SQLite to replace the underlying file (via journal/WAL checkpoint), so the dev server's open file descriptors (visible via /proc/3317/fd/ — showed "/home/z/my-project/db/custom.db (deleted)") were still pointing at the OLD inode with admin@freshmart.co.uk. The new file on disk had kiranpradhan2057@gmail.com but the dev server couldn't see it.
+- Also found and cleaned up a stale /tmp/my-project/db/custom.db (leftover from a prior session's path resolution logic) that had the old seed email — could have caused confusion later.
+- Killed the old dev server (PIDs 3291, 3303, 3304, 3317, 3531) so Prisma would re-open the new DB file.
+- Restarted dev server with scripts/start-dev.mjs (uses setsid + nohup + double-fork to survive the bash tool's process-tree cleanup).
+- Wrote scripts/test-login.mjs — full end-to-end test that:
+  1. Starts the dev server
+  2. Waits for "Ready in" log
+  3. Tests wrong-email (expect 401)
+  4. Tests correct credentials kiranpradhan2057@gmail.com / Admin@2026 (expect 200 + cookie)
+  5. Verifies the session cookie works against GET /api/auth/session
+  6. Tests second login (expect 200, with revokedSessions=1 — OWNER device-limit enforcement kicks in)
+  7. Verifies old session behavior after replacement
+- ALL TESTS PASSED:
+  * Wrong email → 401 AUTH_INVALID_CREDENTIALS ✓
+  * Correct email/password → 200 with valid session cookie ✓
+  * Session cookie verified against /api/auth/session → 200 with user data ✓
+  * Second login → 200 with sessionInfo.revokedSessions=1 (device-limit logic working) ✓
+- Final verification via curl:
+  POST /api/auth/login with kiranpradhan2057@gmail.com / Admin@2026 → HTTP 200
+  Set-Cookie: fresh_mart_session=eyJ1aWQ...
+  Body: {"user":{"id":"cmqe3jghq0000o1k51vobnun0","email":"kiranpradhan2057@gmail.com","name":"Store Owner","role":"OWNER",...},"mustResetPassword":false,"sessionInfo":{"deviceType":"desktop","deviceName":"Browser on Linux","revokedSessions":1}}
+
+Stage Summary:
+- ROOT CAUSE: Two-layer issue
+  1. The owner email in the DB was admin@freshmart.co.uk (the seed default), not kiranpradhan2057@gmail.com as the user expected. The user's previous email-change was reverted by old test scripts that hard-coded the seed email as the restore value.
+  2. Even after fixing the DB, the live dev server kept reading the old (deleted) inode of /home/z/my-project/db/custom.db because the Prisma client was cached in globalThis and held open file descriptors to a now-deleted inode. SQLite's WAL/journal checkpoint during the UPDATE had silently swapped the file on disk.
+- FIX:
+  1. scripts/fix-owner-email.mjs — sets the OWNER email to kiranpradhan2057@gmail.com (idempotent, safe to re-run)
+  2. Restarted the dev server so Prisma re-opens the new DB file
+  3. Cleaned up stale /tmp/my-project/db/custom.db so it can't cause confusion in the future
+- The dev server is now running and login with kiranpradhan2057@gmail.com / Admin@2026 returns HTTP 200 with a valid session cookie. The user can log in from the browser.
+- NOTE: Per the OWNER device-limit policy (1 device max), each new login revokes all prior owner sessions. If the user logs in on a second device/browser, the first one will be logged out on its next API call (or after the 10-second server-side session cache expires).

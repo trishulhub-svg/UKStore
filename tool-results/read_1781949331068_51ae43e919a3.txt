@@ -1,0 +1,887 @@
+     1→// ============================================================
+     2→// Prisma client singleton for auth operations
+     3→// Works with the expanded grocery store schema.
+     4→// Auto-creates the DB file AND schema if they don't exist.
+     5→// Auto-seeds the admin user on fresh database creation.
+     6→// Robust for Vercel serverless (ephemeral /tmp filesystem).
+     7→// ============================================================
+     8→
+     9→import { PrismaClient } from '@prisma/client'
+    10→import bcrypt from 'bcryptjs'
+    11→import path from 'path'
+    12→import fs from 'fs'
+    13→
+    14→const globalForPrisma = globalThis as unknown as {
+    15→  prisma: PrismaClient | undefined
+    16→  dbReady: boolean | undefined
+    17→}
+    18→
+    19→// ─── Database Path Resolution ──────────────────────────────────
+    20→
+    21→/**
+    22→ * Detect if we're running on Vercel serverless.
+    23→ */
+    24→function isVercel(): boolean {
+    25→  return !!(process.env.VERCEL || process.env.VERCEL_ENV || process.env.AWS_LAMBDA_FUNCTION_NAME)
+    26→}
+    27→
+    28→/**
+    29→ * Find a working database path.
+    30→ * On Vercel: always use /tmp (writable, ephemeral).
+    31→ * Locally: use the configured DATABASE_URL path.
+    32→ */
+    33→function resolveDatabasePath(): { dbPath: string; dbUrl: string; writable: boolean } {
+    34→  const configuredUrl = process.env.DATABASE_URL || 'file:./db/custom.db'
+    35→  let configuredPath = configuredUrl.replace(/^file:/, '')
+    36→
+    37→  // Resolve relative paths against CWD
+    38→  if (configuredPath && !path.isAbsolute(configuredPath)) {
+    39→    configuredPath = path.resolve(process.cwd(), configuredPath)
+    40→  }
+    41→
+    42→  // On Vercel, always prefer /tmp for the database
+    43→  if (isVercel()) {
+    44→    const tmpPath = '/tmp/freshmart/custom.db'
+    45→    return { dbPath: tmpPath, dbUrl: `file:${tmpPath}`, writable: true }
+    46→  }
+    47→
+    48→  // Locally, use the configured path
+    49→  return { dbPath: configuredPath, dbUrl: `file:${configuredPath}`, writable: true }
+    50→}
+    51→
+    52→// ─── SQL Schema ────────────────────────────────────────────────
+    53→
+    54→const SCHEMA_SQL = `
+    55→CREATE TABLE IF NOT EXISTS "users" (
+    56→  "id" TEXT NOT NULL PRIMARY KEY,
+    57→  "email" TEXT NOT NULL,
+    58→  "name" TEXT,
+    59→  "passwordHash" TEXT,
+    60→  "phone" TEXT,
+    61→  "role" TEXT NOT NULL DEFAULT 'CUSTOMER',
+    62→  "avatarUrl" TEXT,
+    63→  "isActive" BOOLEAN NOT NULL DEFAULT 1,
+    64→  "mustResetPassword" BOOLEAN NOT NULL DEFAULT 0,
+    65→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    66→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    67→);
+    68→CREATE UNIQUE INDEX IF NOT EXISTS "users_email_key" ON "users"("email");
+    69→
+    70→CREATE TABLE IF NOT EXISTS "stores" (
+    71→  "id" TEXT NOT NULL PRIMARY KEY,
+    72→  "name" TEXT NOT NULL,
+    73→  "slug" TEXT NOT NULL,
+    74→  "address" TEXT NOT NULL,
+    75→  "latitude" REAL NOT NULL,
+    76→  "longitude" REAL NOT NULL,
+    77→  "phone" TEXT,
+    78→  "email" TEXT,
+    79→  "logoUrl" TEXT,
+    80→  "defaultBanner1Url" TEXT,
+    81→  "defaultBanner2Url" TEXT,
+    82→  "baseDeliveryFee" REAL NOT NULL DEFAULT 3.5,
+    83→  "perKmCharge" REAL NOT NULL DEFAULT 0.5,
+    84→  "freeDeliveryThreshold" REAL NOT NULL DEFAULT 20.0,
+    85→  "deliveryRadiusKm" REAL NOT NULL DEFAULT 5.0,
+    86→  "isActive" BOOLEAN NOT NULL DEFAULT 1,
+    87→  "isOpen" BOOLEAN NOT NULL DEFAULT 1,
+    88→  "openingHours" TEXT,
+    89→  "bankHolidayMode" TEXT NOT NULL DEFAULT 'auto_close',
+    90→  "notificationTemplate" TEXT,
+    91→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    92→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    93→);
+    94→CREATE UNIQUE INDEX IF NOT EXISTS "stores_slug_key" ON "stores"("slug");
+    95→
+    96→CREATE TABLE IF NOT EXISTS "categories" (
+    97→  "id" TEXT NOT NULL PRIMARY KEY,
+    98→  "storeId" TEXT NOT NULL,
+    99→  "name" TEXT NOT NULL,
+   100→  "slug" TEXT NOT NULL,
+   101→  "description" TEXT,
+   102→  "imageUrl" TEXT,
+   103→  "parentId" TEXT,
+   104→  "sortOrder" INTEGER NOT NULL DEFAULT 0,
+   105→  "isActive" BOOLEAN NOT NULL DEFAULT 1,
+   106→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   107→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+   108→  FOREIGN KEY ("parentId") REFERENCES "categories"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+   109→);
+   110→CREATE UNIQUE INDEX IF NOT EXISTS "categories_storeId_slug_key" ON "categories"("storeId", "slug");
+   111→
+   112→CREATE TABLE IF NOT EXISTS "products" (
+   113→  "id" TEXT NOT NULL PRIMARY KEY,
+   114→  "storeId" TEXT NOT NULL,
+   115→  "categoryId" TEXT NOT NULL,
+   116→  "name" TEXT NOT NULL,
+   117→  "slug" TEXT NOT NULL,
+   118→  "description" TEXT,
+   119→  "price" REAL NOT NULL,
+   120→  "originalPrice" REAL,
+   121→  "vatRate" REAL NOT NULL DEFAULT 0.0,
+   122→  "isHfss" BOOLEAN NOT NULL DEFAULT 0,
+   123→  "isAgeRestricted" BOOLEAN NOT NULL DEFAULT 0,
+   124→  "minimumAge" INTEGER NOT NULL DEFAULT 0,
+   125→  "imageUrl" TEXT,
+   126→  "images" TEXT,
+   127→  "barcode" TEXT,
+   128→  "brand" TEXT,
+   129→  "unit" TEXT NOT NULL DEFAULT 'each',
+   130→  "weightKg" REAL,
+   131→  "volumeLitres" REAL,
+   132→  "aisle" TEXT,
+   133→  "minStockThreshold" INTEGER NOT NULL DEFAULT 5,
+   134→  "substituteProductId" TEXT,
+   135→  "isAvailable" BOOLEAN NOT NULL DEFAULT 1,
+   136→  "stockQuantity" INTEGER NOT NULL DEFAULT 0,
+   137→  "isFeatured" BOOLEAN NOT NULL DEFAULT 0,
+   138→  "rating" REAL NOT NULL DEFAULT 0,
+   139→  "reviewCount" INTEGER NOT NULL DEFAULT 0,
+   140→  "sortOrder" INTEGER NOT NULL DEFAULT 0,
+   141→  "expiryDate" DATETIME,
+   142→  "bestBeforeDate" DATETIME,
+   143→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   144→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   145→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+   146→  FOREIGN KEY ("categoryId") REFERENCES "categories"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+   147→  FOREIGN KEY ("substituteProductId") REFERENCES "products"("id") ON DELETE SET NULL ON UPDATE CASCADE
+   148→);
+   149→CREATE UNIQUE INDEX IF NOT EXISTS "products_storeId_slug_key" ON "products"("storeId", "slug");
+   150→
+   151→CREATE TABLE IF NOT EXISTS "addresses" (
+   152→  "id" TEXT NOT NULL PRIMARY KEY,
+   153→  "userId" TEXT NOT NULL,
+   154→  "label" TEXT,
+   155→  "addressLine1" TEXT NOT NULL,
+   156→  "addressLine2" TEXT,
+   157→  "city" TEXT NOT NULL,
+   158→  "postcode" TEXT NOT NULL,
+   159→  "latitude" REAL,
+   160→  "longitude" REAL,
+   161→  "isDefault" BOOLEAN NOT NULL DEFAULT 0,
+   162→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   163→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+   164→);
+   165→
+   166→CREATE TABLE IF NOT EXISTS "orders" (
+   167→  "id" TEXT NOT NULL PRIMARY KEY,
+   168→  "storeId" TEXT NOT NULL,
+   169→  "customerId" TEXT NOT NULL,
+   170→  "driverId" TEXT,
+   171→  "addressId" TEXT NOT NULL,
+   172→  "status" TEXT NOT NULL DEFAULT 'placed',
+   173→  "subtotal" REAL NOT NULL,
+   174→  "vatAmount" REAL NOT NULL,
+   175→  "deliveryFee" REAL NOT NULL,
+   176→  "total" REAL NOT NULL,
+   177→  "stripeSessionId" TEXT,
+   178→  "stripePaymentIntentId" TEXT,
+   179→  "paymentStatus" TEXT NOT NULL DEFAULT 'pending',
+   180→  "paymentMethod" TEXT,
+   181→  "deliverySlot" DATETIME,
+   182→  "notes" TEXT,
+   183→  "hasChallenge25" BOOLEAN NOT NULL DEFAULT 0,
+   184→  "challenge25Verified" BOOLEAN NOT NULL DEFAULT 0,
+   185→  "batchGroup" TEXT,
+   186→  "packedAt" DATETIME,
+   187→  "dispatchedAt" DATETIME,
+   188→  "deliveredAt" DATETIME,
+   189→  "deliveryPhotoUrl" TEXT,
+   190→  "bankTransferRef" TEXT,
+   191→  "bankTransferVerified" BOOLEAN NOT NULL DEFAULT 0,
+   192→  "promotionId" TEXT,
+   193→  "discountAmount" REAL NOT NULL DEFAULT 0,
+   194→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   195→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   196→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+   197→  FOREIGN KEY ("customerId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+   198→  FOREIGN KEY ("driverId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+   199→  FOREIGN KEY ("addressId") REFERENCES "addresses"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+   200→);
+   201→
+   202→CREATE TABLE IF NOT EXISTS "order_items" (
+   203→  "id" TEXT NOT NULL PRIMARY KEY,
+   204→  "orderId" TEXT NOT NULL,
+   205→  "productId" TEXT NOT NULL,
+   206→  "productName" TEXT NOT NULL,
+   207→  "quantity" INTEGER NOT NULL,
+   208→  "unitPrice" REAL NOT NULL,
+   209→  "vatRate" REAL NOT NULL,
+   210→  "vatAmount" REAL NOT NULL,
+   211→  "subtotal" REAL NOT NULL,
+   212→  "substitutePreference" TEXT,
+   213→  "substitutedWith" TEXT,
+   214→  "picked" BOOLEAN NOT NULL DEFAULT 0,
+   215→  FOREIGN KEY ("orderId") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+   216→  FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+   217→);
+   218→
+   219→CREATE TABLE IF NOT EXISTS "store_settings" (
+   220→  "id" TEXT NOT NULL PRIMARY KEY,
+   221→  "storeId" TEXT NOT NULL,
+   222→  "key" TEXT NOT NULL,
+   223→  "value" TEXT NOT NULL DEFAULT '',
+   224→  "isSecret" BOOLEAN NOT NULL DEFAULT 1,
+   225→  "category" TEXT NOT NULL DEFAULT 'integrations',
+   226→  "description" TEXT,
+   227→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   228→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   229→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   230→);
+   231→CREATE UNIQUE INDEX IF NOT EXISTS "store_settings_storeId_key_key" ON "store_settings"("storeId", "key");
+   232→
+   233→CREATE TABLE IF NOT EXISTS "favourites" (
+   234→  "id" TEXT NOT NULL PRIMARY KEY,
+   235→  "userId" TEXT NOT NULL,
+   236→  "productId" TEXT NOT NULL,
+   237→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   238→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+   239→  FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   240→);
+   241→CREATE UNIQUE INDEX IF NOT EXISTS "favourites_userId_productId_key" ON "favourites"("userId", "productId");
+   242→
+   243→CREATE TABLE IF NOT EXISTS "notifications" (
+   244→  "id" TEXT NOT NULL PRIMARY KEY,
+   245→  "userId" TEXT NOT NULL,
+   246→  "type" TEXT NOT NULL,
+   247→  "title" TEXT NOT NULL,
+   248→  "message" TEXT NOT NULL,
+   249→  "isRead" BOOLEAN NOT NULL DEFAULT 0,
+   250→  "link" TEXT,
+   251→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   252→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   253→);
+   254→
+   255→CREATE TABLE IF NOT EXISTS "driver_profiles" (
+   256→  "id" TEXT NOT NULL PRIMARY KEY,
+   257→  "userId" TEXT NOT NULL,
+   258→  "vehicleType" TEXT,
+   259→  "vehicleReg" TEXT,
+   260→  "nationalInsuranceNumber" TEXT,
+   261→  "rightToWorkUrl" TEXT,
+   262→  "drivingLicenseUrl" TEXT,
+   263→  "verificationStatus" TEXT NOT NULL DEFAULT 'pending',
+   264→  "verifiedBy" TEXT,
+   265→  "verifiedAt" DATETIME,
+   266→  "rejectionReason" TEXT,
+   267→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   268→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   269→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   270→);
+   271→CREATE UNIQUE INDEX IF NOT EXISTS "driver_profiles_userId_key" ON "driver_profiles"("userId");
+   272→
+   273→CREATE TABLE IF NOT EXISTS "delivery_zones" (
+   274→  "id" TEXT NOT NULL PRIMARY KEY,
+   275→  "storeId" TEXT NOT NULL,
+   276→  "name" TEXT NOT NULL,
+   277→  "postcodes" TEXT NOT NULL,
+   278→  "deliveryFee" REAL NOT NULL DEFAULT 0,
+   279→  "minimumOrder" REAL NOT NULL DEFAULT 0,
+   280→  "isActive" BOOLEAN NOT NULL DEFAULT 1,
+   281→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   282→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   283→);
+   284→
+   285→CREATE TABLE IF NOT EXISTS "promotions" (
+   286→  "id" TEXT NOT NULL PRIMARY KEY,
+   287→  "storeId" TEXT NOT NULL,
+   288→  "name" TEXT NOT NULL,
+   289→  "description" TEXT,
+   290→  "discountType" TEXT NOT NULL,
+   291→  "discountValue" REAL NOT NULL,
+   292→  "startDate" DATETIME NOT NULL,
+   293→  "endDate" DATETIME NOT NULL,
+   294→  "minimumOrderValue" REAL NOT NULL DEFAULT 0,
+   295→  "usageLimit" INTEGER,
+   296→  "usedCount" INTEGER NOT NULL DEFAULT 0,
+   297→  "appliesToCategoryIds" TEXT,
+   298→  "excludesHfss" BOOLEAN NOT NULL DEFAULT 0,
+   299→  "isActive" BOOLEAN NOT NULL DEFAULT 1,
+   300→  "code" TEXT,
+   301→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   302→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   303→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   304→);
+   305→
+   306→CREATE TABLE IF NOT EXISTS "attendance_logs" (
+   307→  "id" TEXT NOT NULL PRIMARY KEY,
+   308→  "userId" TEXT NOT NULL,
+   309→  "type" TEXT NOT NULL,
+   310→  "ipAddress" TEXT,
+   311→  "latitude" REAL,
+   312→  "longitude" REAL,
+   313→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   314→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   315→);
+   316→
+   317→CREATE TABLE IF NOT EXISTS "shifts" (
+   318→  "id" TEXT NOT NULL PRIMARY KEY,
+   319→  "userId" TEXT NOT NULL,
+   320→  "date" DATETIME NOT NULL,
+   321→  "startTime" TEXT NOT NULL,
+   322→  "endTime" TEXT NOT NULL,
+   323→  "manualHours" REAL,
+   324→  "role" TEXT NOT NULL,
+   325→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   326→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   327→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   328→);
+   329→
+   330→CREATE TABLE IF NOT EXISTS "wastage_logs" (
+   331→  "id" TEXT NOT NULL PRIMARY KEY,
+   332→  "productId" TEXT NOT NULL,
+   333→  "quantity" INTEGER NOT NULL,
+   334→  "reason" TEXT NOT NULL,
+   335→  "notes" TEXT,
+   336→  "loggedBy" TEXT NOT NULL,
+   337→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   338→  FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   339→);
+   340→
+   341→CREATE TABLE IF NOT EXISTS "expenses" (
+   342→  "id" TEXT NOT NULL PRIMARY KEY,
+   343→  "storeId" TEXT NOT NULL,
+   344→  "category" TEXT NOT NULL,
+   345→  "description" TEXT NOT NULL,
+   346→  "amount" REAL NOT NULL,
+   347→  "date" DATETIME NOT NULL,
+   348→  "receiptUrl" TEXT,
+   349→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   350→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   351→);
+   352→
+   353→CREATE TABLE IF NOT EXISTS "bank_holidays" (
+   354→  "id" TEXT NOT NULL PRIMARY KEY,
+   355→  "storeId" TEXT NOT NULL,
+   356→  "name" TEXT NOT NULL,
+   357→  "date" DATETIME NOT NULL,
+   358→  "mode" TEXT NOT NULL DEFAULT 'auto_close',
+   359→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   360→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   361→);
+   362→
+   363→CREATE TABLE IF NOT EXISTS "banners" (
+   364→  "id" TEXT NOT NULL PRIMARY KEY,
+   365→  "storeId" TEXT NOT NULL,
+   366→  "title" TEXT,
+   367→  "imageUrl" TEXT NOT NULL,
+   368→  "linkUrl" TEXT,
+   369→  "linkCategory" TEXT,
+   370→  "sortOrder" INTEGER NOT NULL DEFAULT 0,
+   371→  "isActive" BOOLEAN NOT NULL DEFAULT 1,
+   372→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   373→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   374→  FOREIGN KEY ("storeId") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   375→);
+   376→
+   377→CREATE TABLE IF NOT EXISTS "employee_profiles" (
+   378→  "id" TEXT NOT NULL PRIMARY KEY,
+   379→  "userId" TEXT NOT NULL,
+   380→  "salary" REAL,
+   381→  "wageRate" REAL,
+   382→  "wageType" TEXT,
+   383→  "bankName" TEXT,
+   384→  "bankAccountNo" TEXT,
+   385→  "bankSortCode" TEXT,
+   386→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   387→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   388→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   389→);
+   390→CREATE UNIQUE INDEX IF NOT EXISTS "employee_profiles_userId_key" ON "employee_profiles"("userId");
+   391→
+   392→CREATE TABLE IF NOT EXISTS "sessions" (
+   393→  "id" TEXT NOT NULL PRIMARY KEY,
+   394→  "userId" TEXT NOT NULL,
+   395→  "tokenHash" TEXT NOT NULL,
+   396→  "deviceType" TEXT NOT NULL DEFAULT 'unknown',
+   397→  "deviceName" TEXT,
+   398→  "userAgent" TEXT,
+   399→  "ipAddress" TEXT,
+   400→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   401→  "lastSeenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   402→  "expiresAt" DATETIME NOT NULL,
+   403→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   404→);
+   405→CREATE INDEX IF NOT EXISTS "sessions_userId_idx" ON "sessions"("userId");
+   406→CREATE INDEX IF NOT EXISTS "sessions_expiresAt_idx" ON "sessions"("expiresAt");
+   407→
+   408→CREATE TABLE IF NOT EXISTS "employee_feature_permissions" (
+   409→  "id" TEXT NOT NULL PRIMARY KEY,
+   410→  "userId" TEXT NOT NULL,
+   411→  "features" TEXT NOT NULL DEFAULT '[]',
+   412→  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   413→  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   414→  FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   415→);
+   416→CREATE UNIQUE INDEX IF NOT EXISTS "employee_feature_permissions_userId_key" ON "employee_feature_permissions"("userId");
+   417→`
+   418→
+   419→// ─── Schema Creation ────────────────────────────────────────────
+   420→
+   421→/**
+   422→ * Column migrations — idempotent ALTER TABLE ADD COLUMN statements.
+   423→ *
+   424→ * SQLite doesn't support `IF NOT EXISTS` for ADD COLUMN, so we query
+   425→ * PRAGMA table_info first and only add columns that are missing.
+   426→ *
+   427→ * Each entry: { table, column, typeDef }
+   428→ * typeDef is the full "TYPE DEFAULT ..." clause as in CREATE TABLE.
+   429→ */
+   430→const COLUMN_MIGRATIONS: Array<{ table: string; column: string; typeDef: string }> = [
+   431→  // stores
+   432→  { table: 'stores', column: 'logoUrl', typeDef: 'TEXT' },
+   433→  { table: 'stores', column: 'defaultBanner1Url', typeDef: 'TEXT' },
+   434→  { table: 'stores', column: 'defaultBanner2Url', typeDef: 'TEXT' },
+   435→  // products — columns added after initial schema
+   436→  { table: 'products', column: 'originalPrice', typeDef: 'REAL' },
+   437→  { table: 'products', column: 'images', typeDef: 'TEXT' },
+   438→  { table: 'products', column: 'brand', typeDef: 'TEXT' },
+   439→  { table: 'products', column: 'rating', typeDef: 'REAL NOT NULL DEFAULT 0' },
+   440→  { table: 'products', column: 'reviewCount', typeDef: 'INTEGER NOT NULL DEFAULT 0' },
+   441→  { table: 'products', column: 'expiryDate', typeDef: 'DATETIME' },
+   442→  { table: 'products', column: 'bestBeforeDate', typeDef: 'DATETIME' },
+   443→  // shifts
+   444→  { table: 'shifts', column: 'manualHours', typeDef: 'REAL' },
+   445→  // users
+   446→  { table: 'users', column: 'mustResetPassword', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+   447→  // orders — columns added for promotions / bank transfers
+   448→  { table: 'orders', column: 'promotionId', typeDef: 'TEXT' },
+   449→  { table: 'orders', column: 'discountAmount', typeDef: 'REAL NOT NULL DEFAULT 0' },
+   450→  { table: 'orders', column: 'bankTransferRef', typeDef: 'TEXT' },
+   451→  { table: 'orders', column: 'bankTransferVerified', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+   452→  { table: 'orders', column: 'deliveryPhotoUrl', typeDef: 'TEXT' },
+   453→  { table: 'orders', column: 'batchGroup', typeDef: 'TEXT' },
+   454→  { table: 'orders', column: 'packedAt', typeDef: 'DATETIME' },
+   455→  { table: 'orders', column: 'dispatchedAt', typeDef: 'DATETIME' },
+   456→  { table: 'orders', column: 'deliveredAt', typeDef: 'DATETIME' },
+   457→  { table: 'orders', column: 'hasChallenge25', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+   458→  { table: 'orders', column: 'challenge25Verified', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+   459→  // order_items
+   460→  { table: 'order_items', column: 'picked', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+   461→]
+   462→
+   463→/**
+   464→ * Idempotently create any missing tables on an EXISTING database.
+   465→ *
+   466→ * The SCHEMA_SQL block uses `CREATE TABLE IF NOT EXISTS` for every table,
+   467→ * so re-running it on an existing DB is safe — it will only create tables
+   468→ * that don't yet exist (e.g. banners, employee_profiles added in later
+   469→ * schema versions) and will not touch existing tables.
+   470→ *
+   471→ * This is critical for production databases that were created with an
+   472→ * older version of SCHEMA_SQL and need new tables added without data loss.
+   473→ */
+   474→async function ensureAllTablesExist(client: PrismaClient): Promise<void> {
+   475→  await executeSchemaSql(client)
+   476→}
+   477→
+   478→async function runColumnMigrations(client: PrismaClient): Promise<void> {
+   479→  for (const m of COLUMN_MIGRATIONS) {
+   480→    try {
+   481→      const cols = await client.$queryRawUnsafe<{ name: string }[]>(
+   482→        `PRAGMA table_info(${m.table})`
+   483→      )
+   484→      const exists = cols.some((c) => c.name === m.column)
+   485→      if (!exists) {
+   486→        await client.$executeRawUnsafe(
+   487→          `ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.typeDef}`
+   488→        )
+   489→        console.log(`[Prisma] Migrated ${m.table}.${m.column} (added column)`)
+   490→      }
+   491→    } catch (err) {
+   492→      // Non-fatal — the column might already exist or the table might not exist yet
+   493→      console.warn(`[Prisma] Column migration ${m.table}.${m.column} skipped:`, err)
+   494→    }
+   495→  }
+   496→}
+   497→
+   498→/**
+   499→ * Execute the schema SQL against a PrismaClient.
+   500→ * Returns true if all statements succeeded.
+   501→ */
+   502→async function executeSchemaSql(client: PrismaClient): Promise<boolean> {
+   503→  const statements = SCHEMA_SQL
+   504→    .split(';')
+   505→    .map(s => s.trim())
+   506→    .filter(s => s.length > 0)
+   507→
+   508→  let failed = 0
+   509→  for (const stmt of statements) {
+   510→    try {
+   511→      await client.$executeRawUnsafe(stmt)
+   512→    } catch (err) {
+   513→      failed++
+   514→      console.error('[Prisma] Schema statement failed:', stmt.substring(0, 80), err)
+   515→    }
+   516→  }
+   517→
+   518→  if (failed > 0) {
+   519→    console.error(`[Prisma] ${failed}/${statements.length} schema statements failed`)
+   520→  }
+   521→
+   522→  return failed === 0
+   523→}
+   524→
+   525→/**
+   526→ * Verify that the database has the essential tables.
+   527→ */
+   528→async function verifyDatabaseSchema(client: PrismaClient): Promise<boolean> {
+   529→  try {
+   530→    const tables = await client.$queryRaw<Array<{ name: string }>>`
+   531→      SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma_%'
+   532→    `
+   533→    const tableNames = tables.map(t => t.name)
+   534→    const requiredTables = ['users', 'stores', 'categories', 'products', 'orders', 'order_items']
+   535→    const missing = requiredTables.filter(t => !tableNames.includes(t))
+   536→
+   537→    if (missing.length > 0) {
+   538→      console.error('[Prisma] Missing required tables:', missing)
+   539→      return false
+   540→    }
+   541→
+   542→    console.log('[Prisma] Database schema verified. Tables:', tableNames.join(', '))
+   543→    return true
+   544→  } catch (err) {
+   545→    console.error('[Prisma] Schema verification failed:', err)
+   546→    return false
+   547→  }
+   548→}
+   549→
+   550→// ─── Database Initialization ─────────────────────────────────────
+   551→
+   552→/**
+   553→ * Try to copy the bundled database file from the deployment
+   554→ * directory to the target path. Returns true if copy succeeded.
+   555→ */
+   556→function tryCopyBundledDatabase(targetPath: string): boolean {
+   557→  try {
+   558→    // Possible locations of the bundled database in the deployment
+   559→    const bundledPaths = [
+   560→      path.resolve(process.cwd(), 'db', 'custom.db'),
+   561→      path.resolve(process.cwd(), '.next', 'server', 'db', 'custom.db'),
+   562→    ]
+   563→
+   564→    for (const bundled of bundledPaths) {
+   565→      if (fs.existsSync(bundled) && fs.statSync(bundled).size > 0) {
+   566→        const dir = path.dirname(targetPath)
+   567→        if (!fs.existsSync(dir)) {
+   568→          fs.mkdirSync(dir, { recursive: true })
+   569→        }
+   570→        fs.copyFileSync(bundled, targetPath)
+   571→        console.log(`[Prisma] Copied bundled database from ${bundled} to ${targetPath}`)
+   572→        return true
+   573→      }
+   574→    }
+   575→  } catch (err) {
+   576→    console.warn('[Prisma] Could not copy bundled database:', err)
+   577→  }
+   578→  return false
+   579→}
+   580→
+   581→/**
+   582→ * Initialize the database:
+   583→ * 1. Resolve the correct path (Vercel → /tmp, local → configured path)
+   584→ * 2. If DB exists and is valid, use it
+   585→ * 3. Try to copy bundled DB from deployment
+   586→ * 4. Otherwise, create from scratch with full schema
+   587→ * 5. Verify the schema is correct
+   588→ * 6. Seed essential data if empty
+   589→ */
+   590→async function initializeDatabase(): Promise<string> {
+   591→  const { dbPath, dbUrl } = resolveDatabasePath()
+   592→  const dir = path.dirname(dbPath)
+   593→
+   594→  // Ensure directory exists
+   595→  if (!fs.existsSync(dir)) {
+   596→    try {
+   597→      fs.mkdirSync(dir, { recursive: true })
+   598→    } catch (mkdirErr) {
+   599→      console.error(`[Prisma] Cannot create directory ${dir}:`, mkdirErr)
+   600→      // Fallback to /tmp
+   601→      const fallbackPath = '/tmp/freshmart/custom.db'
+   602→      const fallbackDir = '/tmp/freshmart'
+   603→      if (!fs.existsSync(fallbackDir)) {
+   604→        fs.mkdirSync(fallbackDir, { recursive: true })
+   605→      }
+   606→      return await initializeDatabaseAtPath(fallbackPath, `file:${fallbackPath}`)
+   607→    }
+   608→  }
+   609→
+   610→  return await initializeDatabaseAtPath(dbPath, dbUrl)
+   611→}
+   612→
+   613→async function initializeDatabaseAtPath(dbPath: string, dbUrl: string): Promise<string> {
+   614→  // ─── Check if existing database is valid ─────────────────────
+   615→  if (fs.existsSync(dbPath) && fs.statSync(dbPath).size > 100) {
+   616→    // File exists and has content — verify it works
+   617→    const testClient = new PrismaClient({
+   618→      datasources: { db: { url: dbUrl } },
+   619→    })
+   620→    try {
+   621→      await testClient.$connect()
+   622→      const isValid = await verifyDatabaseSchema(testClient)
+   623→      if (isValid) {
+   624→        // Existing DB is valid — but it might be missing tables that were
+   625→        // added in later schema versions (banners, employee_profiles, etc.)
+   626→        // and missing columns that were added later. Run BOTH:
+   627→        //   1. ensureAllTablesExist — CREATE TABLE IF NOT EXISTS for every table
+   628→        //   2. runColumnMigrations — ALTER TABLE ADD COLUMN for every new column
+   629→        await ensureAllTablesExist(testClient)
+   630→        await runColumnMigrations(testClient)
+   631→        process.env.DATABASE_URL = dbUrl
+   632→        console.log(`[Prisma] Using existing database at: ${dbPath}`)
+   633→        await testClient.$disconnect()
+   634→        return dbUrl
+   635→      }
+   636→      // Schema is invalid — we need to recreate
+   637→      console.warn('[Prisma] Existing database has invalid schema, recreating...')
+   638→      await testClient.$disconnect()
+   639→    } catch (err) {
+   640→      console.warn('[Prisma] Existing database failed verification:', err)
+   641→      try { await testClient.$disconnect() } catch { /* ignore */ }
+   642→    }
+   643→
+   644→    // Delete the corrupted database
+   645→    try {
+   646→      fs.unlinkSync(dbPath)
+   647→    } catch { /* ignore */ }
+   648→  }
+   649→
+   650→  // ─── Try to copy bundled database ────────────────────────────
+   651→  if (tryCopyBundledDatabase(dbPath)) {
+   652→    const testClient = new PrismaClient({
+   653→      datasources: { db: { url: dbUrl } },
+   654→    })
+   655→    try {
+   656→      await testClient.$connect()
+   657→      const isValid = await verifyDatabaseSchema(testClient)
+   658→      if (isValid) {
+   659→        await ensureAllTablesExist(testClient)
+   660→        await runColumnMigrations(testClient)
+   661→        process.env.DATABASE_URL = dbUrl
+   662→        console.log(`[Prisma] Using copied bundled database at: ${dbPath}`)
+   663→        await testClient.$disconnect()
+   664→        return dbUrl
+   665→      }
+   666→      await testClient.$disconnect()
+   667→    } catch (err) {
+   668→      console.warn('[Prisma] Bundled database verification failed:', err)
+   669→      try { await testClient.$disconnect() } catch { /* ignore */ }
+   670→    }
+   671→  }
+   672→
+   673→  // ─── Create database from scratch ────────────────────────────
+   674→  console.log(`[Prisma] Creating new database at: ${dbPath}`)
+   675→  const dir = path.dirname(dbPath)
+   676→  if (!fs.existsSync(dir)) {
+   677→    fs.mkdirSync(dir, { recursive: true })
+   678→  }
+   679→
+   680→  // Create empty file
+   681→  fs.writeFileSync(dbPath, '')
+   682→  process.env.DATABASE_URL = dbUrl
+   683→
+   684→  const tempClient = new PrismaClient({
+   685→    datasources: { db: { url: dbUrl } },
+   686→  })
+   687→
+   688→  try {
+   689→    await tempClient.$connect()
+   690→    const schemaOk = await executeSchemaSql(tempClient)
+   691→
+   692→    if (!schemaOk) {
+   693→      // Schema creation partially failed — try again
+   694→      console.warn('[Prisma] Retrying schema creation...')
+   695→      await executeSchemaSql(tempClient)
+   696→    }
+   697→
+   698→    // Run column migrations to add any newly added columns
+   699→    await runColumnMigrations(tempClient)
+   700→
+   701→    // Verify schema
+   702→    const isValid = await verifyDatabaseSchema(tempClient)
+   703→    if (!isValid) {
+   704→      throw new Error('Database schema verification failed after creation')
+   705→    }
+   706→
+   707→    console.log('[Prisma] Database created successfully at:', dbPath)
+   708→    return dbUrl
+   709→  } catch (err) {
+   710→    console.error('[Prisma] Database creation failed:', err)
+   711→    throw err
+   712→  } finally {
+   713→    try { await tempClient.$disconnect() } catch { /* ignore */ }
+   714→  }
+   715→}
+   716→
+   717→// ─── Seeding ────────────────────────────────────────────────────
+   718→
+   719→async function seedIfEmpty(prisma: PrismaClient): Promise<void> {
+   720→  try {
+   721→    const userCount = await prisma.user.count()
+   722→    if (userCount > 0) {
+   723→      console.log(`[Prisma] Database has ${userCount} users, skipping seed`)
+   724→      return
+   725→    }
+   726→
+   727→    console.log('[Prisma] Fresh database detected, seeding essential data...')
+   728→
+   729→    // ─── Create Store ────────────────────────────────────
+   730→    const storeId = 'store-fresh-mart-001'
+   731→    await prisma.store.upsert({
+   732→      where: { id: storeId },
+   733→      update: {},
+   734→      create: {
+   735→        id: storeId,
+   736→        name: 'Fresh Mart London',
+   737→        slug: 'fresh-mart-london',
+   738→        address: '123 High Street, Lewisham, London, SE13 6LG',
+   739→        latitude: 51.4612,
+   740→        longitude: -0.0117,
+   741→        phone: '+44 20 1234 5678',
+   742→        email: 'hello@freshmartlondon.co.uk',
+   743→        baseDeliveryFee: 3.50,
+   744→        perKmCharge: 0.50,
+   745→        freeDeliveryThreshold: 20.00,
+   746→        deliveryRadiusKm: 5.00,
+   747→        isActive: true,
+   748→        isOpen: true,
+   749→      },
+   750→    })
+   751→    console.log('[Prisma] Seeded store: Fresh Mart London')
+   752→
+   753→    // ─── Create Owner Account ────────────────────────────
+   754→    const ownerEmail = 'admin@freshmart.co.uk'
+   755→    const ownerPassword = 'Admin@2026'
+   756→    const ownerHash = await bcrypt.hash(ownerPassword, 12)
+   757→    await prisma.user.create({
+   758→      data: {
+   759→        email: ownerEmail,
+   760→        name: 'Store Owner',
+   761→        passwordHash: ownerHash,
+   762→        role: 'OWNER',
+   763→        isActive: true,
+   764→      },
+   765→    })
+   766→    console.log('[Prisma] Seeded owner account:', ownerEmail)
+   767→
+   768→    // ─── Create Driver Account ───────────────────────────
+   769→    const driverEmail = 'driver@freshmart.co.uk'
+   770→    const driverPassword = 'Driver@2026'
+   771→    const driverHash = await bcrypt.hash(driverPassword, 12)
+   772→    const driver = await prisma.user.create({
+   773→      data: {
+   774→        email: driverEmail,
+   775→        name: 'Demo Driver',
+   776→        passwordHash: driverHash,
+   777→        role: 'DRIVER',
+   778→        isActive: true,
+   779→      },
+   780→    })
+   781→    await prisma.driverProfile.create({
+   782→      data: {
+   783→        userId: driver.id,
+   784→        vehicleType: 'bicycle',
+   785→        verificationStatus: 'approved',
+   786→      },
+   787→    })
+   788→    console.log('[Prisma] Seeded driver account:', driverEmail)
+   789→
+   790→    // ─── Create Customer Account ─────────────────────────
+   791→    const customerEmail = 'customer@freshmart.co.uk'
+   792→    const customerPassword = 'Customer@2026'
+   793→    const customerHash = await bcrypt.hash(customerPassword, 12)
+   794→    await prisma.user.create({
+   795→      data: {
+   796→        email: customerEmail,
+   797→        name: 'Demo Customer',
+   798→        passwordHash: customerHash,
+   799→        role: 'CUSTOMER',
+   800→        isActive: true,
+   801→      },
+   802→    })
+   803→    console.log('[Prisma] Seeded customer account:', customerEmail)
+   804→
+   805→    console.log('[Prisma] Seeding complete!')
+   806→  } catch (seedErr) {
+   807→    console.error('[Prisma] Seeding error (non-fatal):', seedErr)
+   808→  }
+   809→}
+   810→
+   811→// ─── Prisma Client Singleton ─────────────────────────────────────
+   812→
+   813→let prismaInstance: PrismaClient | undefined
+   814→let initPromise: Promise<void> | undefined
+   815→
+   816→function getInitPromise(): Promise<void> {
+   817→  if (initPromise) return initPromise
+   818→
+   819→  initPromise = (async () => {
+   820→    // In development, reuse the cached instance
+   821→    if (globalForPrisma.prisma) {
+   822→      prismaInstance = globalForPrisma.prisma
+   823→      return
+   824→    }
+   825→
+   826→    // Initialize database (resolve path, create schema if needed)
+   827→    const dbUrl = await initializeDatabase()
+   828→    process.env.DATABASE_URL = dbUrl
+   829→
+   830→    // Create the Prisma client with the resolved URL
+   831→    prismaInstance = new PrismaClient({
+   832→      datasources: { db: { url: dbUrl } },
+   833→      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+   834→    })
+   835→
+   836→    // Connect and verify
+   837→    await prismaInstance.$connect()
+   838→
+   839→    // Seed if empty
+   840→    await seedIfEmpty(prismaInstance)
+   841→
+   842→    // Cache in development
+   843→    if (process.env.NODE_ENV !== 'production') {
+   844→      globalForPrisma.prisma = prismaInstance
+   845→    }
+   846→
+   847→    globalForPrisma.dbReady = true
+   848→    console.log('[Prisma] Client initialized and ready')
+   849→  })()
+   850→
+   851→  return initPromise
+   852→}
+   853→
+   854→// Eagerly start initialization (fire and forget — getPrisma() will await it)
+   855→getInitPromise().catch(err => {
+   856→  console.error('[Prisma] Initialization failed:', err)
+   857→})
+   858→
+   859→/**
+   860→ * Get the Prisma client, ensuring initialization is complete.
+   861→ * Call this at the start of any route handler that uses the database.
+   862→ */
+   863→export async function getPrisma(): Promise<PrismaClient> {
+   864→  await getInitPromise()
+   865→  if (!prismaInstance) {
+   866→    throw new Error('[Prisma] Client not initialized after awaiting init promise')
+   867→  }
+   868→  return prismaInstance
+   869→}
+   870→
+   871→// For backward compatibility: export a PrismaClient directly.
+   872→// This works because module-level side effects start the init,
+   873→// and by the time a request reaches a route handler, init is done.
+   874→// But if init isn't done yet, the caller should use getPrisma().
+   875→export const prisma = new Proxy({} as PrismaClient, {
+   876→  get(_target, prop, receiver) {
+   877→    if (prismaInstance) {
+   878→      return Reflect.get(prismaInstance, prop, receiver)
+   879→    }
+   880→    // If init isn't done, we need to throw a helpful error
+   881→    throw new Error(
+   882→      '[Prisma] Database not initialized yet. Use getPrisma() in async contexts, ' +
+   883→      'or ensure the module has had time to initialize before making queries.'
+   884→    )
+   885→  },
+   886→})
+   887→

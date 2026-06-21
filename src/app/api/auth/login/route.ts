@@ -88,9 +88,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user
+    console.log(`[Auth][Login] Lookup email="${email}" (raw="${rawEmail}", length=${email.length})`)
     const user = await prisma.user.findUnique({
       where: { email },
     })
+    console.log(`[Auth][Login] Lookup result:`, user ? { id: user.id, email: user.email, role: user.role, isActive: user.isActive, hasPassword: !!user.passwordHash } : 'null')
 
     if (!user || !user.passwordHash) {
       return buildApiError(

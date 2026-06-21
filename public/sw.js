@@ -4,10 +4,15 @@
 //   - Cache-first for static assets (JS, CSS, images, fonts)
 //   - Network-first for API calls and HTML pages
 //   - App shell cached for offline access
+//
+// IMPORTANT: Bump CACHE_NAME + STATIC_CACHE_NAME version numbers
+// whenever you want to force ALL clients to drop their old caches.
+// The activate handler deletes any cache whose name doesn't match
+// the current version.
 // ============================================================
 
-const CACHE_NAME = 'freshmart-v1'
-const STATIC_CACHE_NAME = 'freshmart-static-v1'
+const CACHE_NAME = 'freshmart-v2-login-fix'
+const STATIC_CACHE_NAME = 'freshmart-static-v2-login-fix'
 
 // Static assets to pre-cache (app shell)
 const APP_SHELL = [
@@ -37,12 +42,26 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME && name !== STATIC_CACHE_NAME)
-          .map((name) => caches.delete(name))
+      console.log('[SW] Activating. Existing caches:', cacheNames)
+      // Delete EVERY cache that doesn't match the current version names.
+      // This is aggressive on purpose — any time we bump the version,
+      // ALL old caches get wiped, including any stale API responses
+      // that may have been cached by a previous (buggy) SW version.
+      const cachesToDelete = cacheNames.filter(
+        (name) => name !== CACHE_NAME && name !== STATIC_CACHE_NAME
       )
+      console.log('[SW] Deleting old caches:', cachesToDelete)
+      return Promise.all(cachesToDelete.map((name) => caches.delete(name)))
     }).then(() => self.clients.claim())
+      .then(() => {
+        // Tell all open tabs to refresh so they pick up the new SW
+        return self.clients.matchAll({ type: 'window' })
+      })
+      .then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SW_UPDATED' })
+        })
+      })
   )
 })
 
@@ -51,14 +70,21 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
-  // Skip non-GET requests
+  // NEVER intercept non-GET requests (POST, PUT, DELETE, etc.)
+  // This includes /api/auth/login, /api/auth/logout, etc.
+  // Let them go straight to the network.
   if (request.method !== 'GET') return
 
   // Skip cross-origin requests (except our own)
   if (url.origin !== location.origin) return
 
-  // API calls: network-first
+  // API calls: network-first, but DON'T cache auth endpoints
   if (url.pathname.startsWith('/api/')) {
+    // Never cache auth-related API endpoints — always go to network
+    if (url.pathname.startsWith('/api/auth/')) {
+      event.respondWith(fetch(request))
+      return
+    }
     event.respondWith(networkFirst(request))
     return
   }

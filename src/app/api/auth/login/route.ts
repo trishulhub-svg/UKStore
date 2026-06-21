@@ -15,7 +15,7 @@ function buildApiError(
   details?: string,
   endpoint?: string,
 ) {
-  return NextResponse.json(
+  const response = NextResponse.json(
     {
       error: message,
       code,
@@ -30,6 +30,16 @@ function buildApiError(
     },
     { status }
   )
+  // CRITICAL: Prevent caching of error responses.
+  // Without this, a 401 "wrong password" response could be cached by the
+  // browser or a service worker and served for a subsequent correct login
+  // attempt — making it look like the user can never log in even though
+  // the server would actually accept the credentials.
+  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  response.headers.set('Pragma', 'no-cache')
+  response.headers.set('Expires', '0')
+  response.headers.set('Surrogate-Control', 'no-store')
+  return response
 }
 
 export async function POST(request: NextRequest) {
@@ -208,6 +218,14 @@ export async function POST(request: NextRequest) {
         revokedSessions: limitResult.revokedSessionIds.length,
       },
     })
+
+    // CRITICAL: Prevent any caching of login responses.
+    // A cached 401 (wrong password) could otherwise be served to a subsequent
+    // correct login attempt by the browser's HTTP cache or a service worker.
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+    response.headers.set('Surrogate-Control', 'no-store')
 
     response.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS)
 

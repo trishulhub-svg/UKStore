@@ -421,3 +421,42 @@ Stage Summary:
   4. Go to Application → Storage → click "Clear site data"
   5. Close ALL tabs of the site, then reopen
   6. Try logging in again
+
+---
+Task ID: 13
+Agent: main
+Task: User reports owner login STILL fails with kiranpradhan2057@gmail.com / Admin@2026 despite previous fixes. Resolve definitively.
+
+Work Log:
+- Diagnosed: Only ONE Node dev server running (PID 2774, started 13:48). Confirmed DATABASE_URL in .env points to /home/z/my-project/db/custom.db (the main DB).
+- Confirmed both DB files exist with distinct inodes (527421 vs 42513078348) — they are NOT hardlinks.
+- Direct bcrypt verification: `bcrypt.compare('Admin@2026', hash)` returned TRUE for the hash in /home/z/my-project/db/custom.db.
+- Reviewed dev log: shows 9 POST /api/auth/login requests total — 8 returned 200 (curl tests), 1 returned 401 at line 111 (user's attempt at 09:28:59). NO new POST /api/auth/login requests since that single 401.
+- Conclusion: The user is seeing a STALE error response in their browser. The 401 happened BEFORE the password hash was fixed (at 09:28:59, the DB hash didn't yet verify against Admin@2026). After the fix, login works (200), but the user hasn't actually retried — they're looking at the old error.
+- The user IS hitting our dev server (confirmed by "Cross origin request detected from preview-chat-a86eb334...space-z.ai" in dev log).
+- Bumped service worker cache version v2 → v3 in /home/z/my-project/public/sw.js (CACHE_NAME = 'freshmart-v3-login-fix'). This forces the SW activate handler to delete ALL old caches on every client.
+- Wrote /home/z/my-project/scripts/force-reset-owner-password.mjs and ran it. This FORCE-regenerates a fresh bcrypt hash of "Admin@2026" and updates BOTH DBs:
+    * /home/z/my-project/db/custom.db — owner updated, verify=true ✓
+    * /tmp/my-project/db/custom.db — owner updated, verify=true ✓
+  Both DBs now have: email=kiranpradhan2057@gmail.com, role=OWNER, isActive=true, mustResetPassword=false, passwordHash=fresh bcrypt hash that verifies against Admin@2026.
+- Restarted dev server using scripts/start-dev.mjs (PID 2774). Confirmed "Ready in 1080ms" in dev.log.
+- Verified via curl:
+    * GET /sw.js → returns v3 cache name "freshmart-v3-login-fix" ✓
+    * POST /api/auth/login with kiranpradhan2057@gmail.com / Admin@2026 → HTTP 200 with valid session cookie + cache-control: no-store headers ✓
+- Confirmed pwa-sw-register.tsx correctly:
+    * Listens for updatefound events → calls postMessage SKIP_WAITING
+    * Listens for SW_UPDATED messages → triggers window.location.reload()
+    * Calls reg.update() on every page load to check for new SW versions
+
+Stage Summary:
+- ROOT CAUSE (confirmed): The user's last actual login attempt was at 09:28:59 — BEFORE the password hash was fixed. Since then, the user has NOT retried. They are seeing a stale 401 error response in their browser.
+- CURRENT STATE (all verified):
+    * Both DBs have correct email + fresh password hash + verify=true
+    * Dev server running and responding correctly
+    * SW bumped to v3 (will auto-update on next page visit, clear all old caches, and auto-reload)
+    * Login API returns 200 with no-store headers
+- USER ACTION REQUIRED: User must revisit the login page. The new SW v3 will automatically:
+    1. Install + skipWaiting + activate
+    2. Delete all old caches (v1, v2)
+    3. Post SW_UPDATED message to client → client auto-reloads
+  After the auto-reload, login will work. If for any reason auto-reload doesn't fire, user should hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) or clear site data via DevTools.

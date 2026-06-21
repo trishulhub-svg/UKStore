@@ -11,8 +11,8 @@
 // the current version.
 // ============================================================
 
-const CACHE_NAME = 'freshmart-v2-login-fix'
-const STATIC_CACHE_NAME = 'freshmart-static-v2-login-fix'
+const CACHE_NAME = 'freshmart-v3-login-fix'
+const STATIC_CACHE_NAME = 'freshmart-static-v3-login-fix'
 
 // Static assets to pre-cache (app shell)
 const APP_SHELL = [

@@ -72,7 +72,26 @@ export async function getServerUser(): Promise<ServerUser | null> {
       return null
     }
 
-    // If the token has a sid, validate the session row exists in the DB
+    // If the token has a sid, validate the session row exists in the DB.
+    //
+    // IMPORTANT — Vercel ephemeral filesystem caveat:
+    // On Vercel serverless, each Lambda instance has its own /tmp directory.
+    // The SQLite DB lives at /tmp/freshmart/custom.db, so each instance gets
+    // its own fresh DB on cold start. This means a session row created on
+    // Instance A during login may not exist on Instance B when the user's
+    // next request lands there — even though the HMAC-signed token is still
+    // perfectly valid.
+    //
+    // To avoid logging users out every time Vercel routes them to a different
+    // instance, we treat "session row not found" as a SOFT failure: log a
+    // warning and let the user in based on the valid token signature. The
+    // token's HMAC signature is still verified above, so forged tokens are
+    // still rejected.
+    //
+    // Trade-off: this disables cross-instance session revocation on Vercel.
+    // For production-grade revocation, migrate to a persistent DB (Vercel
+    // Postgres, Turso, Supabase, etc.). On self-hosted deployments with a
+    // persistent DB, revocation still works as designed.
     if (payload.sid) {
       try {
         const prisma = await getPrisma()
@@ -82,14 +101,14 @@ export async function getServerUser(): Promise<ServerUser | null> {
         })
 
         if (!session) {
-          // Session was revoked
-          sessionCache.set(token, { user: null, ts: now })
-          return null
-        }
-
-        // Check session row expiry (separate from token expiry)
-        if (session.expiresAt.getTime() < now) {
-          // Clean up expired session row
+          // Session row not found. On a persistent DB this would mean the
+          // session was revoked → log out. On Vercel's ephemeral filesystem
+          // this more likely means the request hit a different Lambda
+          // instance whose /tmp DB doesn't have this session row.
+          // Fail open: trust the HMAC signature and let the user in.
+          console.warn(`[Auth] Session row ${payload.sid} not found — failing open (likely Vercel ephemeral DB)`)
+        } else if (session.expiresAt.getTime() < now) {
+          // Session row expired — clean it up and reject.
           try {
             await prisma.session.delete({ where: { id: payload.sid } })
           } catch {
@@ -97,12 +116,8 @@ export async function getServerUser(): Promise<ServerUser | null> {
           }
           sessionCache.set(token, { user: null, ts: now })
           return null
-        }
-
-        // Update lastSeenAt (throttled — only update if older than 60s)
-        // We don't throttle here for simplicity; the write is cheap.
-        // Skip on cached requests.
-        if (!cached) {
+        } else if (!cached) {
+          // Update lastSeenAt (throttled — only update if older than 60s)
           try {
             await prisma.session.update({
               where: { id: payload.sid },

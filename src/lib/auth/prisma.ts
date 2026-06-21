@@ -751,7 +751,13 @@ async function seedIfEmpty(prisma: PrismaClient): Promise<void> {
     console.log('[Prisma] Seeded store: Fresh Mart London')
 
     // ─── Create Owner Account ────────────────────────────
-    const ownerEmail = 'admin@freshmart.co.uk'
+    // IMPORTANT: This email is what the store owner will use to log in to
+    // uk-store.vercel.app. If you change it, also update scripts/seed-*.mjs
+    // and the README so everything stays consistent.
+    // On Vercel's ephemeral filesystem, the SQLite DB is wiped on every cold
+    // start, so this seed runs every time the app spins up — the email below
+    // MUST match what the owner expects to log in with.
+    const ownerEmail = 'kiranpradhan2057@gmail.com'
     const ownerPassword = 'Admin@2026'
     const ownerHash = await bcrypt.hash(ownerPassword, 12)
     await prisma.user.create({

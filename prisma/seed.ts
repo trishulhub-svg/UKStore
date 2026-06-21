@@ -200,7 +200,9 @@ async function main() {
   console.log(`✅ Store Settings: ${STORE_SETTINGS.length} created`)
 
   // ─── Owner Account ─────────────────────────────────────
-  const ownerEmail = 'admin@freshmart.co.uk'
+  // IMPORTANT: Must match the email used in src/lib/auth/prisma.ts seedIfEmpty().
+  // On Vercel's ephemeral filesystem, this is what gets re-created on every cold start.
+  const ownerEmail = 'kiranpradhan2057@gmail.com'
   const ownerPassword = 'Admin@2026'
 
   const existingOwner = await prisma.user.findUnique({

@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "1) Exact error message text:  \n   - `AUTH_INVALID_CREDENTIALS`  \n   - `HTTP 401`  \n   - `Invalid email or password.`  \n   - `Show technical details`  \n\n2) Full URL in browser address bar: `uk-store.vercel.app`  \n\n3) Status codes/error codes:  \n   - `HTTP 401`  \n   - `AUTH_INVALID_CREDENTIALS`  \n\n4) Timestamps: `14:52` (top-left corner)  \n\n5) Form fields:  \n   - `Email` input: Contains text `kiranpradhan2057@gmail.com`  \n   - `Password` input: Contains text `Admin@2026`  \n\n6) Page title/brand name/logo text/heading:  \n   - Brand name: `Fresh Mart London` (with green storefront icon)  \n   - Heading: `Welcome back`  \n   - Subheading: `Sign in to your account to continue shopping`  \n\n7) Specific email address mentioned: `kiranpradhan2057@gmail.com` (in the Email input field)  \n\n8) Buttons:  \n   - `Sign in with Google` (button)  \n   - `Sign In` (green button)  \n   - `Register` (link/button)  \n\n9) Other text:  \n   - `OR CONTINUE WITH EMAIL` (divider text)  \n   - `Forgot password?` (link next to Password field)  \n   - `Don't have an account?` (text preceding `Register` link)  \n   - Browser navigation icons (back arrow, forward arrow, plus sign, tab indicator \"8\", menu dots) at the bottom (non-interactive text/elements)",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1782050101,
+  "id": "202606212154466ec743bd0c9f4312",
+  "model": "glm-4.6v",
+  "object": "chat.completion",
+  "request_id": "202606212154466ec743bd0c9f4312",
+  "usage": {
+    "completion_tokens": 357,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 5028,
+    "prompt_tokens_details": {
+      "cached_tokens": 10
+    },
+    "total_tokens": 5385
+  }
+}

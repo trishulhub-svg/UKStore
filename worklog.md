@@ -460,3 +460,34 @@ Stage Summary:
     2. Delete all old caches (v1, v2)
     3. Post SW_UPDATED message to client → client auto-reloads
   After the auto-reload, login will work. If for any reason auto-reload doesn't fire, user should hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) or clear site data via DevTools.
+
+---
+Task ID: 14
+Agent: main
+Task: User reports that after logging in with seeded credentials (admin@freshmart.co.uk / Admin@2026) on uk-store.vercel.app, the page refreshes and redirects back to login instead of going to the owner dashboard.
+
+Work Log:
+- Reviewed screenshot (upload/IMG_5861.png): User is on uk-store.vercel.app, NOT localhost. Login form shows AUTH_INVALID_CREDENTIALS / HTTP 401 error.
+- ROOT CAUSE 1 (Task 13): Seed code hardcoded owner email as admin@freshmart.co.uk, not kiranpradhan2057@gmail.com. Fixed by updating src/lib/auth/prisma.ts and prisma/seed.ts. Committed as e755316.
+- ROOT CAUSE 2 (this task): After successful login, the admin layout calls getServerUser() which does a DB lookup for the session row (by sid). On Vercel's ephemeral /tmp filesystem, each Lambda instance has its OWN fresh SQLite DB. The session row created on Instance A during login does not exist on Instance B when the dashboard loads → prisma.session.findUnique returns null → getServerUser returns null → admin layout redirects to /auth/login.
+- Reviewed code paths:
+    * src/middleware.ts: Uses edge-compatible HMAC verification only (no DB lookup). NOT the problem.
+    * src/lib/auth/edge.ts: verifySessionTokenEdge only checks HMAC signature + expiry. NOT the problem.
+    * src/lib/auth/server.ts getServerUser(): Was treating 'session row not found' as 'session revoked' → returned null → caused redirect. THIS IS THE PROBLEM.
+    * src/app/admin/layout.tsx: Calls getServerUser() and redirects to /auth/login if null.
+    * src/lib/feature-permissions.ts getEnabledFeatures(): For OWNER role, returns null immediately without DB lookup. NOT the problem.
+- FIX: Modified src/lib/auth/server.ts getServerUser() to FAIL OPEN when session row is not found. The HMAC signature is still verified, so forged tokens are still rejected. This matches the existing 'fail open' pattern for DB errors. Added detailed comment explaining the Vercel ephemeral DB caveat.
+- Committed as b776e1a.
+
+Stage Summary:
+- ROOT CAUSE: Vercel Lambda instances have separate ephemeral /tmp filesystems. The SQLite DB at /tmp/freshmart/custom.db is fresh on each instance. Session rows created during login don't exist on other instances, causing getServerUser() to return null and redirect to login.
+- FIX: Made getServerUser() fail open when session row not found — trusts the HMAC-signed token instead. Trade-off: cross-instance session revocation doesn't work on Vercel. Proper fix is to migrate to a persistent DB (Vercel Postgres, Turso, etc.).
+- DEPLOYMENT: Both fixes (e755316 + b776e1a) are committed locally but need to be pushed to GitHub to trigger Vercel auto-deploy. GitHub token in local git config is expired/invalid — user needs to push from their own machine.
+- USER ACTION: After the code is pushed and Vercel redeploys, the user should be able to:
+    1. Log in with admin@freshmart.co.uk / Admin@2026 (the seeded credentials)
+    2. Reach the owner dashboard at /admin without being redirected back to login
+- LONG-TERM RECOMMENDATION: Migrate from SQLite to a persistent database (Vercel Postgres, Turso, or Supabase) so that:
+    * Session data persists across Lambda instances
+    * Device-based login restrictions work correctly
+    * Employee feature permissions work correctly
+    * All business data (products, orders, customers) persists

@@ -1,9 +1,21 @@
 // ============================================================
-// Prisma client singleton for auth operations
-// Works with the expanded grocery store schema.
-// Auto-creates the DB file AND schema if they don't exist.
-// Auto-seeds the admin user on fresh database creation.
-// Robust for Vercel serverless (ephemeral /tmp filesystem).
+// Prisma client singleton for auth operations.
+//
+// Supports TWO backends, selected at runtime via env vars:
+//
+//   1. TURSO (libSQL) — preferred for production / Vercel.
+//      Activated when `TURSO_DATABASE_URL` is set.
+//      Schema is managed via `prisma db push` (run from laptop/CI),
+//      NOT via the runtime SCHEMA_SQL block below.
+//      Data is PERSISTENT across Lambda cold starts.
+//
+//   2. SQLite file — local dev fallback.
+//      Activated when `TURSO_DATABASE_URL` is NOT set.
+//      Auto-creates the DB file AND schema if they don't exist.
+//      Auto-seeds the admin user on fresh database creation.
+//      On Vercel this falls back to /tmp/freshmart/custom.db (EPHEMERAL —
+//      data is wiped on every cold start). Use Turso in production.
+//
 // ============================================================
 
 import { PrismaClient } from '@prisma/client'
@@ -16,7 +28,17 @@ const globalForPrisma = globalThis as unknown as {
   dbReady: boolean | undefined
 }
 
-// ─── Database Path Resolution ──────────────────────────────────
+// ─── Backend Selection ─────────────────────────────────────────
+
+/**
+ * Returns true if Turso (libSQL) backend should be used.
+ * Triggered by presence of `TURSO_DATABASE_URL` env var.
+ */
+function isTursoEnabled(): boolean {
+  return !!process.env.TURSO_DATABASE_URL
+}
+
+// ─── Database Path Resolution (SQLite fallback only) ──────────
 
 /**
  * Detect if we're running on Vercel serverless.
@@ -832,6 +854,42 @@ async function seedIfEmpty(prisma: PrismaClient): Promise<void> {
 let prismaInstance: PrismaClient | undefined
 let initPromise: Promise<void> | undefined
 
+/**
+ * Initialize the Prisma client against a Turso (libSQL) backend.
+ *
+ * Turso is a hosted libSQL database. Schema management happens via
+ * `prisma db push` (run from the developer's laptop or CI), NOT at runtime.
+ * This function only:
+ *   1. Creates the libSQL client with URL + auth token
+ *   2. Wraps it in the Prisma libSQL adapter
+ *   3. Creates a PrismaClient instance with that adapter
+ *   4. Runs `seedIfEmpty()` to ensure the owner account exists on first deploy
+ */
+async function initializeTursoClient(): Promise<PrismaClient> {
+  // Dynamic imports so the SQLite-only code path doesn't need these packages
+  // installed (and so bundlers can tree-shake them when unused).
+  const { PrismaLibSql } = await import('@prisma/adapter-libsql')
+
+  const url = process.env.TURSO_DATABASE_URL!
+  const authToken = process.env.TURSO_AUTH_TOKEN // may be undefined for local libSQL file
+
+  // PrismaLibSql takes a config object (url + authToken) and creates the
+  // underlying libSQL client internally. No need to call createClient() ourselves.
+  const adapter = new PrismaLibSql({ url, authToken })
+  const client = new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+  })
+
+  await client.$connect()
+  console.log(`[Prisma] Connected to Turso at ${url.replace(/:[^:@]+@/, ':***@')}`)
+
+  // Ensure the owner account exists on first deploy. This is idempotent.
+  await seedIfEmpty(client)
+
+  return client
+}
+
 function getInitPromise(): Promise<void> {
   if (initPromise) return initPromise
 
@@ -842,21 +900,20 @@ function getInitPromise(): Promise<void> {
       return
     }
 
-    // Initialize database (resolve path, create schema if needed)
-    const dbUrl = await initializeDatabase()
-    process.env.DATABASE_URL = dbUrl
-
-    // Create the Prisma client with the resolved URL
-    prismaInstance = new PrismaClient({
-      datasources: { db: { url: dbUrl } },
-      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-    })
-
-    // Connect and verify
-    await prismaInstance.$connect()
-
-    // Seed if empty
-    await seedIfEmpty(prismaInstance)
+    if (isTursoEnabled()) {
+      // ─── Turso (libSQL) backend ────────────────────────────
+      prismaInstance = await initializeTursoClient()
+    } else {
+      // ─── SQLite file backend (local dev / Vercel fallback) ──
+      const dbUrl = await initializeDatabase()
+      process.env.DATABASE_URL = dbUrl
+      prismaInstance = new PrismaClient({
+        datasources: { db: { url: dbUrl } },
+        log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+      })
+      await prismaInstance.$connect()
+      await seedIfEmpty(prismaInstance)
+    }
 
     // Cache in development
     if (process.env.NODE_ENV !== 'production') {

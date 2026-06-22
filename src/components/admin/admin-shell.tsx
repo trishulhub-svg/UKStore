@@ -78,7 +78,7 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
       {/* Desktop Sidebar - unchanged */}
       <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-gray-200">
         {/* Logo */}
-        <div className="flex items-center gap-2 px-6 h-16 border-b border-gray-200">
+        <div className="flex items-center gap-2 px-6 h-16 border-b border-gray-200 flex-shrink-0">
           <StoreLogo size={32} />
           <div>
             <p className="font-bold text-gray-900 text-sm">{storeName} Admin</p>
@@ -86,10 +86,10 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
           </div>
         </div>
         {/* Fresh gradient strip under the logo — brand presence */}
-        <div className="fm-sidebar-strip" aria-hidden="true" />
+        <div className="fm-sidebar-strip flex-shrink-0" aria-hidden="true" />
 
-        {/* Navigation */}
-        <nav className="flex-1 px-4 py-4 space-y-1">
+        {/* Navigation — vertically scrollable when content overflows */}
+        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto overflow-x-hidden min-h-0">
           {visibleNavItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href ||
@@ -114,9 +114,9 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
         </nav>
 
         {/* User Info */}
-        <div className="border-t border-gray-200 p-4">
+        <div className="border-t border-gray-200 p-4 flex-shrink-0">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-[#16a34a]/10 flex items-center justify-center flex-shrink-0">
               <UserIcon className="h-4 w-4 text-[#16a34a]" />
             </div>
             <div className="flex-1 min-w-0">
@@ -162,21 +162,18 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
       <div className="lg:pl-64 flex-1 min-w-0">
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-40 bg-white border-b border-gray-200">
-          <div className="flex items-center justify-between px-4 h-14">
-            <div className="flex items-center gap-2">
-              <StoreLogo size={28} />
-              <span className="font-bold text-sm text-gray-900">Admin</span>
-              <Separator orientation="vertical" className="h-5 mx-1" />
-              <span className="text-sm text-gray-600">{getPageTitle(pathname)}</span>
-            </div>
+          <div className="flex items-center gap-2 px-3 h-14">
+            {/* Mobile hamburger — on the LEFT because the sidebar slides in from the left.
+                Putting it on the right (where it used to be) feels disjointed: the trigger
+                and the panel it opens are on opposite sides of the screen. */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Open menu">
+                <Button variant="ghost" size="icon" className="h-11 w-11 flex-shrink-0 order-first" aria-label="Open menu">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[280px] sm:max-w-[280px] p-0 flex flex-col">
-                <SheetHeader className="px-6 h-16 flex flex-row items-center gap-2 border-b border-gray-200 p-0 mx-0 mb-0">
+              <SheetContent side="left" className="w-[280px] sm:max-w-[280px] p-0 flex flex-col h-screen">
+                <SheetHeader className="px-6 h-16 flex flex-row items-center gap-2 border-b border-gray-200 p-0 mx-0 mb-0 flex-shrink-0">
                   <div className="flex items-center gap-2 px-6 w-full h-16">
                     <StoreLogo size={32} />
                     <div>
@@ -186,8 +183,11 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
                   </div>
                 </SheetHeader>
 
-                {/* Navigation */}
-                <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                {/* Fresh gradient strip under the logo */}
+                <div className="fm-sidebar-strip flex-shrink-0" aria-hidden="true" />
+
+                {/* Navigation — scrollable when content overflows the sheet height */}
+                <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden min-h-0">
                   {visibleNavItems.map((item) => {
                     const Icon = item.icon
                     const isActive = pathname === item.href ||
@@ -204,18 +204,18 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
                             : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                         }`}
                       >
-                        <Icon className="h-5 w-5" />
-                        {item.label}
-                        {isActive && <ChevronRight className="h-4 w-4 ml-auto" />}
+                        <Icon className="h-5 w-5 flex-shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                        {isActive && <ChevronRight className="h-4 w-4 ml-auto flex-shrink-0" />}
                       </Link>
                     )
                   })}
                 </nav>
 
-                {/* User Info & Actions */}
-                <div className="border-t border-gray-200 p-4">
+                {/* User Info & Actions — pinned at the bottom, never scrolled away */}
+                <div className="border-t border-gray-200 p-4 flex-shrink-0">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center flex-shrink-0">
                       <UserIcon className="h-5 w-5 text-[#16a34a]" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -252,6 +252,14 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
                 </div>
               </SheetContent>
             </Sheet>
+
+            {/* Logo + page title — sits to the right of the hamburger */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <StoreLogo size={28} />
+              <span className="font-bold text-sm text-gray-900 flex-shrink-0">Admin</span>
+              <Separator orientation="vertical" className="h-5 mx-1 flex-shrink-0" />
+              <span className="text-sm text-gray-600 truncate">{getPageTitle(pathname)}</span>
+            </div>
           </div>
         </header>
 

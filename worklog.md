@@ -716,3 +716,40 @@ Stage Summary:
   * src/app/globals.css
   * public/sw.js (bumped cache version to v4-responsive-fix)
 - After push, uk-store.vercel.app will auto-redeploy (~2-3 min) and the mobile cropping will be resolved across all surfaces.
+
+---
+Task ID: 8
+Agent: Main
+Task: Three UX refinements — (a) make admin sidebar scrollable, (b) move mobile hamburger from right to left (sidebar slides in from left), (c) add attractive logo splash animation on initial site load.
+
+Work Log:
+- Read existing admin-shell.tsx, navbar.tsx, customer-layout.tsx, store-logo.tsx, globals.css, layout.tsx to understand current sidebar/hamburger/loading patterns.
+- Confirmed git status: prior responsive commit (25fd02d) already pushed. Only trishul-protocol submodule has unrelated changes — left alone.
+- admin-shell.tsx (desktop sidebar): added `overflow-y-auto overflow-x-hidden min-h-0` to the nav container + `flex-shrink-0` to logo/strip/user-info so they stay pinned when the nav scrolls.
+- admin-shell.tsx (mobile sheet): added `h-screen` to SheetContent, `flex-shrink-0` to header/strip/user-info, kept `overflow-y-auto` on nav so the menu scrolls inside the sheet; user actions stay pinned at the bottom.
+- admin-shell.tsx (mobile header): rewrote the flex row so the SheetTrigger (hamburger button) is FIRST in DOM order with `order-first flex-shrink-0`, then the logo + page title sit to its right with `min-w-0 flex-1 truncate` so long page titles don't push the layout wide. Now the hamburger appears on the LEFT side, matching the side the sidebar slides in from.
+- Created src/components/layout/logo-splash.tsx — a self-contained splash component:
+  * Lazy useState initializer decides on mount (client-only) whether to show, based on `sessionStorage['fm-logo-splash-shown']` — only fires once per browser session.
+  * Animation: logo scales+rotates in with a spring-easing curve, a conic gradient ring sweeps around it, a soft green halo pulses, then the store name fades up and a slim progress bar fills.
+  * Respects `prefers-reduced-motion`: shows a brief static splash with no animation.
+  * Renders null on the server (no hydration mismatch); mounts on the client.
+  * Reads store logo + name from useStoreInfo() so it uses the real uploaded logo when available, falls back to the green Store icon + "Fresh Mart" otherwise.
+  * Uses scoped <style jsx global> with fm-splash-* class names so the styles don't leak.
+- Wired LogoSplash into src/app/layout.tsx — placed inside StoreInfoProvider (so it can read the store info) but outside {children} so it overlays the whole page on first load.
+- Verified all existing tables already have overflow-x-auto wrappers (prior commit); no additional fixes needed.
+- Verified all grid-cols-3+ usages already have responsive variants; the only non-responsive ones (admin-shell 3-button grid, csv-import-export 3-stat grid inside max-w-lg modal, shifts-client 8-col calendar inside overflow-x-auto) are intentional and fit their containers.
+- Verified all whitespace-nowrap usages are on appropriate elements (table cells inside overflow wrappers, shadcn UI primitives, short price labels).
+- Ran `npm run lint` — only errors are in trishul-protocol submodule (not my code). My new code is clean.
+- Ran `npm run build` — `✓ Compiled successfully in 11.9s`. Only warnings are the pre-existing Stripe-package-not-installed notices.
+- Verified dev server (http://localhost:3001) returns 200 on / and /admin (after redirect).
+- Verified logo-splash.tsx is correctly bundled as an app-client ecmascript chunk.
+- Verified SSR HTML correctly omits the splash (returns null server-side) — the splash only mounts on the client after hydration.
+
+Stage Summary:
+- Three user requests delivered:
+  1. Admin sidebar now scrolls vertically (both desktop fixed sidebar and mobile SheetContent).
+  2. Mobile hamburger button moved from right to LEFT side of the admin header, matching the sidebar's left-side origin.
+  3. New attractive logo splash animation plays once per browser session on first site load — uses real store logo/name when available, respects prefers-reduced-motion, no hydration mismatch.
+- Files changed: src/components/admin/admin-shell.tsx (modified), src/components/layout/logo-splash.tsx (new), src/app/layout.tsx (modified).
+- Build: ✓ Compiled successfully. Lint: ✓ Clean for project code (only submodule has pre-existing errors).
+- Not committed yet — next step is the commit + push.

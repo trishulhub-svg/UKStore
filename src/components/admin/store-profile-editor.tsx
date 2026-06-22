@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { MapPin, Phone, Mail, Building2, Save, Loader2, ImagePlus, X } from 'lucide-react'
+import { MapPin, Phone, Mail, Building2, Save, Loader2, ImagePlus, X, Search, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import { validateImageFile, fileToDataUrl } from '@/lib/upload'
 import { apiFetch } from '@/lib/api-fetch'
@@ -33,10 +33,135 @@ export function StoreProfileEditor() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  // Geocoding state for the address → lat/lng auto-fill flow.
+  // `geocoding` is true while a lookup is in flight; `geocodeSource` is a
+  // short human-readable string (e.g. "postcodes.io" or "OpenStreetMap")
+  // shown under the inputs so the user knows where the coordinates came
+  // from. `geocodeError` is set if the lookup fails.
+  const [geocoding, setGeocoding] = useState(false)
+  const [geocodeSource, setGeocodeSource] = useState<string | null>(null)
+  const [geocodeError, setGeocodeError] = useState<string | null>(null)
+  // Debounce timer ref — keeps us from firing a lookup on every keystroke.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track the address value at the time of the last successful geocode so
+  // we can re-trigger when the user meaningfully changes the address.
+  const lastGeocodedAddressRef = useRef<string>('')
 
   useEffect(() => {
     fetchProfile()
   }, [])
+
+  // Cleanup the debounce timer if the component unmounts mid-typing.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
+
+  /**
+   * Call the server-side /api/geocode endpoint with the current address
+   * and populate the latitude/longitude fields on success. The inputs are
+   * read-only — this is the ONLY way coordinates get entered now.
+   *
+   * Resolution order on the server: postcodes.io (for the postcode portion)
+   * → OpenStreetMap Nominatim (for the full free-form address, worldwide).
+   */
+  const geocodeAddress = async (address: string) => {
+    const trimmed = address.trim()
+    if (trimmed.length < 5) {
+      // Too short to geocode — clear any previous coords and bail out
+      // without showing an error (the user is still typing).
+      setProfile((prev) => ({ ...prev, latitude: null, longitude: null }))
+      setGeocodeSource(null)
+      setGeocodeError(null)
+      lastGeocodedAddressRef.current = ''
+      return
+    }
+
+    setGeocoding(true)
+    setGeocodeError(null)
+    try {
+      // Try to extract a UK postcode from the address string — gives
+      // postcodes.io the best chance to return a high-accuracy result.
+      const pcMatch = trimmed.match(/[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}/i)
+      const postcode = pcMatch ? pcMatch[0] : ''
+
+      const res = await fetch('/api/geocode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: trimmed, postcode }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+          setProfile((prev) => ({
+            ...prev,
+            latitude: data.latitude,
+            longitude: data.longitude,
+          }))
+          setGeocodeSource(data.source === 'nominatim' ? 'OpenStreetMap' : (data.source || 'geocoder'))
+          lastGeocodedAddressRef.current = trimmed
+          setGeocodeError(null)
+          // Subtle confirmation toast — non-blocking, doesn't interrupt typing.
+          toast.success(`Coordinates found via ${data.source === 'nominatim' ? 'OpenStreetMap' : data.source}`, {
+            description: `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`,
+            duration: 2500,
+          })
+          return
+        }
+      }
+
+      // Geocoding failed — show an inline error under the inputs and leave
+      // any existing coordinates alone (the user might be mid-edit).
+      setGeocodeError('Could not find coordinates for this address. Try including a postcode.')
+      toast.error('Could not auto-find coordinates', {
+        description: 'Try adding a postcode, or check the address for typos.',
+        duration: 3500,
+      })
+    } catch {
+      setGeocodeError('Network error while looking up coordinates.')
+    } finally {
+      setGeocoding(false)
+    }
+  }
+
+  /**
+   * Debounced geocode trigger — fired when the user types in the address
+   * field. Waits 900ms after the last keystroke so we don't spam the API
+   * while the user is still typing out the full address.
+   *
+   * We also skip the call if the address hasn't meaningfully changed since
+   * the last successful geocode (avoids re-geocoding after trivial edits
+   * like trailing whitespace).
+   */
+  const handleAddressChange = (value: string) => {
+    setProfile((prev) => ({ ...prev, address: value }))
+    setGeocodeError(null)
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      const trimmed = value.trim()
+      if (trimmed === lastGeocodedAddressRef.current) return
+      geocodeAddress(trimmed)
+    }, 900)
+  }
+
+  /**
+   * Immediate geocode on blur — if the user tabs/clicks away from the
+   * address field, cancel any pending debounce and geocode right now so
+   * the coords are populated by the time they move to the next input.
+   */
+  const handleAddressBlur = () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
+    const trimmed = profile.address.trim()
+    if (trimmed && trimmed !== lastGeocodedAddressRef.current) {
+      geocodeAddress(trimmed)
+    }
+  }
 
   const fetchProfile = async () => {
     try {
@@ -175,42 +300,102 @@ export function StoreProfileEditor() {
             <MapPin className="h-4 w-4 text-gray-400" />
             Store Address
           </Label>
-          <Input
-            id="store-address"
-            value={profile.address}
-            onChange={(e) => setProfile({ ...profile, address: e.target.value })}
-            placeholder="e.g., 123 High Street, Lewisham, London, SE13 6LG"
-            className="max-w-lg"
-          />
-          <p className="text-xs text-gray-500">Full address shown in the footer and delivery map.</p>
+          <div className="flex gap-2 max-w-lg">
+            <Input
+              id="store-address"
+              value={profile.address}
+              onChange={(e) => handleAddressChange(e.target.value)}
+              onBlur={handleAddressBlur}
+              placeholder="e.g., 123 High Street, Lewisham, London, SE13 6LG"
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => geocodeAddress(profile.address)}
+              disabled={geocoding || profile.address.trim().length < 5}
+              aria-label="Find coordinates from address"
+              className="flex-shrink-0"
+              title="Find coordinates from address"
+            >
+              {geocoding ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          <p className="text-xs text-gray-500">
+            Full address shown in the footer and delivery map. Enter the full address
+            (ideally with a postcode) and the coordinates below will be filled in
+            automatically.
+          </p>
         </div>
 
-        {/* Latitude & Longitude */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
-          <div className="space-y-2">
-            <Label htmlFor="store-lat" className="text-sm font-medium">Latitude</Label>
-            <Input
-              id="store-lat"
-              type="number"
-              step="any"
-              value={profile.latitude ?? ''}
-              onChange={(e) => setProfile({ ...profile, latitude: e.target.value ? parseFloat(e.target.value) : null })}
-              placeholder="e.g., 51.4612"
-            />
+        {/* Latitude & Longitude — read-only, auto-populated from the address */}
+        <div className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
+            <div className="space-y-2">
+              <Label htmlFor="store-lat" className="text-sm font-medium flex items-center gap-1.5">
+                Latitude
+                <Lock className="h-3 w-3 text-gray-400" aria-label="Auto-filled, read-only" />
+              </Label>
+              <Input
+                id="store-lat"
+                type="number"
+                step="any"
+                value={profile.latitude ?? ''}
+                readOnly
+                placeholder="Auto-filled from address"
+                className="bg-gray-50 text-gray-700 cursor-not-allowed focus:bg-gray-50"
+                tabIndex={-1}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="store-lng" className="text-sm font-medium flex items-center gap-1.5">
+                Longitude
+                <Lock className="h-3 w-3 text-gray-400" aria-label="Auto-filled, read-only" />
+              </Label>
+              <Input
+                id="store-lng"
+                type="number"
+                step="any"
+                value={profile.longitude ?? ''}
+                readOnly
+                placeholder="Auto-filled from address"
+                className="bg-gray-50 text-gray-700 cursor-not-allowed focus:bg-gray-50"
+                tabIndex={-1}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="store-lng" className="text-sm font-medium">Longitude</Label>
-            <Input
-              id="store-lng"
-              type="number"
-              step="any"
-              value={profile.longitude ?? ''}
-              onChange={(e) => setProfile({ ...profile, longitude: e.target.value ? parseFloat(e.target.value) : null })}
-              placeholder="e.g., -0.0117"
-            />
+          {/* Status line under the read-only inputs */}
+          <div className="text-xs max-w-lg">
+            {geocoding ? (
+              <p className="text-gray-500 flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Looking up coordinates...
+              </p>
+            ) : geocodeError ? (
+              <p className="text-amber-600">{geocodeError}</p>
+            ) : geocodeSource && profile.latitude !== null && profile.longitude !== null ? (
+              <p className="text-[#16a34a]">
+                Auto-filled via {geocodeSource} — used for the delivery map and
+                distance calculations.
+              </p>
+            ) : profile.latitude !== null && profile.longitude !== null ? (
+              <p className="text-gray-500">
+                Coordinates saved from a previous lookup. Edit the address above
+                to refresh them.
+              </p>
+            ) : (
+              <p className="text-gray-500">
+                Enter the full address above (with a postcode for best accuracy) —
+                coordinates will be filled in automatically.
+              </p>
+            )}
           </div>
         </div>
-        <p className="text-xs text-gray-500 -mt-3">Used for the delivery map and distance calculations. Find your coordinates at <a href="https://www.latlong.net/" target="_blank" rel="noopener noreferrer" className="text-[#16a34a] hover:underline">latlong.net</a>.</p>
 
         {/* Phone */}
         <div className="space-y-2">

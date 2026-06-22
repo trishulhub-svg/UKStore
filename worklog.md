@@ -753,3 +753,48 @@ Stage Summary:
 - Files changed: src/components/admin/admin-shell.tsx (modified), src/components/layout/logo-splash.tsx (new), src/app/layout.tsx (modified).
 - Build: ✓ Compiled successfully. Lint: ✓ Clean for project code (only submodule has pre-existing errors).
 - Not committed yet — next step is the commit + push.
+
+---
+Task ID: 9
+Agent: Main
+Task: In Owner's settings → Store Profile, auto-fill latitude/longitude from the address (read-only).
+
+Work Log:
+- Read src/components/admin/store-profile-editor.tsx — confirmed lat/lng were editable number inputs that the user had to fill manually (with a "find your coordinates at latlong.net" hint).
+- Read src/app/api/geocode/route.ts — confirmed it only handled UK postcodes via postcodes.io. No free-form address support.
+- Read src/lib/delivery-location.tsx — confirmed geocodeAddress() helper exists on the client, calls /api/geocode, and the server uses postcodes.io only.
+- Upgraded src/app/api/geocode/route.ts:
+  * Kept the existing postcodes.io resolution path (UK postcode lookup → outward-code autocomplete fallback).
+  * Added a new OpenStreetMap Nominatim fallback for full free-form addresses — works worldwide, no API key required.
+  * Set a descriptive User-Agent header per Nominatim usage policy.
+  * Biased the search toward the UK (countrycodes=gb + UK viewbox) so the user doesn't have to append "UK" to every address.
+  * Returns `displayName` from Nominatim in the response so the admin can verify the geocoder picked the right place.
+- Updated src/components/admin/store-profile-editor.tsx:
+  * Added three new state pieces: `geocoding` (loading flag), `geocodeSource` (where the coords came from), `geocodeError` (inline error message).
+  * Added a `debounceRef` and `lastGeocodedAddressRef` to manage debounced auto-geocoding.
+  * New `geocodeAddress()` function: extracts any UK postcode from the address string, calls /api/geocode, populates lat/lng in state, shows a success toast with the source, sets the status line under the inputs.
+  * New `handleAddressChange()`: 900ms-debounced geocode trigger on every keystroke (skips if address hasn't meaningfully changed since the last successful lookup).
+  * New `handleAddressBlur()`: immediate geocode on blur so coords are populated by the time the user tabs to the next field.
+  * Added a magnifying-glass "Find coordinates" button next to the address input as a manual trigger (useful when the user pastes an address — paste doesn't always fire blur in the expected order).
+  * Made BOTH lat and lng inputs `readOnly` with `bg-gray-50 cursor-not-allowed`, added a Lock icon next to each label, set `tabIndex={-1}` so they're skipped during keyboard nav, and updated the placeholder to "Auto-filled from address".
+  * Added a status line under the inputs that shows: spinner while looking up, amber error message on failure, green confirmation with the source name on success, or the neutral "Enter the full address above..." hint when no coords exist yet.
+  * Removed the "Find your coordinates at latlong.net" help link — no longer needed.
+- Smoke-tested the geocode API on the dev server:
+  * "10 Downing Street, London, SW1A 2AA" → 51.5035, -0.1277 (nominatim) ✓
+  * "Lewisham, SE13 6LG" → 51.4593, -0.0116 (nominatim) ✓
+  * { postcode: "SE13 6LG" } → 51.4596, -0.0059 (postcodes.io-outward) ✓
+  * Both address + postcode → postcodes.io takes precedence (more accurate for UK) ✓
+- Ran `npm run lint` — only pre-existing trishul-protocol submodule errors. No new errors in my code.
+- Ran `npm run build` — `✓ Compiled successfully in 13.0s`. 71/71 pages generated.
+
+Stage Summary:
+- Owner's Store Profile now auto-fills lat/lng from the address.
+- The address input has THREE geocoding triggers:
+  1. Debounced (900ms) while typing.
+  2. Immediate on blur (so the user sees coords by the time they tab away).
+  3. Manual "Find coordinates" button (magnifying-glass icon) for paste/edge cases.
+- Lat/lng inputs are now read-only with a Lock icon — the ONLY way coordinates get entered is via the geocoder.
+- Server-side geocoder resolution order: postcodes.io (UK postcode, high accuracy) → OpenStreetMap Nominatim (full address, worldwide, no API key).
+- Status line under the inputs always tells the user what happened: looking up / failed / success (with source) / waiting for address.
+- Files changed: src/app/api/geocode/route.ts (modified), src/components/admin/store-profile-editor.tsx (modified).
+- Build ✓, lint ✓ (only pre-existing submodule errors). Not yet committed.

@@ -572,3 +572,53 @@ Stage Summary:
     * Smoke-test the page in the browser at /admin/finance (login as admin first)
     * Verify the period selector triggers a re-fetch and the trend arrows update correctly
     * Verify the PDF button still works (it refetches /api/admin/finance/report with no dates, defaulting to the last 30 days — same behaviour as before)
+
+---
+Task ID: 16-turso-migration-phase1
+Agent: main
+Task: User confirmed "Yes plan database migration" — plan and execute the database migration from Vercel-ephemeral SQLite to Turso (libSQL) so business data persists across Lambda cold starts. This is the foundation needed before items 3 (order status flow), 4 (employee feature toggles), and the pending device-login limits can work reliably on production.
+
+Work Log:
+- Reviewed current state: prisma/schema.prisma (provider = "sqlite", DATABASE_URL = file:/home/z/my-project/db/custom.db), src/lib/auth/prisma.ts (905-line file with runtime SCHEMA_SQL + COLUMN_MIGRATIONS + bundled-DB copy + seedIfEmpty as a workaround for Vercel's ephemeral /tmp filesystem)
+- Chose Turso (libSQL) over Vercel Postgres / Supabase: SQLite-compatible dialect = zero schema rewrite, HTTP transport = edge-friendly, generous free tier (9GB, 1B row reads/month), Prisma 6 first-class adapter support
+- Presented migration plan to user (4 phases, rollback plan, risk matrix) before executing
+- Phase 1 (code-only, fully reversible):
+  * Installed @prisma/adapter-libsql@7.8.0 and @libsql/client@0.17.4
+  * Refactored src/lib/auth/prisma.ts to dual-backend:
+    - Added isTursoEnabled() check on TURSO_DATABASE_URL env var
+    - Added initializeTursoClient() that uses PrismaLibSql adapter
+    - Modified getInitPromise() to branch: Turso if env var set, SQLite fallback otherwise
+    - Turso branch skips runtime SCHEMA_SQL / bundled-DB copy / column migrations (managed via prisma db push instead)
+    - seedIfEmpty() runs on both branches so first deploy still auto-creates owner account
+  * Created scripts/turso-setup.mjs: reads TURSO_DATABASE_URL + TURSO_AUTH_TOKEN from .env, builds combined DATABASE_URL with authToken query param, runs prisma db push + tsx prisma/seed.ts in sequence
+  * Added npm scripts: db:push:turso, db:seed:turso, db:setup:turso
+  * Created .env.example documenting both backends + Turso provisioning steps
+  * Updated .env with Turso env var templates (commented out)
+  * Added tool-results/ and upload/ to .gitignore (scratch files that previously leaked a GitHub PAT into history)
+  * Added !.env.example exception so template is committed
+- Hit a GitHub push block: secret scanning detected the user's GitHub PAT (from a prior worklog entry that was accidentally committed inside tool-results/read_1782087261932_19a22b16f4a6.txt:501) in a local-only commit (6e2275b). Fixed by git reset --soft 138a9b1 to discard the junk commit, then re-committed only the migration files cleanly as a87d506. Push succeeded.
+- Verified local SQLite fallback still works: deleted TURSO_DATABASE_URL from env, ran node script that imports getPrisma() and counts users → got 3 users from local DB, no errors
+- Verified TypeScript compiles clean (no errors in prisma.ts)
+- Verified Next.js build succeeds (BUILD_ID: zCxtkHxH_tZON1DHKZnH6)
+- Committed as a87d506 and pushed to origin/main
+
+Stage Summary:
+- Code is now ready for Turso. No behavior change on Vercel yet (TURSO_DATABASE_URL not set there → app continues using ephemeral SQLite fallback).
+- To complete migration, user needs to:
+  1. Install Turso CLI: curl -sSfL https://get.tur.so/install.sh | bash
+  2. Sign up: turso auth signup
+  3. Create DB: turso db create freshmart-prod --location lhr1
+  4. Get URL: turso db show freshmart-prod --url → libsql://freshmart-prod-<handle>.turso.io
+  5. Get token: turso db tokens create freshmart-prod → eyJhbGc...
+  6. Send URL + token back to me — I'll run: npm run db:setup:turso (after adding them to local .env)
+  7. Add same URL + token as Vercel env vars (Production + Preview + Development)
+  8. Redeploy on Vercel
+- After redeploy, I'll verify persistence: log in via curl, wait 10+ min for cold start, hit /api/auth/session with same cookie → should still return 200 (currently fails because session row is wiped).
+- Rollback path: remove TURSO_DATABASE_URL from Vercel env vars + redeploy → app reverts to ephemeral SQLite behavior within ~2 min.
+- Files created/modified:
+  * src/lib/auth/prisma.ts (refactored, +60 LOC net for Turso branch)
+  * scripts/turso-setup.mjs (new, ~80 LOC)
+  * .env.example (new, documenting both backends)
+  * .env (updated with Turso vars commented out)
+  * .gitignore (added tool-results/ + upload/ + !.env.example exception)
+  * package.json (added 3 npm scripts)

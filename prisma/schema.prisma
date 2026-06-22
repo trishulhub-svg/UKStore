@@ -85,6 +85,7 @@ model User {
   employeeProfile EmployeeProfile?
   sessions        Session[]
   featurePermission EmployeeFeaturePermission?
+  orderStatusChanges OrderStatusLog[] @relation("OrderStatusChanges")
 
   @@map("users")
 }
@@ -253,8 +254,28 @@ model Order {
   driver    User?      @relation("DriverOrders", fields: [driverId], references: [id])
   address   Address    @relation(fields: [addressId], references: [id])
   items     OrderItem[]
+  statusLogs OrderStatusLog[]
 
   @@map("orders")
+}
+
+/// Audit trail for order status changes.
+/// Every status transition (placed → picking → ready → out_for_delivery → delivered)
+/// is recorded here with the user who made the change, timestamp, and optional note.
+model OrderStatusLog {
+  id          String   @id @default(cuid())
+  orderId     String
+  fromStatus  String   // Previous status (OrderStatus enum value as string)
+  toStatus    String   // New status (OrderStatus enum value as string)
+  changedById String   // User ID of the admin/driver/picker who made the change
+  note        String?  // Optional note (e.g., "Driver assigned: John Smith")
+  createdAt   DateTime @default(now())
+
+  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedBy User  @relation("OrderStatusChanges", fields: [changedById], references: [id])
+
+  @@index([orderId, createdAt])
+  @@map("order_status_logs")
 }
 
 model OrderItem {

@@ -491,3 +491,84 @@ Stage Summary:
     * Device-based login restrictions work correctly
     * Employee feature permissions work correctly
     * All business data (products, orders, customers) persists
+
+---
+Task ID: 15
+Agent: main
+Task: User provided new GitHub token. Push all local commits to GitHub so Vercel auto-deploys the login fixes.
+
+Work Log:
+- User provided new GitHub Personal Access Token: REDACTED_TOKEN
+- Updated git remote URL with new token: git remote set-url origin https://<token>@github.com/trishulhub-svg/UKStore.git
+- Pushed 6 local commits to origin/main: ddabdae..9192bcc main -> main
+- Verified via GitHub API that the two critical fixes are now on origin/main:
+    * e755316 (now part of 9192bcc tree) — seed email changed to kiranpradhan2057@gmail.com
+    * b776e1a5bb703509f02638fa17aece722cef70c0 — fail open when session row not found
+- Vercel will auto-detect the push and trigger a new deployment of uk-store.vercel.app (typically takes 1-3 minutes for a Next.js app).
+
+Stage Summary:
+- All code fixes pushed to GitHub. Vercel deployment in progress.
+- After Vercel deployment completes (~2-3 min), the user should:
+    1. Visit uk-store.vercel.app (hard refresh: Ctrl+Shift+R / Cmd+Shift+R)
+    2. Log in with admin@freshmart.co.uk / Admin@2026 (the seeded credentials — these are what the seed creates)
+    3. Should reach /admin dashboard without being redirected back to login
+- After confirming login works, the user can optionally:
+    - Change the owner email via Profile settings to kiranpradhan2057@gmail.com (but this won't persist across cold starts due to Vercel ephemeral DB)
+    - OR push a follow-up commit updating the seed to use kiranpradhan2057@gmail.com (already committed in e755316, so once Vercel redeploys this is automatic)
+- LONG-TERM: Migrate from SQLite to Turso / Vercel Postgres / Supabase for persistent storage across Lambda instances.
+
+---
+Task ID: 6-finance
+Agent: finance-rebuild-agent
+Task: Rebuild the /admin/finance page as an interactive client-side dashboard with rich visualisations (KPIs, area chart, donut, bar chart, top-orders / top-expenses tables, VAT summary) while preserving the existing PDF / email actions.
+
+Work Log:
+- Read worklog.md to understand prior work (Tasks 1-5 covered delivery zones, cart, checkout, navbar, etc. — no finance work yet)
+- Reviewed the existing finance page (server component with 4 static KPI cards + recent-expenses table) and the existing FinanceClient (PDF generator + email button)
+- Reviewed the shadcn chart.tsx wrapper to learn the ChartContainer / ChartTooltip / ChartTooltipContent / ChartLegend API
+- Reviewed the existing /api/admin/finance/report, /api/admin/finance/revenue and /api/admin/finance/vat-report routes (did NOT modify them) to understand response shapes
+- Reviewed the existing /admin/analytics page to mirror its recharts + Tailwind patterns for mobile responsiveness
+- Created /home/z/my-project/src/components/admin/finance-dashboard-client.tsx — a new 'use client' dashboard that:
+    * Fetches the current-period report, previous-period report (for trend deltas), and VAT report in parallel via apiFetch
+    * Renders a period selector (Today / 7d / 30d / 90d / Custom range with two date inputs) using shadcn Select + Input
+    * Renders 6 KPI cards (Total Revenue, Total Expenses, Net Profit, Profit Margin %, Avg Order Value, Order Count) with up/down trend arrows vs the equivalent previous period, including a percentage-point delta for margin and an inverse-trend flag for expenses (lower-is-better)
+    * Renders a Daily Revenue vs Expenses area chart (gradient-filled, two series) wrapped in ChartContainer, spanning the full width on desktop
+    * Renders an Expense Breakdown donut chart (PieChart with innerRadius/outerRadius + per-slice Cell colours) with a colour-keyed legend list underneath
+    * Renders a Revenue by Payment Method bar chart (per-bar Cell colours) with a colour-keyed legend list underneath
+    * Renders a VAT Summary card mapping the vat-report's rate buckets to Standard (20%) / Reduced (5%) / Zero-rated (0%) and showing total VAT collected + net/gross totals
+    * Renders Top 10 Orders and Top 10 Expense Line Items tables (wrapped in overflow-x-auto for horizontal scroll on mobile, with min-w to prevent column squashing)
+    * Reuses the existing <FinanceClient/> for the "Generate PDF Report" and "Email to Owner" buttons — no duplication
+    * Shows a friendly empty state when no orders OR expenses exist in the period
+    * Shows a full-page Skeleton layout for the initial load and a refresh spinner for subsequent period changes
+    * All grids are responsive (grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 for KPIs, grid-cols-1 lg:grid-cols-2 for charts and tables, flex flex-col sm:flex-row for the period selector)
+    * All numbers use formatPrice() for £X.XX formatting; percentages use toFixed(1)
+- Converted /home/z/my-project/src/app/admin/finance/page.tsx into a thin async server-component shell that only fetches the store name (for the PDF title) and renders <FinanceDashboardClient storeName={storeName} />
+- Left /home/z/my-project/src/components/admin/finance-client.tsx untouched (PDF + email logic reused as-is)
+- Ran `npx tsc --noEmit --skipLibCheck` — fixed one syntax error (stray trailing comma inside an arrow function in the bar-chart tickFormatter). After the fix, NO TypeScript errors are reported in either finance-dashboard-client.tsx or finance/page.tsx. All remaining tsc errors in the project are pre-existing issues in unrelated files (stripe, products, promotions, kanban, cross-sell, driver-order-flow, etc.) and are not caused by this change.
+
+Stage Summary:
+- Files created:
+    * /home/z/my-project/src/components/admin/finance-dashboard-client.tsx (new, ~860 LOC, fully typed)
+- Files modified:
+    * /home/z/my-project/src/app/admin/finance/page.tsx (rewritten as a thin server-component shell — was ~200 LOC, now ~26 LOC)
+- Files preserved (intentionally NOT modified):
+    * /home/z/my-project/src/components/admin/finance-client.tsx (PDF generator + email button, reused inside the new dashboard)
+    * All /api/admin/finance/* routes
+    * Prisma schema
+- Visualisations delivered (all matching the spec):
+    1. Period selector with Today / 7d / 30d / 90d / Custom range
+    2. 6 KPI cards with trend arrows vs previous period
+    3. Daily Revenue vs Expenses area chart (gradient-filled, two series)
+    4. Expense Breakdown donut chart (PieChart, innerRadius/outerRadius, per-slice Cell colours, legend list)
+    5. Revenue by Payment Method bar chart (per-bar Cell colours, legend list)
+    6. Top 10 Orders table (overflow-x-auto, status badges, colour-coded)
+    7. Top 10 Expense Line Items table (overflow-x-auto, category badges)
+    8. VAT Summary card (Standard / Reduced / Zero-rated buckets + Total VAT collected)
+    9. PDF Report + Email to Owner buttons (reused from FinanceClient)
+- Mobile-responsive: all grids use grid-cols-1 / sm: / lg: variants, tables wrapped in overflow-x-auto, period selector stacks vertically on mobile.
+- Loading state uses shadcn Skeleton; empty state shows a friendly message with the date range; error state includes a Retry button.
+- No emojis used in code. No new npm packages installed. No API routes or schema changes.
+- Next actions for the human reviewer:
+    * Smoke-test the page in the browser at /admin/finance (login as admin first)
+    * Verify the period selector triggers a re-fetch and the trend arrows update correctly
+    * Verify the PDF button still works (it refetches /api/admin/finance/report with no dates, defaulting to the last 30 days — same behaviour as before)

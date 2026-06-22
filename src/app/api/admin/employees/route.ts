@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
 import { hashPassword } from '@/lib/auth'
+import { setEnabledFeatures } from '@/lib/feature-permissions'
 import crypto from 'crypto'
 
 /**
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     // Validate required fields
-    const { name, email, role, phone, tempPassword } = body
+    const { name, email, role, phone, tempPassword, features } = body
     if (!name || typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
@@ -164,6 +165,16 @@ export async function POST(request: NextRequest) {
         { error: `Role must be one of: ${allowedRoles.join(', ')}` },
         { status: 400 }
       )
+    }
+    // Validate features payload if provided
+    // - null/undefined = full access (default)
+    // - string[] = restricted to listed features
+    let featuresToSet: string[] | null = null
+    if (features !== undefined && features !== null) {
+      if (!Array.isArray(features) || !features.every((f: unknown) => typeof f === 'string')) {
+        return NextResponse.json({ error: 'features must be an array of strings or null' }, { status: 400 })
+      }
+      featuresToSet = features as string[]
     }
 
     // Check for duplicate email
@@ -216,6 +227,17 @@ export async function POST(request: NextRequest) {
     await prisma.employeeProfile.create({
       data: { userId: newUser.id },
     })
+
+    // Apply feature permissions if provided (null = full access, string[] = restricted)
+    // Only applies to non-OWNER roles (which is enforced above by allowedRoles).
+    if (featuresToSet !== null || features !== undefined) {
+      try {
+        await setEnabledFeatures(newUser.id, featuresToSet)
+      } catch (permErr) {
+        // Non-fatal — the user is created, just log the permission error
+        console.error('[Admin Employees POST] Failed to set feature permissions:', permErr)
+      }
+    }
 
     // TODO: When SMTP is configured (Resend/SendGrid), send the temp password
     //       to newUser.email here. For now, return it once so the admin can

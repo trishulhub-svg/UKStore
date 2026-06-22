@@ -583,7 +583,7 @@ export default function AdminProductsPage() {
               <Label htmlFor="description">Description</Label>
               <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="price">Price (£) *</Label>
                 <Input id="price" type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
@@ -622,7 +622,7 @@ export default function AdminProductsPage() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="expiryDate">Expiry Date</Label>
                 <Input
@@ -644,7 +644,7 @@ export default function AdminProductsPage() {
                 <p className="text-xs text-gray-500">Advisory — quality degrades but still saleable.</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="stockQuantity">Stock Quantity</Label>
                 <Input id="stockQuantity" type="number" value={form.stockQuantity} onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })} />
@@ -665,7 +665,7 @@ export default function AdminProductsPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="weightKg">Weight (kg)</Label>
                 <Input id="weightKg" type="number" step="0.01" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} />
@@ -675,7 +675,7 @@ export default function AdminProductsPage() {
                 <Input id="barcode" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="aisle">Aisle</Label>
                 <Input id="aisle" placeholder="e.g., A1" value={form.aisle} onChange={(e) => setForm({ ...form, aisle: e.target.value })} />
@@ -742,21 +742,25 @@ export default function AdminProductsPage() {
                 <p className="text-xs text-gray-500">Select an alternative product from the same category</p>
               </div>
             )}
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex items-center gap-2 min-w-0">
                 <Switch checked={form.isAvailable} onCheckedChange={(v) => setForm({ ...form, isAvailable: v })} />
-                <Label>Available</Label>
+                <Label className="min-w-0">Available</Label>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <Switch checked={form.isHfss} onCheckedChange={(v) => setForm({ ...form, isHfss: v })} />
-                <Label>HFSS (High in Fat, Salt, Sugar)</Label>
+                <Label className="min-w-0">HFSS (High in Fat, Salt, Sugar)</Label>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <Switch checked={form.isAgeRestricted} onCheckedChange={(v) => setForm({ ...form, isAgeRestricted: v, minimumAge: v ? '18' : '0' })} />
-                <Label>Age Restricted (Challenge 25)</Label>
+                <Label className="min-w-0">Age Restricted (Challenge 25)</Label>
+              </div>
+              <div className="flex items-center gap-2 min-w-0">
+                <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
+                <Label className="min-w-0">Featured</Label>
               </div>
               {form.isAgeRestricted && (
-                <div className="space-y-1">
+                <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="minimumAge">Minimum Age</Label>
                   <Select value={form.minimumAge} onValueChange={(v) => setForm({ ...form, minimumAge: v })}>
                     <SelectTrigger id="minimumAge">
@@ -770,10 +774,6 @@ export default function AdminProductsPage() {
                   </Select>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
-                <Label>Featured</Label>
-              </div>
             </div>
           </div>
           <DialogFooter>

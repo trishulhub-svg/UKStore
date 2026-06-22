@@ -630,57 +630,59 @@ export function KanbanOrderBoard() {
       {/* Batch Suggestions Panel */}
       <BatchSuggestionsPanel drivers={drivers} onBatchAssigned={fetchOrders} />
 
-      {/* Kanban Columns */}
-      <div className="overflow-x-auto pb-4 -mx-2 px-2">
-      <div className="flex gap-4 min-w-[900px] lg:min-w-0">
-        {COLUMNS.map((column) => {
-          const columnOrders = orders.filter((o) => o.status === column.id)
-          const Icon = column.icon
-          const isNewColumn = column.id === 'placed'
+      {/* Kanban Columns — Mobile: vertical stack, Desktop: horizontal scroll */}
+      {/* On mobile (< md), columns stack vertically to avoid horizontal page scroll. */}
+      {/* On md+, columns sit side-by-side in a horizontally scrollable container. */}
+      <div className="md:overflow-x-auto md:pb-4 md:-mx-2 md:px-2">
+        <div className="flex flex-col md:flex-row gap-4 md:min-w-[760px] lg:min-w-0">
+          {COLUMNS.map((column) => {
+            const columnOrders = orders.filter((o) => o.status === column.id)
+            const Icon = column.icon
+            const isNewColumn = column.id === 'placed'
 
-          return (
-            <div key={column.id} className="flex-1 min-w-[220px]">
-              {/* Column Header */}
-              <div className={`rounded-t-lg ${column.bgColor} p-3 border border-b-0 border-gray-200`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Icon className={`h-4 w-4 ${column.color}`} />
-                    <h3 className="font-semibold text-sm text-gray-800">{column.title}</h3>
-                    {isNewColumn && showAlert && (
-                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                    )}
+            return (
+              <div key={column.id} className="flex-1 md:min-w-[220px] min-w-0">
+                {/* Column Header */}
+                <div className={`rounded-t-lg ${column.bgColor} p-3 border border-b-0 border-gray-200`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Icon className={`h-4 w-4 ${column.color} flex-shrink-0`} />
+                      <h3 className="font-semibold text-sm text-gray-800 truncate">{column.title}</h3>
+                      {isNewColumn && showAlert && (
+                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                      )}
+                    </div>
+                    <Badge variant="secondary" className="text-xs h-5 min-w-[24px] justify-center flex-shrink-0">
+                      {columnOrders.length}
+                    </Badge>
                   </div>
-                  <Badge variant="secondary" className="text-xs h-5 min-w-[24px] justify-center">
-                    {columnOrders.length}
-                  </Badge>
+                </div>
+
+                {/* Column Body — shorter max-height on mobile so multiple columns are visible without scrolling forever */}
+                <div className="bg-gray-50/50 border border-t-0 border-gray-200 rounded-b-lg p-2 min-h-[120px] md:min-h-[200px] max-h-[50vh] md:max-h-[calc(100vh-280px)] overflow-y-auto space-y-0"
+                  style={{ scrollbarWidth: 'thin' }}
+                >
+                  {columnOrders.length === 0 ? (
+                    <div className="flex items-center justify-center h-16 md:h-24 text-gray-400 text-xs">
+                      No orders
+                    </div>
+                  ) : (
+                    columnOrders.map((order) => (
+                      <KanbanCard
+                        key={order.id}
+                        order={order}
+                        drivers={drivers}
+                        onMove={handleMove}
+                        onAssignDriver={handleAssignDriver}
+                        onRefund={handleRefund}
+                      />
+                    ))
+                  )}
                 </div>
               </div>
-
-              {/* Column Body */}
-              <div className="bg-gray-50/50 border border-t-0 border-gray-200 rounded-b-lg p-2 min-h-[200px] max-h-[calc(100vh-280px)] overflow-y-auto space-y-0"
-                style={{ scrollbarWidth: 'thin' }}
-              >
-                {columnOrders.length === 0 ? (
-                  <div className="flex items-center justify-center h-24 text-gray-400 text-xs">
-                    No orders
-                  </div>
-                ) : (
-                  columnOrders.map((order) => (
-                    <KanbanCard
-                      key={order.id}
-                      order={order}
-                      drivers={drivers}
-                      onMove={handleMove}
-                      onAssignDriver={handleAssignDriver}
-                      onRefund={handleRefund}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )

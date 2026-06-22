@@ -338,8 +338,42 @@ export default function AdminCategoriesPage() {
               <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="imageUrl">Image URL</Label>
-              <Input id="imageUrl" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
+              <Label htmlFor="imageUrl">Category Image</Label>
+              <div className="flex items-start gap-3">
+                {(form.imageUrl && form.imageUrl.startsWith('data:')) && (
+                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+                    <img src={form.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <Input id="imageUrl" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="Image URL or upload below" />
+                  <div className="mt-2">
+                    <label htmlFor="categoryImageUpload" className="cursor-pointer">
+                      <div className="inline-flex items-center gap-2 text-sm text-[#16a34a] hover:text-[#15803d] font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        Upload Image (max 2MB)
+                      </div>
+                      <input
+                        type="file"
+                        id="categoryImageUpload"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          const { validateImageFile, fileToDataUrl } = await import('@/lib/upload')
+                          const err = validateImageFile(file)
+                          if (err) { toast.error(err); return }
+                          try {
+                            const dataUrl = await fileToDataUrl(file)
+                            setForm({ ...form, imageUrl: dataUrl })
+                          } catch { toast.error('Failed to process image') }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="parentId">Parent Category</Label>
@@ -357,12 +391,12 @@ export default function AdminCategoriesPage() {
                   ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="sortOrder">Sort Order</Label>
                 <Input id="sortOrder" type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} />
               </div>
-              <div className="flex items-center gap-2 pt-6">
+              <div className="flex items-center gap-2 sm:pt-6">
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
                 <Label>Active</Label>
               </div>

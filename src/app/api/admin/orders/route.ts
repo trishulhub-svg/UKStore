@@ -1,8 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
+import { getServerUser } from '@/lib/auth/server'
 
 const STORE_ID = 'store-fresh-mart-001'
+
+/**
+ * Order status state machine — defines which transitions are allowed.
+ *
+ * Flow:
+ *   placed → picking → ready → out_for_delivery → delivered
+ *   Any non-delivered status → cancelled (cancellation)
+ *   delivered/cancelled are terminal (no further transitions)
+ *
+ * ADMIN (owner/manager) can make any allowed forward transition.
+ * PICKER can do: placed → picking, picking → ready (via picker API).
+ * DRIVER can do: out_for_delivery → delivered (via driver deliver API).
+ *
+ * This guard prevents invalid jumps like placed → delivered (skipping steps).
+ */
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  placed: ['picking', 'cancelled'],
+  picking: ['ready', 'cancelled'],
+  ready: ['out_for_delivery', 'cancelled'],
+  out_for_delivery: ['delivered', 'cancelled'],
+  delivered: [], // terminal
+  cancelled: [], // terminal
+}
+
+function isTransitionAllowed(from: string, to: string): boolean {
+  if (from === to) return false // no-op
+  const allowed = ALLOWED_TRANSITIONS[from]
+  if (!allowed) return false
+  return allowed.includes(to)
+}
 
 // GET /api/admin/orders — list orders with filters
 export async function GET(request: NextRequest) {
@@ -53,9 +84,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH /api/admin/orders — update order status
+// PATCH /api/admin/orders — update order status (with state-machine guard + audit log)
 export async function PATCH(request: NextRequest) {
-  const { error } = await requireAdmin({ feature: 'orders' })
+  const { error, user } = await requireAdmin({ feature: 'orders' })
   if (error) return error
 
   try {
@@ -72,10 +103,48 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
+    // ─── State-machine guard ────────────────────────────────────
+    // If a status change is requested, validate the transition is allowed.
+    let statusChanged = false
+    let fromStatus = existing.status
+    let toStatus = existing.status
+    if (status && status !== existing.status) {
+      if (!isTransitionAllowed(existing.status, status)) {
+        return NextResponse.json(
+          {
+            error: `Invalid status transition: ${existing.status} → ${status}. Allowed next statuses from "${existing.status}": ${(ALLOWED_TRANSITIONS[existing.status] || []).join(', ') || 'none (terminal state)'}`,
+            code: 'INVALID_STATUS_TRANSITION',
+            fromStatus: existing.status,
+            toStatus: status,
+            allowed: ALLOWED_TRANSITIONS[existing.status] || [],
+          },
+          { status: 400 }
+        )
+      }
+      statusChanged = true
+      fromStatus = existing.status
+      toStatus = status
+    }
+
+    // ─── Build the update payload ───────────────────────────────
     const data: any = {}
     if (status) data.status = status
     if (driverId !== undefined) data.driverId = driverId || null
     if (body.bankTransferVerified !== undefined) data.bankTransferVerified = body.bankTransferVerified
+
+    // Auto-set timestamp fields based on the new status
+    if (status === 'picking' && !existing.packedAt) {
+      // Picking has started — leave packedAt unset; it's set when moving to ready
+    }
+    if (status === 'ready' && !existing.packedAt) {
+      data.packedAt = new Date()
+    }
+    if (status === 'out_for_delivery' && !existing.dispatchedAt) {
+      data.dispatchedAt = new Date()
+    }
+    if (status === 'delivered' && !existing.deliveredAt) {
+      data.deliveredAt = new Date()
+    }
 
     const order = await prisma.order.update({
       where: { id: orderId },
@@ -86,6 +155,39 @@ export async function PATCH(request: NextRequest) {
         items: true,
       },
     })
+
+    // ─── Audit log entry ────────────────────────────────────────
+    if (statusChanged) {
+      try {
+        // Build a human-readable note
+        let note: string | null = null
+        if (driverId !== undefined && status === 'out_for_delivery') {
+          if (driverId) {
+            // Look up driver name (best-effort)
+            const driver = await prisma.user.findUnique({
+              where: { id: driverId },
+              select: { name: true, email: true },
+            })
+            note = driver ? `Driver assigned: ${driver.name || driver.email}` : 'Driver assigned'
+          } else {
+            note = 'Driver unassigned'
+          }
+        }
+
+        await prisma.orderStatusLog.create({
+          data: {
+            orderId,
+            fromStatus,
+            toStatus,
+            changedById: user.id,
+            note,
+          },
+        })
+      } catch (logErr) {
+        // Non-fatal — the status change itself succeeded
+        console.error('[Admin Orders PATCH] Failed to write audit log:', logErr)
+      }
+    }
 
     return NextResponse.json({ order })
   } catch (err) {

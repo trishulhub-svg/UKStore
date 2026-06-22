@@ -414,6 +414,19 @@ CREATE TABLE IF NOT EXISTS "employee_feature_permissions" (
   FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "employee_feature_permissions_userId_key" ON "employee_feature_permissions"("userId");
+
+CREATE TABLE IF NOT EXISTS "order_status_logs" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "orderId" TEXT NOT NULL,
+  "fromStatus" TEXT NOT NULL,
+  "toStatus" TEXT NOT NULL,
+  "changedById" TEXT NOT NULL,
+  "note" TEXT,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY ("orderId") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY ("changedById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "order_status_logs_orderId_createdAt_idx" ON "order_status_logs"("orderId", "createdAt");
 `
 
 // ─── Schema Creation ────────────────────────────────────────────

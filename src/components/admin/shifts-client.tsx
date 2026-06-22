@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,8 +31,10 @@ import {
   RefreshCw,
   Clock,
   User,
+  Store,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api-fetch'
+import { toast } from 'sonner'
 
 interface StaffMember {
   id: string
@@ -54,12 +56,16 @@ interface ShiftData {
   createdAt: string
 }
 
+interface DayHours {
+  open: string
+  close: string
+  closed: boolean
+}
+
+type OpeningHours = Record<string, DayHours | undefined>
+
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const SHIFTS = [
-  { key: 'morning', label: 'Morning', startTime: '06:00', endTime: '14:00' },
-  { key: 'evening', label: 'Evening', startTime: '14:00', endTime: '22:00' },
-  { key: 'custom', label: 'Custom hours', startTime: '', endTime: '' },
-]
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 
 const roleColors: Record<string, string> = {
   OWNER: 'bg-purple-200 text-purple-900 border-purple-300',
@@ -100,12 +106,74 @@ function isToday(date: Date): boolean {
 }
 
 function formatDateKey(date: Date): string {
-  return date.toISOString().split('T')[0]
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/**
+ * Parse "HH:MM" into total minutes since midnight.
+ */
+function timeToMinutes(t: string): number {
+  if (!t || !/^\d{2}:\d{2}$/.test(t)) return NaN
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
+}
+
+/**
+ * Convert minutes since midnight to "HH:MM".
+ */
+function minutesToTime(min: number): string {
+  const h = Math.floor(min / 60) % 24
+  const m = min % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Compute the morning/evening shift times for a given day from the store's
+ * opening hours.
+ *
+ *   - If the store is closed that day → returns null (only "Custom" allowed).
+ *   - Morning = open → midpoint
+ *   - Evening = midpoint → close
+ *
+ * Falls back to 06:00-14:00 / 14:00-22:00 if opening hours are not available.
+ */
+function getShiftTimesForDay(
+  dayIndex: number,
+  openingHours: OpeningHours | null
+): { morning: { start: string; end: string } | null; evening: { start: string; end: string } | null } {
+  const fallbackMorning = { start: '06:00', end: '14:00' }
+  const fallbackEvening = { start: '14:00', end: '22:00' }
+
+  if (!openingHours) {
+    return { morning: fallbackMorning, evening: fallbackEvening }
+  }
+
+  const dayKey = DAY_KEYS[dayIndex]
+  const dayHours = openingHours[dayKey]
+  if (!dayHours || dayHours.closed || !dayHours.open || !dayHours.close) {
+    return { morning: null, evening: null }
+  }
+
+  const openMin = timeToMinutes(dayHours.open)
+  const closeMin = timeToMinutes(dayHours.close)
+  if (isNaN(openMin) || isNaN(closeMin) || closeMin <= openMin) {
+    return { morning: fallbackMorning, evening: fallbackEvening }
+  }
+
+  const midMin = Math.floor((openMin + closeMin) / 2)
+  return {
+    morning: { start: minutesToTime(openMin), end: minutesToTime(midMin) },
+    evening: { start: minutesToTime(midMin), end: minutesToTime(closeMin) },
+  }
 }
 
 export function ShiftsClient() {
   const [shifts, setShifts] = useState<ShiftData[]>([])
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [openingHours, setOpeningHours] = useState<OpeningHours | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [weekOffset, setWeekOffset] = useState(0)
@@ -134,6 +202,10 @@ export function ShiftsClient() {
         const data = await res.json()
         setShifts(data.shifts || [])
         setStaff(data.staff || [])
+        // Use opening hours from the shifts response if provided; otherwise fall back to /api/store/status
+        if (data.openingHours) {
+          setOpeningHours(data.openingHours)
+        }
       }
     } catch (err) {
       console.error('Failed to fetch shifts:', err)
@@ -142,6 +214,26 @@ export function ShiftsClient() {
       setRefreshing(false)
     }
   }, [weekDates])
+
+  // Fetch store opening hours on mount (so we have them even if the shifts endpoint doesn't return them)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await apiFetch('/api/store/status')
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled && data.openingHours) {
+          setOpeningHours(data.openingHours)
+        }
+      } catch {
+        // Non-critical — fallback to 06:00-14:00 / 14:00-22:00
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     fetchData()
@@ -152,12 +244,74 @@ export function ShiftsClient() {
     fetchData()
   }
 
+  // Compute shift presets for the currently-selected date
+  const selectedDateShiftTimes = useMemo(() => {
+    if (!selectedDate) return null
+    // Find the day index (Mon=0, Sun=6)
+    const d = new Date(selectedDate + 'T00:00:00')
+    const jsDay = d.getDay()
+    const dayIndex = jsDay === 0 ? 6 : jsDay - 1
+    return getShiftTimesForDay(dayIndex, openingHours)
+  }, [selectedDate, openingHours])
+
+  // Build the SHIFTS array dynamically based on the selected date's store hours
+  const shiftsForSelectedDate = useMemo(() => {
+    const arr: { key: 'morning' | 'evening' | 'custom'; label: string; startTime: string; endTime: string; disabled?: boolean }[] = []
+    if (selectedDateShiftTimes?.morning) {
+      arr.push({
+        key: 'morning',
+        label: 'Morning',
+        startTime: selectedDateShiftTimes.morning.start,
+        endTime: selectedDateShiftTimes.morning.end,
+      })
+    } else {
+      arr.push({ key: 'morning', label: 'Morning (store closed)', startTime: '', endTime: '', disabled: true })
+    }
+    if (selectedDateShiftTimes?.evening) {
+      arr.push({
+        key: 'evening',
+        label: 'Evening',
+        startTime: selectedDateShiftTimes.evening.start,
+        endTime: selectedDateShiftTimes.evening.end,
+      })
+    } else {
+      arr.push({ key: 'evening', label: 'Evening (store closed)', startTime: '', endTime: '', disabled: true })
+    }
+    arr.push({ key: 'custom', label: 'Custom hours', startTime: '', endTime: '' })
+    return arr
+  }, [selectedDateShiftTimes])
+
+  // Build the SHIFTS array for the calendar grid rows (uses TODAY's store hours as a reasonable default
+  // for the row labels — actual cell matching uses per-day hours via getShiftsForCell)
+  const calendarShiftRows = useMemo(() => {
+    return weekDates.map((date, dayIndex) => getShiftTimesForDay(dayIndex, openingHours))
+  }, [weekDates, openingHours])
+
+  // For the calendar grid labels, we show the morning/evening times from the FIRST day of the week
+  // (or fall back to defaults). In practice the times vary per day, but for the row label we just
+  // need a representative label — the cell matching logic uses per-day hours.
+  const calendarRowLabels = useMemo(() => {
+    const firstDay = calendarShiftRows[0] || null
+    return {
+      morning: firstDay?.morning ? `${firstDay.morning.start}-${firstDay.morning.end}` : 'closed',
+      evening: firstDay?.evening ? `${firstDay.evening.start}-${firstDay.evening.end}` : 'closed',
+    }
+  }, [calendarShiftRows])
+
   const handleCreateShift = async () => {
     if (!selectedDate || !selectedEmployee) return
 
+    // If the user picked Morning or Evening but the store is closed that day, block
+    if (selectedShift !== 'custom' && selectedDateShiftTimes) {
+      const preset = selectedDateShiftTimes[selectedShift]
+      if (!preset) {
+        toast.error(`Store is closed on the selected day — only Custom shifts are allowed.`)
+        return
+      }
+    }
+
     setCreating(true)
     try {
-      // Resolve the payload based on which shift mode is selected
       const payload: any = {
         userId: selectedEmployee,
         date: selectedDate,
@@ -165,11 +319,11 @@ export function ShiftsClient() {
       }
 
       if (selectedShift === 'morning' || selectedShift === 'evening') {
-        const shiftDef = SHIFTS.find((s) => s.key === selectedShift)!
-        payload.startTime = shiftDef.startTime
-        payload.endTime = shiftDef.endTime
+        const preset = selectedDateShiftTimes?.[selectedShift]
+        if (!preset) throw new Error('Store is closed on the selected day')
+        payload.startTime = preset.start
+        payload.endTime = preset.end
       } else if (selectedShift === 'custom') {
-        // For custom: prefer manualHours if provided, else require start+end
         if (manualHours) {
           payload.manualHours = manualHours
         } else if (customStart && customEnd) {
@@ -195,12 +349,15 @@ export function ShiftsClient() {
         setCustomEnd('')
         setManualHours('')
         fetchData()
+        toast.success('Shift assigned')
       } else {
         const data = await res.json()
-        console.error('Failed to create shift:', data.error)
+        toast.error(data.error || 'Failed to create shift')
       }
-    } catch (err) {
-      console.error('Failed to create shift:', err)
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to create shift')
+      }
     } finally {
       setCreating(false)
     }
@@ -212,6 +369,7 @@ export function ShiftsClient() {
       const res = await apiFetch(`/api/admin/shifts/${shiftId}`, { method: 'DELETE' })
       if (res.ok) {
         fetchData()
+        toast.success('Shift deleted')
       }
     } catch (err) {
       console.error('Failed to delete shift:', err)
@@ -220,28 +378,41 @@ export function ShiftsClient() {
     }
   }
 
-  const getShiftsForCell = (date: Date, shiftKey: string): ShiftData[] => {
+  const getShiftsForCell = (date: Date, dayIndex: number, shiftKey: string): ShiftData[] => {
     const dateKey = formatDateKey(date)
+    const dayShiftTimes = calendarShiftRows[dayIndex]
     return shifts.filter((s) => {
       const shiftDate = s.date.split('T')[0]
-      return shiftDate === dateKey && isShiftTimeMatch(s, shiftKey)
+      return shiftDate === dateKey && isShiftTimeMatch(s, shiftKey, dayShiftTimes)
     })
   }
 
-  const isShiftTimeMatch = (shift: ShiftData, shiftKey: string): boolean => {
-    // Manual-hours shifts (manualHours != null) are bucketed into the "custom" row
+  const isShiftTimeMatch = (
+    shift: ShiftData,
+    shiftKey: string,
+    dayShiftTimes: { morning: { start: string; end: string } | null; evening: { start: string; end: string } | null } | null
+  ): boolean => {
+    // Manual-hours shifts are always bucketed into "custom"
     if (shift.manualHours !== null && shift.manualHours !== undefined) {
       return shiftKey === 'custom'
     }
-    const def = SHIFTS.find((s) => s.key === shiftKey)!
-    if (!def.startTime) return false // the 'custom' template has no preset times
-    return shift.startTime === def.startTime && shift.endTime === def.endTime
+    if (shiftKey === 'custom') return false
+    if (!dayShiftTimes) return false
+    const preset = dayShiftTimes[shiftKey as 'morning' | 'evening']
+    if (!preset) return false
+    return shift.startTime === preset.start && shift.endTime === preset.end
   }
 
   const openAddDialog = (date?: string, shiftKey?: string) => {
     if (date) setSelectedDate(date)
     if (shiftKey && (shiftKey === 'morning' || shiftKey === 'evening' || shiftKey === 'custom')) {
-      setSelectedShift(shiftKey)
+      // If the preset is disabled for this day, fall back to custom
+      const preset = shiftsForSelectedDate.find((s) => s.key === shiftKey)
+      if (preset?.disabled) {
+        setSelectedShift('custom')
+      } else {
+        setSelectedShift(shiftKey)
+      }
     }
     setDialogOpen(true)
   }
@@ -258,9 +429,9 @@ export function ShiftsClient() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
+      {/* Header — stacks vertically on mobile */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -309,85 +480,12 @@ export function ShiftsClient() {
                 Add Shift
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Assign Shift</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-2">
-                <div>
-                  <Label>Date</Label>
-                  <Input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label>Shift</Label>
-                  <Select value={selectedShift} onValueChange={(v) => setSelectedShift(v as 'morning' | 'evening' | 'custom')}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="morning">Morning (06:00 - 14:00)</SelectItem>
-                      <SelectItem value="evening">Evening (14:00 - 22:00)</SelectItem>
-                      <SelectItem value="custom">Custom hours…</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Custom shift fields — shown only when "Custom hours…" is selected */}
-                {selectedShift === 'custom' && (
-                  <div className="space-y-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-xs text-gray-600">
-                      Enter either a total hours figure (e.g. 4.5 for a 4.5-hour shift) <em>or</em> specific start/end times.
-                    </p>
-                    <div>
-                      <Label>Total Hours (manual)</Label>
-                      <Input
-                        type="number"
-                        step="0.25"
-                        min="0"
-                        max="24"
-                        value={manualHours}
-                        onChange={(e) => setManualHours(e.target.value)}
-                        placeholder="e.g., 4.5"
-                        className="mt-1"
-                      />
-                      <p className="text-[10px] text-gray-500 mt-1">
-                        Use this for shifts where exact start/end don't matter (e.g., salaried or per-task work).
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
-                      <div className="flex-1 h-px bg-gray-200" />
-                      <span>OR</span>
-                      <div className="flex-1 h-px bg-gray-200" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label>Start Time</Label>
-                        <Input
-                          type="time"
-                          value={customStart}
-                          onChange={(e) => setCustomStart(e.target.value)}
-                          className="mt-1"
-                          disabled={!!manualHours}
-                        />
-                      </div>
-                      <div>
-                        <Label>End Time</Label>
-                        <Input
-                          type="time"
-                          value={customEnd}
-                          onChange={(e) => setCustomEnd(e.target.value)}
-                          className="mt-1"
-                          disabled={!!manualHours}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Employee + Role + Shift Role FIRST (so the date picker opening upward doesn't cover them) */}
                 <div>
                   <Label>Employee</Label>
                   <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
@@ -416,6 +514,114 @@ export function ShiftsClient() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Date field — placed AFTER the selects so its native picker overlay doesn't cover them */}
+                <div>
+                  <Label>Date</Label>
+                  <Input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      setSelectedDate(e.target.value)
+                      // If the currently-selected shift preset is disabled for the new date, switch to custom
+                      if (selectedShift !== 'custom') {
+                        const newDate = new Date(e.target.value + 'T00:00:00')
+                        const jsDay = newDate.getDay()
+                        const dayIndex = jsDay === 0 ? 6 : jsDay - 1
+                        const times = getShiftTimesForDay(dayIndex, openingHours)
+                        if (!times?.[selectedShift]) {
+                          setSelectedShift('custom')
+                        }
+                      }
+                    }}
+                    className="mt-1"
+                  />
+                  {selectedDate && selectedDateShiftTimes && !selectedDateShiftTimes.morning && !selectedDateShiftTimes.evening && (
+                    <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                      <Store className="h-3 w-3" />
+                      Store is closed on this day — only Custom shifts are available.
+                    </p>
+                  )}
+                </div>
+
+                {/* Shift preset — options are dynamically generated based on the selected date's store hours */}
+                <div>
+                  <Label>Shift</Label>
+                  <Select
+                    value={selectedShift}
+                    onValueChange={(v) => setSelectedShift(v as 'morning' | 'evening' | 'custom')}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {shiftsForSelectedDate.map((s) => (
+                        <SelectItem key={s.key} value={s.key} disabled={s.disabled}>
+                          {s.label}
+                          {s.startTime && s.endTime ? ` (${s.startTime} - ${s.endTime})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedDate && selectedDateShiftTimes && selectedDateShiftTimes.morning && selectedDateShiftTimes.evening && (
+                    <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Shift times auto-adjust to store hours for the selected day.
+                    </p>
+                  )}
+                </div>
+
+                {/* Custom shift fields — shown only when "Custom hours" is selected */}
+                {selectedShift === 'custom' && (
+                  <div className="space-y-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs text-gray-600">
+                      Enter either a total hours figure (e.g. 4.5 for a 4.5-hour shift) <em>or</em> specific start/end times.
+                    </p>
+                    <div>
+                      <Label>Total Hours (manual)</Label>
+                      <Input
+                        type="number"
+                        step="0.25"
+                        min="0"
+                        max="24"
+                        value={manualHours}
+                        onChange={(e) => setManualHours(e.target.value)}
+                        placeholder="e.g., 4.5"
+                        className="mt-1"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        Use this for shifts where exact start/end don't matter (e.g., salaried or per-task work).
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span>OR</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label>Start Time</Label>
+                        <Input
+                          type="time"
+                          value={customStart}
+                          onChange={(e) => setCustomStart(e.target.value)}
+                          className="mt-1"
+                          disabled={!!manualHours}
+                        />
+                      </div>
+                      <div>
+                        <Label>End Time</Label>
+                        <Input
+                          type="time"
+                          value={customEnd}
+                          onChange={(e) => setCustomEnd(e.target.value)}
+                          className="mt-1"
+                          disabled={!!manualHours}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <DialogClose asChild>
@@ -444,102 +650,124 @@ export function ShiftsClient() {
         ))}
       </div>
 
-      {/* Calendar Grid */}
+      {/* Calendar Grid — wraps in overflow-x-auto on mobile with a hint */}
       <Card>
-        <CardContent className="p-2 sm:p-4 overflow-x-auto">
-          <div className="min-w-[640px]">
-            {/* Day Headers */}
-            <div className="grid grid-cols-8 gap-1 mb-1">
-              <div className="p-2 text-xs font-medium text-gray-400">Shift</div>
-              {weekDates.map((date, i) => (
-                <div
-                  key={i}
-                  className={`p-2 text-center text-xs font-medium rounded-t-lg ${
-                    isToday(date)
-                      ? 'bg-[#16a34a]/10 text-[#16a34a] font-bold'
-                      : 'text-gray-500'
-                  }`}
-                >
-                  <div>{DAYS[i]}</div>
-                  <div className="text-lg font-bold mt-0.5">{date.getDate()}</div>
+        <CardContent className="p-2 sm:p-4">
+          <div className="overflow-x-auto -mx-2 px-2 pb-2">
+            <div className="min-w-[640px]">
+              {/* Day Headers */}
+              <div className="grid grid-cols-8 gap-1 mb-1">
+                <div className="p-2 text-xs font-medium text-gray-400">Shift</div>
+                {weekDates.map((date, i) => (
+                  <div
+                    key={i}
+                    className={`p-2 text-center text-xs font-medium rounded-t-lg ${
+                      isToday(date)
+                        ? 'bg-[#16a34a]/10 text-[#16a34a] font-bold'
+                        : 'text-gray-500'
+                    }`}
+                  >
+                    <div>{DAYS[i]}</div>
+                    <div className="text-lg font-bold mt-0.5">{date.getDate()}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Shift Rows */}
+              {(['morning', 'evening', 'custom'] as const).map((shiftKey) => (
+                <div key={shiftKey} className="grid grid-cols-8 gap-1 mb-1">
+                  <div className="p-2 flex flex-col justify-center">
+                    <span className="text-xs font-medium text-gray-700">
+                      {shiftKey === 'morning' ? 'Morning' : shiftKey === 'evening' ? 'Evening' : 'Custom hours'}
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      {shiftKey === 'morning'
+                        ? calendarRowLabels.morning
+                        : shiftKey === 'evening'
+                        ? calendarRowLabels.evening
+                        : 'manual hrs'}
+                    </span>
+                  </div>
+                  {weekDates.map((date, i) => {
+                    const cellShifts = getShiftsForCell(date, i, shiftKey)
+                    const today = isToday(date)
+                    const dayHours = calendarShiftRows[i]
+                    const closedToday = shiftKey !== 'custom' && !dayHours?.[shiftKey]
+
+                    return (
+                      <div
+                        key={i}
+                        className={`p-1 min-h-[72px] border rounded-lg transition-colors ${
+                          closedToday
+                            ? 'border-gray-100 bg-gray-50/50 cursor-not-allowed'
+                            : today
+                            ? 'border-[#16a34a]/30 bg-[#16a34a]/5 cursor-pointer hover:border-[#16a34a]/50'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
+                        }`}
+                        onClick={() => {
+                          if (closedToday) return
+                          if (cellShifts.length === 0) {
+                            openAddDialog(formatDateKey(date), shiftKey)
+                          }
+                        }}
+                        title={closedToday ? 'Store closed' : undefined}
+                      >
+                        {cellShifts.map((s) => (
+                          <div
+                            key={s.id}
+                            className={`text-[10px] leading-tight rounded px-1.5 py-1 mb-0.5 border ${
+                              roleColors[s.role] || 'bg-gray-100 border-gray-200'
+                            } flex items-center justify-between group`}
+                            title={
+                              s.manualHours !== null && s.manualHours !== undefined
+                                ? `${s.userName} — ${s.manualHours}h (manual)`
+                                : `${s.userName} — ${s.startTime}-${s.endTime}`
+                            }
+                          >
+                            <div className="flex items-center gap-1 min-w-0">
+                              <User className="h-2.5 w-2.5 shrink-0" />
+                              <span className="truncate font-medium">{s.userName}</span>
+                              {s.manualHours !== null && s.manualHours !== undefined && (
+                                <span className="ml-0.5 text-[9px] font-semibold text-gray-600">
+                                  {s.manualHours}h
+                                </span>
+                              )}
+                            </div>
+                            {/* Delete button — always visible on mobile (no hover-only), opacity-fades on desktop */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteShift(s.id)
+                              }}
+                              disabled={deleting === s.id}
+                              className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ml-1 p-0.5"
+                              aria-label="Delete shift"
+                            >
+                              <Trash2 className="h-3 w-3 text-red-500 hover:text-red-700" />
+                            </button>
+                          </div>
+                        ))}
+                        {cellShifts.length === 0 && !closedToday && (
+                          <div className="flex items-center justify-center h-full opacity-30 md:opacity-0 md:hover:opacity-100 transition-opacity">
+                            <Plus className="h-4 w-4 text-gray-400" />
+                          </div>
+                        )}
+                        {closedToday && (
+                          <div className="flex items-center justify-center h-full text-[9px] text-gray-300">
+                            Closed
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               ))}
             </div>
-
-            {/* Shift Rows */}
-            {SHIFTS.map((shiftDef) => (
-              <div key={shiftDef.key} className="grid grid-cols-8 gap-1 mb-1">
-                <div className="p-2 flex flex-col justify-center">
-                  <span className="text-xs font-medium text-gray-700">{shiftDef.label}</span>
-                  <span className="text-[10px] text-gray-400">
-                    {shiftDef.startTime && shiftDef.endTime
-                      ? `${shiftDef.startTime}-${shiftDef.endTime}`
-                      : 'manual hrs'}
-                  </span>
-                </div>
-                {weekDates.map((date, i) => {
-                  const cellShifts = getShiftsForCell(date, shiftDef.key)
-                  const today = isToday(date)
-
-                  return (
-                    <div
-                      key={i}
-                      className={`p-1 min-h-[72px] border rounded-lg transition-colors cursor-pointer ${
-                        today
-                          ? 'border-[#16a34a]/30 bg-[#16a34a]/5'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                      onClick={() => {
-                        if (cellShifts.length === 0) {
-                          openAddDialog(formatDateKey(date), shiftDef.key)
-                        }
-                      }}
-                    >
-                      {cellShifts.map((s) => (
-                        <div
-                          key={s.id}
-                          className={`text-[10px] leading-tight rounded px-1.5 py-1 mb-0.5 border ${
-                            roleColors[s.role] || 'bg-gray-100 border-gray-200'
-                          } flex items-center justify-between group`}
-                          title={
-                            s.manualHours !== null && s.manualHours !== undefined
-                              ? `${s.userName} — ${s.manualHours}h (manual)`
-                              : `${s.userName} — ${s.startTime}-${s.endTime}`
-                          }
-                        >
-                          <div className="flex items-center gap-1 min-w-0 truncate">
-                            <User className="h-2.5 w-2.5 shrink-0" />
-                            <span className="truncate font-medium">{s.userName}</span>
-                            {s.manualHours !== null && s.manualHours !== undefined && (
-                              <span className="ml-0.5 text-[9px] font-semibold text-gray-600">
-                                {s.manualHours}h
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteShift(s.id)
-                            }}
-                            disabled={deleting === s.id}
-                            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-1"
-                            aria-label="Delete shift"
-                          >
-                            <Trash2 className="h-3 w-3 text-red-500 hover:text-red-700" />
-                          </button>
-                        </div>
-                      ))}
-                      {cellShifts.length === 0 && (
-                        <div className="flex items-center justify-center h-full opacity-0 hover:opacity-100 transition-opacity">
-                          <Plus className="h-4 w-4 text-gray-300" />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
           </div>
+          {/* Mobile horizontal-scroll hint */}
+          <p className="text-[10px] text-gray-400 mt-2 sm:hidden text-center">
+            ← Swipe horizontally to view all days →
+          </p>
         </CardContent>
       </Card>
 
@@ -556,7 +784,6 @@ export function ShiftsClient() {
             {Object.entries(roleDotColors).map(([role, color]) => {
               const roleShifts = shifts.filter((s) => s.role === role)
               const count = roleShifts.length
-              // Sum hours: prefer manualHours when set, else compute from start/end
               const totalHours = roleShifts.reduce((sum, s) => {
                 if (s.manualHours !== null && s.manualHours !== undefined) return sum + s.manualHours
                 const [sh, sm] = s.startTime.split(':').map(Number)
@@ -566,10 +793,10 @@ export function ShiftsClient() {
               }, 0)
               return (
                 <div key={role} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                  <div className={`w-3 h-3 rounded-full ${color}`} />
-                  <div>
+                  <div className={`w-3 h-3 rounded-full ${color} flex-shrink-0`} />
+                  <div className="min-w-0">
                     <p className="text-lg font-bold text-gray-900">{count}</p>
-                    <p className="text-[10px] text-gray-500">
+                    <p className="text-[10px] text-gray-500 truncate">
                       {role.charAt(0) + role.slice(1).toLowerCase()} shifts · {totalHours.toFixed(1)}h
                     </p>
                   </div>

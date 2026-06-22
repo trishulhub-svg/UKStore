@@ -21,6 +21,7 @@ import { formatPrice } from '@/lib/vat'
 import { apiFetch } from '@/lib/api-fetch'
 import { EmployeePermissionsDialog } from '@/components/admin/employee-permissions-dialog'
 import { EmployeeSessionsDialog } from '@/components/admin/employee-sessions-dialog'
+import { FeaturePermissionsSection } from '@/components/admin/feature-permissions-section'
 
 interface EmployeeProfile {
   id: string
@@ -84,6 +85,7 @@ export default function AdminEmployeesPage() {
   const [newEmail, setNewEmail] = useState('')
   const [newPhone, setNewPhone] = useState('')
   const [newRole, setNewRole] = useState<'DRIVER' | 'PICKER' | 'MANAGER'>('PICKER')
+  const [newFeatures, setNewFeatures] = useState<string[] | null>(null)
   const [creating, setCreating] = useState(false)
   const [createdResult, setCreatedResult] = useState<{
     email: string
@@ -104,6 +106,7 @@ export default function AdminEmployeesPage() {
   const [editEmail, setEditEmail] = useState('')
   const [editIsActive, setEditIsActive] = useState(true)
   const [editRole, setEditRole] = useState('')
+  const [editFeatures, setEditFeatures] = useState<string[] | null>(null)
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -156,6 +159,7 @@ export default function AdminEmployeesPage() {
           email: newEmail.trim(),
           phone: newPhone.trim() || undefined,
           role: newRole,
+          features: newFeatures,
         }),
       })
       if (!res.ok) {
@@ -175,6 +179,7 @@ export default function AdminEmployeesPage() {
       setNewEmail('')
       setNewPhone('')
       setNewRole('PICKER')
+      setNewFeatures(null)
     } catch (err: any) {
       if (err?.message !== 'Session expired — redirecting to login') {
         toast.error(err.message || 'Failed to create employee')
@@ -220,6 +225,10 @@ export default function AdminEmployeesPage() {
         bankSortCode: editBankSortCode || null,
         name: editName,
         phone: editPhone,
+        // Always send features so the section is the source of truth.
+        // null = full access, string[] = restricted. The endpoint will
+        // ignore this for OWNER users.
+        features: editFeatures,
       }
       // Only send email if it changed (owner-only — backend enforces)
       if (editEmail !== editEmployee.email) {
@@ -537,7 +546,7 @@ export default function AdminEmployeesPage() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs text-gray-500">Role</Label>
                     <Select
@@ -640,7 +649,7 @@ export default function AdminEmployeesPage() {
                       onChange={(e) => setEditBankName(e.target.value)}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs text-gray-500">Account Number</Label>
                       <Input
@@ -660,6 +669,17 @@ export default function AdminEmployeesPage() {
                   </div>
                 </div>
               </div>
+
+              <Separator />
+
+              {/* Feature Permissions (embedded) — hidden for OWNER via the section itself */}
+              <FeaturePermissionsSection
+                role={editRole}
+                userId={editEmployee.id}
+                features={editFeatures}
+                onFeaturesChange={setEditFeatures}
+                compact
+              />
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button
@@ -807,7 +827,13 @@ export default function AdminEmployeesPage() {
                 <Label>Role *</Label>
                 <Select
                   value={newRole}
-                  onValueChange={(v: 'DRIVER' | 'PICKER' | 'MANAGER') => setNewRole(v)}
+                  onValueChange={(v: 'DRIVER' | 'PICKER' | 'MANAGER') => {
+                    setNewRole(v)
+                    // Reset feature selection when role changes so the
+                    // FeaturePermissionsSection re-fetches the catalog for
+                    // the new role.
+                    setNewFeatures(null)
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -819,6 +845,14 @@ export default function AdminEmployeesPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Feature Permissions (embedded) — shown for non-OWNER roles */}
+              <FeaturePermissionsSection
+                role={newRole}
+                features={newFeatures}
+                onFeaturesChange={setNewFeatures}
+                compact
+              />
 
               <div className="flex items-start gap-2 rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
                 <KeyRound className="h-4 w-4 mt-0.5 flex-shrink-0" />

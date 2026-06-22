@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
+import { setEnabledFeatures } from '@/lib/feature-permissions'
 
 /**
  * PATCH /api/admin/employees/[id]
@@ -134,6 +135,28 @@ export async function PATCH(
           ...profileData,
         },
       })
+    }
+
+    // ─── Feature permissions update ────────────────────────────
+    // If body.features is provided, update the employee's feature permission row.
+    //   - null = full access (removes the restriction row)
+    //   - string[] = restricted to listed features
+    // OWNER users cannot be restricted — the helper enforces this, but we also
+    // double-check here to be safe.
+    if (body.features !== undefined && targetUser.role !== 'OWNER') {
+      let featuresToSet: string[] | null = null
+      if (body.features !== null) {
+        if (!Array.isArray(body.features) || !body.features.every((f: unknown) => typeof f === 'string')) {
+          return NextResponse.json({ error: 'features must be an array of strings or null' }, { status: 400 })
+        }
+        featuresToSet = body.features as string[]
+      }
+      try {
+        await setEnabledFeatures(id, featuresToSet)
+      } catch (permErr) {
+        console.error('[Admin Employee PATCH] Failed to set feature permissions:', permErr)
+        // Non-fatal — other updates succeeded
+      }
     }
 
     return NextResponse.json({ profile, user: userUpdates })

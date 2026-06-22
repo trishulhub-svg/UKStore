@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation'
 import { getServerUser } from '@/lib/auth/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { getDefaultStore } from '@/lib/supabase/queries'
@@ -8,11 +7,10 @@ import type { Address } from '@/types'
 export const dynamic = 'force-dynamic'
 
 export default async function CheckoutPage() {
+  // Guest checkout: a logged-in user is OPTIONAL. If the visitor is signed in,
+  // we prefill their addresses and tag the order with their user id. If not,
+  // they'll be asked for contact details inline at checkout (one-time guest order).
   const user = await getServerUser()
-
-  if (!user) {
-    redirect('/auth/login?redirect=/checkout')
-  }
 
   const store = await getDefaultStore()
 
@@ -27,36 +25,38 @@ export default async function CheckoutPage() {
     )
   }
 
-  // Fetch user addresses from Prisma
+  // Fetch user addresses from Prisma (only if signed in)
   let addresses: Address[] = []
-  try {
-    const prisma = await getPrisma()
-    const dbAddresses = await prisma.address.findMany({
-      where: { userId: user.id },
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
-    })
+  if (user) {
+    try {
+      const prisma = await getPrisma()
+      const dbAddresses = await prisma.address.findMany({
+        where: { userId: user.id },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+      })
 
-    addresses = dbAddresses.map((a) => ({
-      id: a.id,
-      user_id: a.userId,
-      label: a.label,
-      address_line_1: a.addressLine1,
-      address_line_2: a.addressLine2,
-      city: a.city,
-      postcode: a.postcode,
-      latitude: a.latitude,
-      longitude: a.longitude,
-      is_default: a.isDefault,
-      created_at: a.createdAt.toISOString(),
-    }))
-  } catch (err) {
-    console.warn('[Checkout Page] Failed to fetch addresses:', err)
+      addresses = dbAddresses.map((a) => ({
+        id: a.id,
+        user_id: a.userId,
+        label: a.label,
+        address_line_1: a.addressLine1,
+        address_line_2: a.addressLine2,
+        city: a.city,
+        postcode: a.postcode,
+        latitude: a.latitude,
+        longitude: a.longitude,
+        is_default: a.isDefault,
+        created_at: a.createdAt.toISOString(),
+      }))
+    } catch (err) {
+      console.warn('[Checkout Page] Failed to fetch addresses:', err)
+    }
   }
 
   return (
     <CheckoutClient
       store={store}
-      user={{ id: user.id, email: user.email, name: user.name }}
+      user={user ? { id: user.id, email: user.email, name: user.name || '' } : null}
       addresses={addresses}
     />
   )

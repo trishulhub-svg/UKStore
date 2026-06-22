@@ -105,25 +105,45 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingUser) {
-      return buildApiError(
-        'An account with this email already exists.',
-        'AUTH_EMAIL_EXISTS',
-        409,
-        `A user with email "${email}" already exists (user ID: ${existingUser.id}, created: ${existingUser.createdAt.toISOString()}). Try logging in instead, or use a different email address.`,
-        endpoint,
-      )
+      // If the existing user has a password, this is a normal "email already
+      // registered" case — reject as before.
+      if (existingUser.passwordHash) {
+        return buildApiError(
+          'An account with this email already exists.',
+          'AUTH_EMAIL_EXISTS',
+          409,
+          `A user with email "${email}" already exists (user ID: ${existingUser.id}, created: ${existingUser.createdAt.toISOString()}). Try logging in instead, or use a different email address.`,
+          endpoint,
+        )
+      }
+      // Otherwise this is a passwordless "guest" account created during a
+      // previous guest checkout. Allow the visitor to CLAIM it by setting a
+      // password (and backfilling the name if missing). This prevents guests
+      // from getting stuck in a state where they can't register and can't
+      // log in with the email they used for a guest order.
     }
 
-    // Hash password and create user
+    // Hash password (always required, even for claim)
     const passwordHash = await hashPassword(password)
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name: fullName || null,
-        passwordHash,
-        role: 'CUSTOMER',
-      },
-    })
+
+    // Either create a new user OR upgrade an existing guest (passwordless)
+    // user to a full customer account.
+    const user = existingUser
+      ? await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            passwordHash,
+            ...(fullName && !existingUser.name ? { name: fullName } : {}),
+          },
+        })
+      : await prisma.user.create({
+          data: {
+            email,
+            name: fullName || null,
+            passwordHash,
+            role: 'CUSTOMER',
+          },
+        })
 
     // Create session token (with sid embedded for session tracking)
     const userAgent = request.headers.get('user-agent') || ''

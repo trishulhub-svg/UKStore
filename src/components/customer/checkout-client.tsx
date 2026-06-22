@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, MapPin, Clock, ShoppingBag, CreditCard, ChevronRight, Loader2, Banknote, Building2, Info, Tag, X, Navigation, AlertTriangle } from 'lucide-react'
+import { Check, MapPin, Clock, ShoppingBag, CreditCard, ChevronRight, Loader2, Banknote, Building2, Info, Tag, X, Navigation, AlertTriangle, User, Mail, Phone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -24,7 +24,9 @@ import { apiFetch } from '@/lib/api-fetch'
 
 interface CheckoutClientProps {
   store: Store
-  user: { id: string; email: string; name: string }
+  // When null, the visitor is a guest — we collect contact details inline
+  // and the order is placed via the guest checkout path (no account created).
+  user: { id: string; email: string; name: string } | null
   addresses: Address[]
 }
 
@@ -73,6 +75,12 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
   const [city, setCity] = useState(defaultAddress?.city || '')
   const [postcode, setPostcode] = useState(defaultAddress?.postcode || '')
   const [saveAddress, setSaveAddress] = useState(false)
+
+  // Guest contact details (only collected when the visitor isn't signed in)
+  const isGuest = !user
+  const [guestName, setGuestName] = useState('')
+  const [guestEmail, setGuestEmail] = useState('')
+  const [guestPhone, setGuestPhone] = useState('')
 
   // Delivery slot state
   const [selectedSlot, setSelectedSlot] = useState(deliverySlots[0].id)
@@ -156,6 +164,12 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
     // Basic UK postcode validation
     const postcodeRegex = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i
     if (!postcodeRegex.test(postcode.trim())) return false
+    // Guests must also provide contact details so we can reach them about
+    // their order (and so the server can create a passwordless customer row).
+    if (isGuest) {
+      if (!guestName.trim()) return false
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) return false
+    }
     return true
   }
 
@@ -163,10 +177,19 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
     setError(null)
     if (currentStep === 'address') {
       if (!validateAddress()) {
+        const missing: string[] = []
+        if (!addressLine1.trim()) missing.push('Address line 1')
+        if (!city.trim()) missing.push('City')
+        if (!postcode.trim()) missing.push('Postcode')
+        else if (!/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(postcode.trim())) missing.push('Valid UK postcode (e.g. SE13 6LG)')
+        if (isGuest) {
+          if (!guestName.trim()) missing.push('Your name')
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) missing.push('Valid email address')
+        }
         setError({
-          message: 'Please fill in all address fields with a valid UK postcode.',
+          message: `Please complete the following before continuing: ${missing.join(', ')}.`,
           code: 'INVALID_ADDRESS',
-          details: `Address line 1: ${addressLine1 ? 'provided' : 'missing'}\nCity: ${city ? 'provided' : 'missing'}\nPostcode: ${postcode || 'missing'}\nUK postcode format: SW1A 1AA`,
+          details: `Missing/invalid fields: ${missing.join(', ')}`,
           timestamp: new Date().toISOString(),
         })
         return
@@ -288,6 +311,10 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
     try {
       const response = await apiFetch('/api/checkout', {
         method: 'POST',
+        // Guests POST to this endpoint without a session cookie — we must
+        // NOT auto-redirect to /auth/login if the server returns 401 for
+        // any reason (it shouldn't, but defensive coding wins).
+        redirectOn401: false,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: items.map((item) => ({
@@ -315,6 +342,17 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
           promo_code: appliedPromo?.code || undefined,
           promotion_id: appliedPromo?.promotionId || undefined,
           discount_amount: promoDiscount || undefined,
+          // Guest-only: contact details so the server can create a
+          // passwordless customer record and we can email them updates.
+          // Omitted entirely for signed-in users (their account already
+          // has these fields).
+          guest_details: isGuest
+            ? {
+                name: guestName.trim(),
+                email: guestEmail.trim().toLowerCase(),
+                phone: guestPhone.trim() || undefined,
+              }
+            : undefined,
         }),
       })
 
@@ -450,7 +488,87 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Saved Addresses */}
+              {/* Guest contact details — only shown when the visitor isn't signed in.
+                  We collect these inline so the order can be placed without forcing
+                  the visitor to register. The server uses them to create a
+                  passwordless customer record linked to this order. */}
+              {isGuest && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <User className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">Guest checkout</p>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        You&apos;re checking out as a guest. Please provide your contact details so we can
+                        send you order updates — no account will be created.{' '}
+                        <Link href="/auth/login?redirect=/checkout" className="underline font-medium hover:text-blue-900">
+                          Sign in
+                        </Link>{' '}
+                        to use your saved details instead.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="guest_name" className="text-sm font-medium text-gray-700">
+                        Full Name *
+                      </Label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                        <Input
+                          id="guest_name"
+                          placeholder="e.g., Jane Smith"
+                          value={guestName}
+                          onChange={(e) => setGuestName(e.target.value)}
+                          className="pl-9"
+                          autoComplete="name"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="guest_phone" className="text-sm font-medium text-gray-700">
+                        Phone <span className="text-gray-400 font-normal">(optional)</span>
+                      </Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                        <Input
+                          id="guest_phone"
+                          placeholder="e.g., 07700 900000"
+                          value={guestPhone}
+                          onChange={(e) => setGuestPhone(e.target.value)}
+                          className="pl-9"
+                          autoComplete="tel"
+                          inputMode="tel"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label htmlFor="guest_email" className="text-sm font-medium text-gray-700">
+                        Email *
+                      </Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                        <Input
+                          id="guest_email"
+                          type="email"
+                          placeholder="e.g., jane@example.com"
+                          value={guestEmail}
+                          onChange={(e) => setGuestEmail(e.target.value)}
+                          className="pl-9"
+                          autoComplete="email"
+                          required
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        We&apos;ll send your order confirmation and delivery updates here.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Saved Addresses — only relevant for signed-in users */}
               {addresses.length > 0 && (
                 <div>
                   <Label className="text-sm font-medium text-gray-700 mb-2 block">Saved Addresses</Label>
@@ -519,16 +637,20 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 pt-2">
-                <Checkbox
-                  id="save_address"
-                  checked={saveAddress}
-                  onCheckedChange={(checked) => setSaveAddress(checked === true)}
-                />
-                <Label htmlFor="save_address" className="text-sm font-normal cursor-pointer">
-                  Save this address for future orders
-                </Label>
-              </div>
+              {/* "Save address" toggle — only relevant for signed-in users (guests
+                  have no address book to save to). */}
+              {!isGuest && (
+                <div className="flex items-center space-x-2 pt-2">
+                  <Checkbox
+                    id="save_address"
+                    checked={saveAddress}
+                    onCheckedChange={(checked) => setSaveAddress(checked === true)}
+                  />
+                  <Label htmlFor="save_address" className="text-sm font-normal cursor-pointer">
+                    Save this address for future orders
+                  </Label>
+                </div>
+              )}
 
               {/* Delivery Zone Info */}
               {addressDistanceKm !== null && (
@@ -646,6 +768,19 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Guest contact confirmation — only shown for guest checkout */}
+              {isGuest && (
+                <div>
+                  <h3 className="font-medium text-sm text-gray-700 mb-2">Contact Details (Guest)</h3>
+                  <p className="text-sm text-gray-900">
+                    {guestName}
+                    <br />
+                    {guestEmail}
+                    {guestPhone && (<><br />{guestPhone}</>)}
+                  </p>
+                </div>
+              )}
+
               {/* Delivery Address */}
               <div>
                 <h3 className="font-medium text-sm text-gray-700 mb-2">Delivery Address</h3>

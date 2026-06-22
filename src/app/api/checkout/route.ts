@@ -33,18 +33,12 @@ function buildApiError(
 export async function POST(request: NextRequest) {
   const endpoint = '/api/checkout'
   try {
-    // Verify authenticated user using local auth
-    const user = await getServerUser()
-
-    if (!user) {
-      return buildApiError(
-        'Authentication required. Please log in and try again.',
-        'AUTH_REQUIRED',
-        401,
-        'No valid session cookie was found. This endpoint requires authentication via the fresh_mart_session cookie.',
-        endpoint,
-      )
-    }
+    // ─── Auth: signed-in user is OPTIONAL ──────────────────────────
+    // Logged-in customer → attach order to their existing user id.
+    // Guest visitor     → require guest_details (name, email, phone) and
+    //                     find-or-create a passwordless CUSTOMER row so the
+    //                     order can be persisted with a valid customerId.
+    const sessionUser = await getServerUser()
 
     let body: any
     try {
@@ -73,6 +67,7 @@ export async function POST(request: NextRequest) {
       promo_code: promoCode,
       promotion_id: promotionId,
       discount_amount: discountAmount,
+      guest_details: guestDetails,
     } = body
 
     // Validate cart items
@@ -99,6 +94,89 @@ export async function POST(request: NextRequest) {
 
     // Get Prisma client
     const prisma = await getPrisma()
+
+    // ─── Resolve the ordering user (logged-in OR guest) ────────────
+    // For guest checkout we find-or-create a CUSTOMER row with no password.
+    // This keeps the orders table's NOT NULL customerId satisfied without
+    // forcing the visitor to register.
+    let user: { id: string; email: string; name: string; role: string }
+    if (sessionUser) {
+      user = sessionUser
+    } else {
+      // Validate guest details
+      const guestName = typeof guestDetails?.name === 'string' ? guestDetails.name.trim() : ''
+      const guestEmail = typeof guestDetails?.email === 'string' ? guestDetails.email.trim().toLowerCase() : ''
+      const guestPhone = typeof guestDetails?.phone === 'string' ? guestDetails.phone.trim() : ''
+
+      if (!guestName) {
+        return buildApiError(
+          'Please provide your name.',
+          'GUEST_NAME_REQUIRED',
+          400,
+          'Guest checkout requires a contact name.',
+          endpoint,
+        )
+      }
+      if (!guestEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) {
+        return buildApiError(
+          'Please provide a valid email address.',
+          'GUEST_EMAIL_REQUIRED',
+          400,
+          `Received email: "${guestEmail}". Guest checkout requires a valid email so we can send order updates.`,
+          endpoint,
+        )
+      }
+
+      try {
+        // Find existing user by email — if they previously registered, attach
+        // the order to that account (they'll see it when they next log in).
+        // Otherwise create a passwordless CUSTOMER row that cannot log in
+        // (passwordHash stays null) but can receive orders.
+        let guestUser = await prisma.user.findUnique({ where: { email: guestEmail } })
+        if (!guestUser) {
+          guestUser = await prisma.user.create({
+            data: {
+              email: guestEmail,
+              name: guestName,
+              phone: guestPhone || null,
+              role: 'CUSTOMER',
+              // passwordHash intentionally omitted → null → cannot log in
+            },
+          })
+        } else if (guestUser.name !== guestName && !guestUser.name) {
+          // Backfill the name/phone if the existing row is missing them
+          await prisma.user.update({
+            where: { id: guestUser.id },
+            data: {
+              name: guestName,
+              ...(guestPhone && !guestUser.phone ? { phone: guestPhone } : {}),
+            },
+          })
+        }
+        user = {
+          id: guestUser.id,
+          email: guestUser.email,
+          name: guestUser.name || guestName,
+          role: guestUser.role,
+        }
+      } catch (err) {
+        console.error('[Checkout] Failed to resolve guest user:', err)
+        return buildApiError(
+          'Failed to set up guest checkout. Please try again or create an account.',
+          'GUEST_USER_RESOLUTION_FAILED',
+          500,
+          String(err),
+          endpoint,
+        )
+      }
+    }
+
+    // Guests cannot save addresses to an account list (they have no UI to
+    // manage them) — but we still create the address row so the order has a
+    // valid addressId. The `save_address` flag from the client is honoured
+    // implicitly: signed-in users always get the address linked to their
+    // account (so it appears in their address book); guests get a one-off
+    // row that exists only to satisfy the order's addressId FK.
 
     // Validate items against database (check prices and stock) via Prisma
     let dbProducts: Map<string, { id: string; name: string; price: number; vatRate: number; isAvailable: boolean; stockQuantity: number; isHfss: boolean; isAgeRestricted: boolean; minimumAge: number }> = new Map()
@@ -192,10 +270,13 @@ export async function POST(request: NextRequest) {
     const finalDiscount = discountAmount || 0
     const finalTotal = finalSubtotal + delivery_fee - finalDiscount
 
-    // Save address if requested and user is authenticated
+    // Persist the delivery address (linked to the resolved user, whether
+    // signed-in or guest). For guests we always create a fresh row so the
+    // order has a valid addressId; for signed-in users we reuse an existing
+    // matching address if one exists, otherwise create one (and tag it as
+    // saved when they ticked "save for future orders").
     let addressId: string | null = null
     try {
-      // Check if user already has this address
       const existingAddress = await prisma.address.findFirst({
         where: {
           userId: user.id,
@@ -206,8 +287,7 @@ export async function POST(request: NextRequest) {
 
       if (existingAddress) {
         addressId = existingAddress.id
-      } else if (save_address) {
-        // Create new address
+      } else {
         const newAddress = await prisma.address.create({
           data: {
             userId: user.id,
@@ -222,24 +302,11 @@ export async function POST(request: NextRequest) {
           },
         })
         addressId = newAddress.id
-      } else {
-        // Create a temporary address for the order
-        const tempAddress = await prisma.address.create({
-          data: {
-            userId: user.id,
-            addressLine1: address.address_line_1,
-            addressLine2: address.address_line_2 || null,
-            city: address.city,
-            postcode: address.postcode,
-            latitude: address.latitude || null,
-            longitude: address.longitude || null,
-            isDefault: false,
-          },
-        })
-        addressId = tempAddress.id
       }
-    } catch {
-      // Address creation failed — continue without address_id
+    } catch (err) {
+      console.warn('[Checkout] Address creation failed:', err)
+      // Address creation failed — continue without address_id; the order
+      // will still be created with addressId set to '' (existing behaviour).
     }
 
     // ─── Payment Method: Cash on Delivery ───────────────────────

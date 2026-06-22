@@ -23,7 +23,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protect authenticated routes (customer)
-  const protectedPaths = ['/checkout', '/account', '/orders']
+  // NOTE: /checkout is intentionally NOT protected — guests can place a one-time
+  // order by providing their contact details inline (guest checkout). /account
+  // and /orders still require an account because they list per-user history.
+  const protectedPaths = ['/account', '/orders']
   const isProtected = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   )

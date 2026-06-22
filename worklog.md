@@ -798,3 +798,59 @@ Stage Summary:
 - Status line under the inputs always tells the user what happened: looking up / failed / success (with source) / waiting for address.
 - Files changed: src/app/api/geocode/route.ts (modified), src/components/admin/store-profile-editor.tsx (modified).
 - Build ✓, lint ✓ (only pre-existing submodule errors). Not yet committed.
+
+---
+Task ID: 10
+Agent: Main
+Task: Guest browsing + guest checkout — visitors can browse products without logging in, and place a one-time order by providing contact details inline (no account creation required).
+
+Work Log:
+- Audited current auth flow:
+  * `src/middleware.ts` protected `/checkout`, `/account`, `/orders` for customers.
+  * `src/lib/api-fetch.ts` auto-redirects to /auth/login on 401 (but supports `redirectOn401: false`).
+  * Catalog, product detail, cart, and order confirmation pages were already browseable without auth.
+  * `/api/checkout` returned 401 if `getServerUser()` was null, and used `user.id` for `customerId` + `address.userId`.
+  * Prisma schema: `Order.customerId` and `Address.userId` are NOT NULL with FK to User — so guest checkout needs a real User row.
+- `src/middleware.ts`: removed `/checkout` from `protectedPaths`. Now only `/account` and `/orders` require auth (those are per-user history pages and don't make sense for guests). Order confirmation page `/order/[id]` was already public.
+- `src/app/checkout/page.tsx`: removed the `if (!user) redirect('/auth/login')` gate. Now passes `user={null}` and `addresses={[]}` to the client when the visitor is a guest. Signed-in users still get their addresses prefetched.
+- `src/components/customer/checkout-client.tsx`:
+  * Changed `user` prop type to `{ id, email, name } | null`.
+  * Added `isGuest = !user` derived flag.
+  * Added state for guest contact fields: `guestName`, `guestEmail`, `guestPhone`.
+  * Updated `validateAddress()` to also require guest name + valid email when `isGuest`.
+  * Updated the address-step error message to list every missing field (including guest fields) instead of a generic message.
+  * Added a guest contact details card at the top of the address step with name (required), phone (optional), email (required) inputs — each with a leading icon and proper autocomplete attributes. The card explains guest checkout and links to /auth/login?redirect=/checkout for visitors who want to use saved details.
+  * Wrapped the "Save this address for future orders" checkbox in `{!isGuest && ...}` — guests have no address book UI to save to.
+  * Added a "Contact Details (Guest)" section to the order summary step so guests can verify their contact info before placing the order.
+  * Updated `handlePlaceOrder` to send a `guest_details: { name, email, phone }` field in the API payload when `isGuest`. Also added `redirectOn401: false` to the apiFetch call — defensive: if the server ever returns 401 for a guest, the user should NOT be redirected to login (they're intentionally not logged in).
+- `src/app/api/checkout/route.ts`:
+  * Removed the early `if (!user) return 401` block. `sessionUser` is now optional.
+  * Added `guest_details` to the destructured body fields.
+  * New user-resolution block: if `sessionUser` is null, validate guest name + email, then find-or-create a passwordless CUSTOMER row (`passwordHash` stays null → cannot log in). If the email already matches a registered user, the order is attached to that existing account.
+  * Simplified the address-saving block — for both signed-in and guest users, we now always create a fresh Address row linked to the resolved user (reusing an existing matching row if present). The old `save_address` branch logic was functionally identical (both branches created the same row), so the simplification is safe.
+  * All downstream code (cash, bank_transfer, Stripe paths) continues to use the resolved `user.id` for `customerId` and Stripe metadata — no other changes needed.
+- `src/app/api/auth/register/route.ts`: closed the "stuck guest" UX gap. Previously, if a guest placed an order with jane@example.com and later tried to register, they got "email exists" — but couldn't log in either (no password). Now the register route detects passwordless (guest) accounts and treats registration as a "claim" — updates the existing user with the new password and backfills the name if missing. The user ID is preserved, so any past guest orders automatically appear in the newly-registered account's order history.
+- Smoke-tested end-to-end on the dev server:
+  * `/catalog`, `/cart`, `/checkout`, `/order/[id]` all return 200 with no session cookie.
+  * `/orders`, `/account` still 307-redirect to /auth/login (per-user history still auth-required).
+  * POST /api/checkout with a valid guest_details payload + real product ID → 200, returns orderId. Order is visible on the order confirmation page.
+  * POST /api/checkout without guest_details → 400 GUEST_NAME_REQUIRED.
+  * POST /api/checkout with invalid email → 400 GUEST_EMAIL_REQUIRED.
+  * POST /api/auth/register with the guest's email → 201, returns the same user ID (account "claimed"). Past guest orders are now attached to the registered account.
+  * POST /api/auth/login with the new password → 200, login succeeds.
+- Ran `npm run lint` — only pre-existing trishul-protocol submodule errors. My code is clean.
+- Ran `npm run build` — `✓ Compiled successfully in 13.1s`. 71/71 pages generated.
+
+Stage Summary:
+- Visitors can now browse the full catalog, product detail pages, and cart without logging in or registering.
+- At checkout, guests provide their name, email, and optional phone inline — no account is created.
+- The order is persisted with a real customerId (a passwordless "ghost" user row) so existing order-tracking, driver-dispatch, and admin-order-management flows work unchanged.
+- If a guest later decides to register with the same email, they can — the guest account is "claimed" (password set) and any past guest orders become visible in their order history.
+- `/account` and `/orders` (per-user history pages) still require auth — only the checkout flow was opened to guests.
+- Files changed:
+  * src/middleware.ts (removed /checkout from protectedPaths)
+  * src/app/checkout/page.tsx (user is now optional)
+  * src/components/customer/checkout-client.tsx (guest contact details UI + payload)
+  * src/app/api/checkout/route.ts (guest_details handling, find-or-create passwordless user)
+  * src/app/api/auth/register/route.ts (allow claiming passwordless guest accounts)
+- Build ✓, lint ✓ (only pre-existing submodule errors). Ready to commit + push.

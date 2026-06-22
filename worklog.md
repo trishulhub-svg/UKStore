@@ -622,3 +622,41 @@ Stage Summary:
   * .env (updated with Turso vars commented out)
   * .gitignore (added tool-results/ + upload/ + !.env.example exception)
   * package.json (added 3 npm scripts)
+
+---
+Task ID: 16-turso-migration-phase2
+Agent: main
+Task: User provided Turso credentials (ukstoredb-kiran2057.aws-eu-west-1.turso.io). Provision schema + seed data on Turso and verify the runtime adapter path works end-to-end before Vercel deployment.
+
+Work Log:
+- User provided TURSO_DATABASE_URL + TURSO_AUTH_TOKEN. DB name: ukstoredb (in aws-eu-west-1 / Ireland region — close enough to UK store, ~15ms latency from London).
+- User also asked whether to remove Supabase env vars from Vercel. Investigated: Supabase is vestigial in this codebase. The src/lib/supabase/queries.ts file actually imports from @/lib/auth/prisma and uses Prisma (not Supabase). The src/lib/supabase/{client,server,admin}.ts files return null gracefully when NEXT_PUBLIC_SUPABASE_URL isn't set. Recommendation: safe to remove Supabase env vars from Vercel — they're not actually used. Will pass this guidance to user.
+- Added credentials to local .env.
+- Hit first blocker: `prisma db push` against Turso failed with "Error validating datasource `db`: the URL must start with the protocol `file:`." Prisma CLI strictly enforces file: protocol for sqlite provider — driverAdapters preview feature is deprecated in v6 and doesn't help here.
+- Workaround: extracted the 375-line inline SCHEMA_SQL constant from src/lib/auth/prisma.ts into a new file prisma/schema.sql. This becomes the single source of truth shared by both the SQLite fallback path and the Turso migration path.
+- Added src/lib/db/schema-sql.ts with getSchemaSql() / getSchemaStatements() helpers that read prisma/schema.sql at runtime.
+- Refactored src/lib/auth/prisma.ts to import from the shared helper. Behavior is identical for the SQLite fallback path (verified by running the existing local DB — same 3 users, no re-seed triggered).
+- Wrote scripts/turso-migrate.mjs: uses @libsql/client directly (bypassing Prisma CLI's URL validation) to execute schema statements + run column migrations against Turso. Idempotent — safe to re-run.
+- Updated scripts/turso-setup.mjs to call the new migrate script instead of `prisma db push`.
+- Updated prisma/seed.ts to construct PrismaClient with PrismaLibSql adapter when TURSO_DATABASE_URL is set (falls back to standard PrismaClient otherwise). Wrapped in async function instead of top-level await to satisfy tsx's CJS output format.
+- Wrote scripts/test-turso-runtime.ts: end-to-end test that simulates Vercel Lambda calling getPrisma() with Turso env vars set. Confirms the runtime adapter path works.
+- Wrote scripts/turso-verify.mjs: standalone verification script that queries Turso to confirm schema and seed data are in place.
+- Ran `npm run db:setup:turso`:
+  * Migration: 35 statements executed successfully, 23 tables created on Turso, 0 columns added (all 24 column migrations skipped because the schema SQL already includes all columns — the COLUMN_MIGRATIONS array is for older SQLite DBs that predate those columns)
+  * Seed: 1 store, 8 categories, 20 products, 7 store settings, 3 users (kiranpradhan2057@gmail.com as OWNER, driver@freshmart.co.uk as DRIVER, customer@freshmart.co.uk as CUSTOMER)
+- Verified via scripts/turso-verify.mjs: all data is on Turso. Sessions count = 0 (will be created on login). Feature permissions count = 0 (defaults to all-enabled for everyone).
+- Verified runtime adapter path via `npx tsx scripts/test-turso-runtime.ts`: getPrisma() connects to Turso, queries return expected data (3 users, 1 owner with email kiranpradhan2057@gmail.com, 20 products). This proves Vercel Lambda will work the same way.
+- Verified npx tsc --noEmit --skipLibCheck: no errors in prisma.ts, schema-sql.ts, or seed.ts.
+- Verified npx next build: passes (BUILD_ID: ZUsgwE2jC0v_A7wcXG-7r).
+- Committed as 2c69d71 and pushed to origin/main.
+
+Stage Summary:
+- Turso DB is fully provisioned and seeded. Code is on GitHub.
+- Next: user needs to add 2 env vars to Vercel + redeploy.
+- After redeploy, I'll verify persistence:
+  1. POST /api/auth/login with kiranpradhan2057@gmail.com / Admin@2026 → expect 200 + session cookie
+  2. GET /api/auth/session with cookie → expect 200 + user data
+  3. Wait 10+ min for cold start (forces Lambda to spin up fresh)
+  4. GET /api/auth/session with same cookie → expect STILL 200 (currently fails because session row is wiped on cold start with ephemeral SQLite)
+  5. Also test: create a category via UI, wait 10 min, refresh → category should still be there
+- Supabase answer: safe to remove Supabase env vars from Vercel. They're vestigial — the code uses Prisma, not Supabase. The Supabase client files in src/lib/supabase/ return null gracefully when env vars are absent, so removing them won't break anything.

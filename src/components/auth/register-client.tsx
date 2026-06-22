@@ -109,15 +109,15 @@ export function RegisterClient() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-8 sm:py-12">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <Link href="/" className="flex items-center justify-center gap-2 mb-4 hover:opacity-80 transition-opacity">
-            <Store className="h-7 w-7 text-[#16a34a]" />
-            <span className="font-bold text-xl text-gray-900">{storeName}</span>
+            <Store className="h-7 w-7 text-[#16a34a] flex-shrink-0" />
+            <span className="font-bold text-lg sm:text-xl text-gray-900 truncate">{storeName}</span>
           </Link>
-          <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
-          <CardDescription>Register to start ordering fresh groceries</CardDescription>
+          <CardTitle className="text-xl sm:text-2xl font-bold">Create an Account</CardTitle>
+          <CardDescription className="text-sm">Register to start ordering fresh groceries</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">

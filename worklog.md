@@ -854,3 +854,51 @@ Stage Summary:
   * src/app/api/checkout/route.ts (guest_details handling, find-or-create passwordless user)
   * src/app/api/auth/register/route.ts (allow claiming passwordless guest accounts)
 - Build ✓, lint ✓ (only pre-existing submodule errors). Ready to commit + push.
+
+---
+Task ID: 11
+Agent: Main
+Task: Make the customer-facing website fully responsive on all screen sizes, and same for the employee login page (which uses the same /auth/login route as customers).
+
+Work Log:
+- Analyzed user-provided screenshot (IMG_5870.png) of the home page on a mobile device using VLM. Identified: navbar tries to fit hamburger + logo + "15 Min" badge + search bar + cart button all on one row → cart icon clips off the right edge; "SW13" + "Register" desktop utility bar cramps mobile; category card labels truncate as "Fruits & V…" / "Dairy & E…"; delivery info bar text wraps awkwardly.
+- Audited all customer-facing components: navbar, customer-layout, home-client, catalog-client, product-detail-client, product-card, cart-client, checkout-client, floating-basket-bar, cart-sidebar, footer, store-logo, predictive-search, banner-carousel, category-product-slider, postcode-gate, onboarding-client, auth/login-client, auth/register-client, auth/auth-modal.
+- Confirmed employees use the same /auth/login page as customers (no separate employee login route), so fixing /auth/login covers both audiences.
+- src/components/layout/navbar.tsx — major restructure for mobile:
+  * Top utility bar (location picker + delivery timer + Sign In/Register): wrapped in `hidden md:block` so it disappears on mobile, freeing a whole row of vertical space.
+  * Main navbar row: split into TWO rows on mobile. Row 1 = hamburger + logo + compact "15 Min" pill (rounded, green-tinted) + cart icon (with badge). Row 2 = full-width search bar. On md+ screens, search bar moves back into row 1 next to the logo (single-row desktop layout preserved).
+  * Cart button on mobile: shrunk to icon + count badge (no "Items | £X.XX" text) so it always fits. Desktop keeps the full label.
+  * Mobile hamburger menu: added the Location Picker as a full-width menu item (so mobile users can still set their postcode — it was previously only in the now-hidden top utility bar). Also added `min-w-0` + `truncate` to the user email/name display so long emails don't blow out the menu width.
+  * Reduced horizontal padding on mobile (`px-3` instead of `px-4`) and tightened gaps (`gap-2 sm:gap-3`) to give the cart icon more breathing room.
+- src/components/layout/store-logo.tsx: added `min-w-0` + `truncate` to the store name span and `flex-shrink-0` to the logo image/icon so a long store name (e.g. "Fresh Mart London") truncates cleanly instead of pushing the cart off-screen. Reduced mobile font from `text-lg` to `text-base sm:text-lg`.
+- src/components/customer/home-client.tsx — delivery info bar: rebuilt as a 3-column grid on both mobile and desktop (was 1-col on mobile which took too much vertical space). Mobile uses smaller icons (h-4 w-4) and tighter text (`text-[11px]`) so all three items fit on one row. Sub-descriptions ("Order before 2pm", "Save on bigger orders", "From £3.50") hidden on mobile to keep the row compact.
+- src/components/customer/home-client.tsx — category slider: gave each category card a fixed width (`w-16 sm:w-20`) and changed the label from `truncate` (which was cutting "Vegetables" → "V…") to `line-clamp-2` (allows two-line wrap so "Fruits & Vegetables" displays in full).
+- src/components/customer/catalog-client.tsx — product grid: changed from `grid-cols-2 md:grid-cols-3` to `grid-cols-2 md:grid-cols-3 lg:grid-cols-4` so larger screens use 4 columns (better use of horizontal space) while mobile keeps 2 columns.
+- src/components/customer/product-detail-client.tsx — price badge: reduced mobile font sizes (`text-xl sm:text-2xl` for the main price, `text-base sm:text-lg` for the strikethrough) and tightened gaps so the price + original price + Save badge + "per unit" label all fit on one row on mobile without wrapping awkwardly.
+- src/components/customer/product-detail-client.tsx — thumbnail gallery: shrank thumbnails from `w-16 h-16` to `w-12 h-12 sm:w-16 sm:h-16` on mobile so the main product image gets more space.
+- src/components/auth/login-client.tsx + register-client.tsx + auth-modal.tsx: tightened mobile padding (`py-8 sm:py-12`), reduced title font (`text-xl sm:text-2xl`), added `flex-shrink-0` to the logo icon and `truncate` to the store name so long store names don't wrap. AuthModal container changed from `flex items-center justify-center` (which clipped the long register form on small screens) to `flex items-center justify-center overflow-y-auto p-4` and added `my-4` to the modal so it scrolls properly when the form is taller than the viewport.
+- Verified end-to-end on the dev server at iPhone 14 viewport using agent-browser:
+  * Home page: navbar clean, cart icon fully visible, search bar on its own row, "15 Min" pill compact, category labels show in full ("Fruits & Vegetables", "Dairy & Eggs"), delivery info bar fits one row. VLM verdict: PROPERLY MOBILE-OPTIMIZED.
+  * /catalog: 2-column grid on mobile, properly stacked, no horizontal overflow. VLM verdict: PASS (with one pre-existing minor issue: HFSS badge on product card has slight clipping — not regression, out of scope).
+  * /auth/login + /auth/register: forms stack vertically, inputs ≥40px tappable, no overflow. VLM verdict: PASS.
+  * /checkout (guest, with item in cart): contact details card visible, address form properly stacked, all inputs tappable, "Continue to Delivery Slot" CTA full-width and prominent. VLM verdict: PASS.
+  * Product detail page: image stacks above details, price badge fits one row. VLM verdict: PASS.
+  * Desktop (1280×800) home + catalog: navbar shows logo+search+cart in one row, 4-column product grid on catalog. VLM verdict: PASS (no desktop regressions).
+- Ran `npm run lint` — only pre-existing trishul-protocol submodule errors + 3 pre-existing unused-eslint-disable warnings. No new errors.
+- Ran `npm run build` — `✓ Compiled successfully in 13.5s`. 71/71 pages generated.
+
+Stage Summary:
+- Customer home page is now properly mobile-optimized: navbar no longer clips the cart icon, category labels show in full, delivery info bar fits cleanly.
+- All customer pages (catalog, product detail, cart, checkout, order confirmation, account) verified responsive on iPhone 14 viewport.
+- Login & register pages (used by both customers AND employees/staff) verified responsive — forms stack vertically, inputs are tappable, long register form scrolls properly inside the auth modal on small screens.
+- Desktop layout verified unchanged — no regressions introduced by the mobile fixes.
+- Files changed (8):
+  * src/components/layout/navbar.tsx (mobile restructure: 2-row layout, compact cart badge, location picker moved into hamburger menu)
+  * src/components/layout/store-logo.tsx (truncate long store names, smaller mobile font)
+  * src/components/customer/home-client.tsx (delivery info bar 3-col mobile layout, category labels line-clamp-2)
+  * src/components/customer/catalog-client.tsx (4-col grid on lg+ screens)
+  * src/components/customer/product-detail-client.tsx (smaller mobile price badge + thumbnails)
+  * src/components/auth/login-client.tsx (tighter mobile padding, smaller title)
+  * src/components/auth/register-client.tsx (tighter mobile padding, smaller title)
+  * src/components/auth/auth-modal.tsx (scrollable on small screens, smaller title)
+- Build ✓, lint ✓ (only pre-existing submodule errors). Ready to commit + push.

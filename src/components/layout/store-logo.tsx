@@ -34,17 +34,17 @@ export function StoreLogo({
 
   if (logoUrl) {
     return (
-      <span className={`inline-flex items-center gap-2 ${className}`}>
+      <span className={`inline-flex items-center gap-2 min-w-0 ${className}`}>
         <img
           src={logoUrl}
           alt={`${storeName} logo`}
           width={size}
           height={size}
-          className="rounded-md object-contain"
+          className="rounded-md object-contain flex-shrink-0"
           style={{ width: size, height: size }}
         />
         {showName && (
-          <span className="font-bold text-lg text-gray-900">{storeName}{nameSuffix}</span>
+          <span className="font-bold text-base sm:text-lg text-gray-900 truncate">{storeName}{nameSuffix}</span>
         )}
       </span>
     )
@@ -52,15 +52,15 @@ export function StoreLogo({
 
   // Fallback to the green Store icon (no Z.ai branding)
   return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
+    <span className={`inline-flex items-center gap-2 min-w-0 ${className}`}>
       <span
-        className={`inline-flex items-center justify-center rounded-md bg-gradient-to-br from-emerald-500 to-green-600 text-white ${fallbackClassName}`}
+        className={`inline-flex items-center justify-center rounded-md bg-gradient-to-br from-emerald-500 to-green-600 text-white flex-shrink-0 ${fallbackClassName}`}
         style={{ width: size, height: size }}
       >
         <Store style={{ width: size * 0.65, height: size * 0.65 }} />
       </span>
       {showName && (
-        <span className="font-bold text-lg text-gray-900">{storeName}{nameSuffix}</span>
+        <span className="font-bold text-base sm:text-lg text-gray-900 truncate">{storeName}{nameSuffix}</span>
       )}
     </span>
   )

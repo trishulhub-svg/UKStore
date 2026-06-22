@@ -192,32 +192,33 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
           DELIVERY INFO BAR
       ═══════════════════════════════════════════════════════════ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
-              <Truck className="h-5 w-5 text-[#16a34a]" />
+        {/* On mobile: horizontal scroller; on sm+: 3-column grid */}
+        <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-3">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-1.5 sm:gap-3 text-center sm:text-left">
+            <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+              <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-[#16a34a]" />
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Same-Day Delivery</p>
-              <p className="text-xs text-gray-500">Order before 2pm for same-day</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
-              <Leaf className="h-5 w-5 text-[#16a34a]" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Free Delivery Over {formatPrice(store.free_delivery_threshold)}</p>
-              <p className="text-xs text-gray-500">Save on bigger orders</p>
+            <div className="min-w-0">
+              <p className="text-[11px] sm:text-sm font-medium text-gray-900 leading-tight">Same-Day Delivery</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 leading-tight hidden sm:block">Order before 2pm</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
-              <Clock className="h-5 w-5 text-[#16a34a]" />
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-1.5 sm:gap-3 text-center sm:text-left">
+            <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+              <Leaf className="h-4 w-4 sm:h-5 sm:w-5 text-[#16a34a]" />
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">{store.delivery_radius_km}km Delivery Radius</p>
-              <p className="text-xs text-gray-500">From {formatPrice(store.base_delivery_fee)} delivery fee</p>
+            <div className="min-w-0">
+              <p className="text-[11px] sm:text-sm font-medium text-gray-900 leading-tight">Free Delivery {formatPrice(store.free_delivery_threshold)}+</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 leading-tight hidden sm:block">Save on bigger orders</p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-1.5 sm:gap-3 text-center sm:text-left">
+            <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+              <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-[#16a34a]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] sm:text-sm font-medium text-gray-900 leading-tight">{store.delivery_radius_km}km Radius</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 leading-tight hidden sm:block">From {formatPrice(store.base_delivery_fee)}</p>
             </div>
           </div>
         </div>
@@ -241,14 +242,14 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
             <Link
               key={category.id}
               href={`/catalog?category=${category.slug}`}
-              className="flex-shrink-0 flex flex-col items-center gap-1.5 group"
+              className="flex-shrink-0 w-16 sm:w-20 flex flex-col items-center gap-1.5 group"
             >
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center group-hover:border-[#16a34a]/30 group-hover:bg-green-50 transition-all duration-200">
                 <span className="text-2xl sm:text-3xl">
                   {categoryIcons[category.slug] || '🛒'}
                 </span>
               </div>
-              <span className="text-[10px] sm:text-xs font-medium text-gray-600 group-hover:text-[#16a34a] transition-colors text-center leading-tight max-w-[60px] sm:max-w-[72px] truncate">
+              <span className="text-[10px] sm:text-xs font-medium text-gray-600 group-hover:text-[#16a34a] transition-colors text-center leading-tight w-full line-clamp-2">
                 {category.name}
               </span>
             </Link>

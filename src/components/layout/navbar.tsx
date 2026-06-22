@@ -272,8 +272,10 @@ export function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-50 fm-glass shadow-sm">
-        {/* Top bar: Postcode + Delivery Timer + Auth + Cart */}
-        <div className="bg-gray-50 border-b border-gray-100">
+        {/* Top utility bar — hidden on mobile to free up vertical space.
+            On mobile, location picker + Sign in/Register live inside the
+            hamburger menu (see Mobile Menu Dropdown below). */}
+        <div className="hidden md:block bg-gray-50 border-b border-gray-100">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-9 text-xs">
               {/* Left: Postcode + Delivery Timer */}
@@ -379,7 +381,7 @@ export function Navbar() {
                 </Dialog>
 
                 {/* Delivery Timer */}
-                <div className="hidden sm:flex items-center gap-1">
+                <div className="flex items-center gap-1">
                   <Clock className={`h-3.5 w-3.5 ${deliveryMessage.color}`} />
                   <span className={`font-semibold ${deliveryMessage.color}`}>
                     {deliveryMessage.text}
@@ -427,14 +429,18 @@ export function Navbar() {
           </div>
         </div>
 
-        {/* Main navbar: Logo + Search + Cart */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3 h-14">
+        {/* Main navbar — two rows on mobile, one row on md+.
+            Mobile row 1: hamburger + logo + cart icon  (keeps cart visible)
+            Mobile row 2: search bar (full width)
+            md+ row: hamburger + logo + search + cart with count+total */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          {/* Row 1 — branding + cart */}
+          <div className="flex items-center gap-2 sm:gap-3 h-14">
             {/* Mobile hamburger */}
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden flex-shrink-0"
+              className="md:hidden flex-shrink-0 -ml-1"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
             >
@@ -442,20 +448,20 @@ export function Navbar() {
             </Button>
 
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0">
+            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0 min-w-0">
               <StoreLogo size={32} showName />
             </Link>
 
-            {/* Delivery Timer (mobile) */}
-            <div className="sm:hidden flex items-center gap-1">
-              <Clock className={`h-3.5 w-3.5 ${deliveryMessage.color}`} />
-              <span className={`text-[10px] font-semibold ${deliveryMessage.color}`}>
+            {/* Delivery Timer — compact mobile pill, only shows when store is open */}
+            <div className="md:hidden flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#16a34a]/10 flex-shrink-0">
+              <Clock className={`h-3 w-3 ${deliveryMessage.color}`} />
+              <span className={`text-[10px] font-semibold ${deliveryMessage.color} whitespace-nowrap`}>
                 {storeStatus?.isOpen ? '15 Min' : 'Closed'}
               </span>
             </div>
 
-            {/* Search - center focus */}
-            <div className="flex-1 mx-2">
+            {/* Search — desktop only in this row; mobile gets its own row below */}
+            <div className="hidden md:flex flex-1 mx-2 min-w-0">
               <PredictiveSearch />
             </div>
 
@@ -463,19 +469,29 @@ export function Navbar() {
             <Link href="/cart" className="flex-shrink-0">
               <Button
                 variant="outline"
-                className="h-9 px-3 border-[#16a34a] bg-[#16a34a]/5 hover:bg-[#16a34a] hover:text-white transition-colors gap-1.5 text-[#16a34a]"
+                className="h-9 px-2 sm:px-3 border-[#16a34a] bg-[#16a34a]/5 hover:bg-[#16a34a] hover:text-white transition-colors gap-1.5 text-[#16a34a]"
               >
-                <ShoppingCart className="h-4 w-4" />
+                <ShoppingCart className="h-4 w-4 flex-shrink-0" />
+                {/* Mobile: badge with item count only. Desktop: full label */}
                 {itemCount > 0 ? (
-                  <span className="text-xs font-bold">
-                    {itemCount} {itemCount === 1 ? 'Item' : 'Items'}
-                    <span className="hidden sm:inline"> | {formatPrice(totalPrice)}</span>
+                  <span className="md:hidden inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#16a34a] text-white text-[10px] font-bold leading-none">
+                    {itemCount}
+                  </span>
+                ) : null}
+                {itemCount > 0 ? (
+                  <span className="hidden md:inline text-xs font-bold whitespace-nowrap">
+                    {itemCount} {itemCount === 1 ? 'Item' : 'Items'} | {formatPrice(totalPrice)}
                   </span>
                 ) : (
-                  <span className="text-xs font-medium hidden sm:inline">Basket</span>
+                  <span className="hidden md:inline text-xs font-medium">Basket</span>
                 )}
               </Button>
             </Link>
+          </div>
+
+          {/* Row 2 — mobile-only full-width search bar */}
+          <div className="md:hidden pb-3 -mt-1">
+            <PredictiveSearch />
           </div>
         </div>
 
@@ -508,6 +524,97 @@ export function Navbar() {
                 </Link>
               )}
 
+              {/* Mobile location picker (moved here from the hidden-on-mobile top bar) */}
+              <Dialog open={postcodeDialogOpen} onOpenChange={setPostcodeDialogOpen}>
+                <DialogTrigger asChild>
+                  <button className="w-full text-left px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-[#16a34a] hover:bg-green-50 rounded-lg transition-colors flex items-center gap-2">
+                    <MapPin className={`h-4 w-4 ${hasLocation && !isWithinDeliveryZone ? 'text-red-500' : 'text-gray-500'}`} />
+                    <span className="flex-1 truncate">
+                      {locationDisplay || 'Set Delivery Location'}
+                    </span>
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <MapPin className="h-5 w-5 text-[#16a34a]" />
+                      Delivery Location
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-2">
+                    {hasLocation && (
+                      <div className={`rounded-lg px-3 py-2 text-sm ${
+                        isWithinDeliveryZone
+                          ? 'bg-green-50 text-green-700 border border-green-200'
+                          : 'bg-red-50 text-red-600 border border-red-200'
+                      }`}>
+                        {isWithinDeliveryZone
+                          ? `✓ Delivering to your area (${distanceKm}km from store)`
+                          : `✗ Outside delivery zone (${distanceKm}km — max ${storeInfo?.delivery_radius_km ?? 5}km)`}
+                      </div>
+                    )}
+                    <p className="text-sm text-gray-500">
+                      Enter your postcode or use your device location to check delivery availability.
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={handleUseMyLocation}
+                      disabled={gpsLoading}
+                      className="w-full border-[#16a34a] text-[#16a34a] hover:bg-[#16a34a] hover:text-white"
+                    >
+                      {gpsLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Detecting Location...
+                        </>
+                      ) : (
+                        <>
+                          <Navigation className="h-4 w-4 mr-2" />
+                          Use My Current Location
+                        </>
+                      )}
+                    </Button>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span className="text-xs text-gray-400">OR</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        value={postcodeInput}
+                        onChange={(e) => {
+                          setPostcodeInput(e.target.value)
+                          setPostcodeError(null)
+                        }}
+                        placeholder="e.g., SW1A 1AA"
+                        className="pl-9"
+                        onKeyDown={(e) => e.key === 'Enter' && handlePostcodeSave()}
+                        autoFocus
+                        disabled={postcodeLoading}
+                      />
+                    </div>
+                    {postcodeError && (
+                      <p className="text-xs text-red-500">{postcodeError}</p>
+                    )}
+                    <Button
+                      onClick={handlePostcodeSave}
+                      disabled={postcodeLoading}
+                      className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white"
+                    >
+                      {postcodeLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Checking...
+                        </>
+                      ) : (
+                        'Confirm Location'
+                      )}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               {/* Mobile delivery info */}
               <div className="px-3 py-2.5 flex items-center gap-2">
                 <Clock className={`h-4 w-4 ${deliveryMessage.color}`} />
@@ -525,9 +632,9 @@ export function Navbar() {
                     <div className="w-8 h-8 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
                       <User className="h-4 w-4 text-[#16a34a]" />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{userFirstName || 'User'}</p>
-                      <p className="text-xs text-gray-500">{user.email}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{userFirstName || 'User'}</p>
+                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
                     </div>
                   </div>
                   <button

@@ -241,12 +241,12 @@ export function ProductDetailClient({ store, product, allCategories = [] }: Prod
             <div className="flex gap-3">
               {/* Thumbnail Gallery (vertical) */}
               {allImages.length > 1 && (
-                <div className="flex flex-col gap-2 w-16 flex-shrink-0">
+                <div className="flex flex-col gap-2 w-12 sm:w-16 flex-shrink-0">
                   {allImages.map((img, idx) => (
                     <button
                       key={idx}
                       onClick={() => setSelectedImageIndex(idx)}
-                      className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                      className={`w-12 h-12 sm:w-16 sm:h-16 rounded-lg overflow-hidden border-2 transition-all ${
                         selectedImageIndex === idx
                           ? 'border-[#f97316] shadow-md'
                           : 'border-gray-200 hover:border-gray-300'
@@ -394,19 +394,19 @@ export function ProductDetailClient({ store, product, allCategories = [] }: Prod
             )}
 
             {/* Price Badge */}
-            <div className="mt-4 flex items-center gap-3 flex-wrap">
-              <div className="px-4 py-2 bg-gray-900 text-white rounded-lg">
-                <span className="text-2xl font-bold">{formatPrice(product.price)}</span>
+            <div className="mt-4 flex items-center gap-2 sm:gap-3 flex-wrap">
+              <div className="px-3 sm:px-4 py-2 bg-gray-900 text-white rounded-lg">
+                <span className="text-xl sm:text-2xl font-bold">{formatPrice(product.price)}</span>
               </div>
               {product.original_price && product.original_price > product.price && (
-                <div className="flex items-center gap-2">
-                  <span className="text-lg text-gray-400 line-through">{formatPrice(product.original_price)}</span>
-                  <Badge className="bg-red-100 text-red-700 border-red-200 text-xs font-semibold">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-base sm:text-lg text-gray-400 line-through">{formatPrice(product.original_price)}</span>
+                  <Badge className="bg-red-100 text-red-700 border-red-200 text-xs font-semibold flex-shrink-0">
                     Save {formatPrice(product.original_price - product.price)}
                   </Badge>
                 </div>
               )}
-              <span className="text-sm text-gray-500">per {product.unit}</span>
+              <span className="text-xs sm:text-sm text-gray-500">per {product.unit}</span>
             </div>
 
             {/* Coupons & Offers */}

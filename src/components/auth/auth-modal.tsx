@@ -146,7 +146,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -154,7 +154,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-md mx-4 animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative z-10 w-full max-w-md my-4 animate-in fade-in zoom-in-95 duration-200">
         <Card className="shadow-2xl border-0">
           {/* Close button */}
           <button
@@ -171,11 +171,11 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
             <>
               <CardHeader className="text-center pb-2">
                 <Link href="/" className="flex items-center justify-center gap-2 mb-3 hover:opacity-80 transition-opacity" onClick={handleClose}>
-                  <Store className="h-7 w-7 text-[#16a34a]" />
-                  <span className="font-bold text-xl text-gray-900">{storeName}</span>
+                  <Store className="h-7 w-7 text-[#16a34a] flex-shrink-0" />
+                  <span className="font-bold text-lg sm:text-xl text-gray-900 truncate">{storeName}</span>
                 </Link>
-                <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-                <CardDescription>Sign in to your account to continue shopping</CardDescription>
+                <CardTitle className="text-xl sm:text-2xl font-bold">Welcome back</CardTitle>
+                <CardDescription className="text-sm">Sign in to your account to continue shopping</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Google Sign In */}
@@ -242,11 +242,11 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
             <>
               <CardHeader className="text-center pb-2">
                 <Link href="/" className="flex items-center justify-center gap-2 mb-3 hover:opacity-80 transition-opacity" onClick={handleClose}>
-                  <Store className="h-7 w-7 text-[#16a34a]" />
-                  <span className="font-bold text-xl text-gray-900">{storeName}</span>
+                  <Store className="h-7 w-7 text-[#16a34a] flex-shrink-0" />
+                  <span className="font-bold text-lg sm:text-xl text-gray-900 truncate">{storeName}</span>
                 </Link>
-                <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
-                <CardDescription>Register to start ordering fresh groceries</CardDescription>
+                <CardTitle className="text-xl sm:text-2xl font-bold">Create an Account</CardTitle>
+                <CardDescription className="text-sm">Register to start ordering fresh groceries</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Google Sign Up */}

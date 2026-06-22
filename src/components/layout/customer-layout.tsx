@@ -14,12 +14,12 @@ interface CustomerLayoutProps {
 
 export function CustomerLayout({ children, storeName, store }: CustomerLayoutProps) {
   return (
-    <div className="min-h-screen flex flex-col fm-gradient-bg">
+    <div className="min-h-screen flex flex-col fm-gradient-bg overflow-x-hidden">
       {/* Enhanced Navbar with search, delivery timer, cart widget */}
       <Navbar />
 
       {/* Main Content */}
-      <main className="flex-1">{children}</main>
+      <main className="flex-1 min-w-0">{children}</main>
 
       {/* Full Footer - How it Works, Categories Grid, App Download, Social */}
       <Footer />

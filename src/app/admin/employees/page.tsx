@@ -302,8 +302,8 @@ export default function AdminEmployeesPage() {
           {/* Desktop Table */}
           <div className="hidden md:block">
             <Card>
-              <CardContent className="p-0">
-                <table className="w-full text-sm">
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full text-sm min-w-[800px]">
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50">
                       <th className="text-left py-3 px-4 font-medium text-gray-500">Name</th>

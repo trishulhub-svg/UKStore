@@ -74,7 +74,7 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
+    <div className="min-h-screen flex bg-gray-50 overflow-x-hidden">
       {/* Desktop Sidebar - unchanged */}
       <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-gray-200">
         {/* Logo */}
@@ -159,7 +159,7 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
       </aside>
 
       {/* Main Content */}
-      <div className="lg:pl-64 flex-1">
+      <div className="lg:pl-64 flex-1 min-w-0">
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-40 bg-white border-b border-gray-200">
           <div className="flex items-center justify-between px-4 h-14">
@@ -256,7 +256,7 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
         </header>
 
         {/* Page Content */}
-        <main className="p-6 lg:p-8">
+        <main className="p-4 sm:p-6 lg:p-8 min-w-0 overflow-x-hidden">
           {children}
         </main>
       </div>

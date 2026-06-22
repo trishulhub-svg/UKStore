@@ -373,7 +373,7 @@ export function CheckoutClient({ store, user, addresses }: CheckoutClientProps) 
   if (items.length === 0 && currentStep !== 'payment') {
     return (
       <CustomerLayout storeName={store.name} store={store}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-16">
           <div className="text-center max-w-md mx-auto">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Your Cart is Empty</h1>
             <p className="text-gray-500 mb-6">Add some items to your cart before checking out.</p>

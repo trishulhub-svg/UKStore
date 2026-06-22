@@ -83,7 +83,7 @@ export function CartClient({ store }: CartClientProps) {
   if (items.length === 0) {
     return (
       <CustomerLayout storeName={store.name} store={store}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-16">
           <div className="text-center max-w-md mx-auto">
             <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-6">
               <ShoppingCart className="h-10 w-10 text-gray-400" />

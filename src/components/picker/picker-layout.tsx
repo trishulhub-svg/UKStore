@@ -97,7 +97,7 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50 overflow-x-hidden">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-orange-500 text-white shadow-md">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
@@ -119,7 +119,7 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-lg mx-auto w-full pb-20">
+      <main className="flex-1 max-w-lg mx-auto w-full min-w-0 pb-20">
         {children}
       </main>
 

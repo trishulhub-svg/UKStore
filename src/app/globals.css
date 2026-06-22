@@ -116,8 +116,16 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    /* Prevent horizontal page scroll across the entire app. Individual
+       components that legitimately need horizontal scroll (tables, kanban
+       boards, calendars) should use overflow-x-auto on a wrapper so the
+       scroll is contained locally rather than bubbling up to the page. */
+    overflow-x: hidden;
+  }
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
   }
 }
 

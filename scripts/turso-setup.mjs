@@ -74,7 +74,7 @@ async function main() {
   console.log('══════════════════════════════════════════════════════════')
 
   if (command === 'push' || command === 'all') {
-    await run('npx', ['prisma', 'db', 'push', '--skip-generate'], 'Step 1/2: prisma db push')
+    await run('node', [path.join(projectRoot, 'scripts', 'turso-migrate.mjs')], 'Step 1/2: Turso schema migration')
   }
 
   if (command === 'seed' || command === 'all') {

@@ -1,13 +1,34 @@
 // ============================================================
 // Database Seed Script
 // Creates comprehensive seed data for the grocery store app
-// Usage: npx tsx prisma/seed.ts
+// Usage:
+//   - SQLite (local dev): npx tsx prisma/seed.ts
+//   - Turso (production): npm run db:seed:turso
 // ============================================================
 
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient()
+// ─── Prisma client construction (dual-backend) ─────────────────
+// If TURSO_DATABASE_URL is set, use the libSQL adapter. Otherwise,
+// fall back to standard PrismaClient (uses DATABASE_URL = file:...).
+async function createPrismaClient(): Promise<PrismaClient> {
+  if (process.env.TURSO_DATABASE_URL) {
+    const { PrismaLibSql } = await import('@prisma/adapter-libsql')
+    const adapter = new PrismaLibSql({
+      url: process.env.TURSO_DATABASE_URL,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    })
+    return new PrismaClient({
+      adapter,
+      log: ['error', 'warn'],
+    })
+  }
+  return new PrismaClient()
+}
+
+let prisma: PrismaClient
+const prismaReady = createPrismaClient().then(c => { prisma = c })
 
 const SALT_ROUNDS = 12
 
@@ -75,6 +96,7 @@ const STORE_SETTINGS = [
 ]
 
 async function main() {
+  await prismaReady
   console.log('🌱 Seeding database...\n')
 
   // ─── Store ─────────────────────────────────────────────

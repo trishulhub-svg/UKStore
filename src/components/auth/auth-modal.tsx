@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
-import { authLogin, authRegister, getRoleBasedRedirect } from '@/lib/auth-client'
+import { authLogin, authRegister, getRoleBasedRedirectFromRoles } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
 
 type AuthView = 'login' | 'register' | 'forgot-password' | 'success'
@@ -73,9 +73,15 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', redirectTo =
         return
       }
 
-      // Redirect based on role (ignore the passed redirectTo for admin/driver)
+      // Redirect based on COMBINED roles (primary + additionalRoles).
+      // Same fix as home-auth-form.tsx: an admin (OWNER/MANAGER in any
+      // role) must NEVER be sent to /picker or /driver after login, even
+      // if their primary role is PICKER or DRIVER. The old
+      // getRoleBasedRedirect() only checked the primary role and caused
+      // dual-role admins to occasionally land on the wrong dashboard.
       const role = user?.role || 'customer'
-      const redirectPath = getRoleBasedRedirect(role)
+      const additionalRoles = user?.additionalRoles ?? []
+      const redirectPath = getRoleBasedRedirectFromRoles(role, additionalRoles)
       handleClose()
       window.location.href = redirectPath
     } catch (err) {

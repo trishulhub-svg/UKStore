@@ -13,6 +13,14 @@ export interface AuthUser {
   email: string
   name: string | null
   role: string
+  /**
+   * Additional roles the user holds beyond their primary `role`
+   * (parsed from User.additionalRoles at login time). Used by the
+   * combined-roles redirect logic to pick the correct landing page
+   * for dual-role users (e.g. primary PICKER + additional MANAGER → /admin).
+   * Optional for backwards compat with older API responses.
+   */
+  additionalRoles?: string[]
   createdAt?: string
 }
 
@@ -172,6 +180,10 @@ export async function authGetSession(): Promise<AuthResponse> {
  * Driver → /driver
  * Picker → /picker
  * Customer → /
+ *
+ * NOTE: This function considers ONLY the primary role. For users with
+ * dual roles (primary + additionalRoles), use `getRoleBasedRedirectFromRoles`
+ * instead — it picks the most privileged destination.
  */
 export function getRoleBasedRedirect(role: string): string {
   const r = (role || '').toLowerCase().trim()
@@ -179,6 +191,50 @@ export function getRoleBasedRedirect(role: string): string {
   if (r === 'driver') return '/driver'
   if (r === 'picker') return '/picker'
   return '/'
+}
+
+/**
+ * Get the correct redirect path based on a user's COMBINED roles
+ * (primary + additionalRoles). Picks the most privileged destination:
+ *
+ *   - OWNER or MANAGER (anywhere) → /admin
+ *   - DRIVER (anywhere)            → /driver
+ *   - PICKER (anywhere)            → /picker
+ *   - otherwise                     → /
+ *
+ * This fixes the bug where a user with primary role PICKER but
+ * additionalRoles including MANAGER would be sent to /picker on login
+ * instead of /admin.
+ */
+export function getRoleBasedRedirectFromRoles(
+  primaryRole: string,
+  additionalRoles: string[] = [],
+): string {
+  const allRoles = [
+    (primaryRole || '').toLowerCase().trim(),
+    ...additionalRoles.map((r) => (r || '').toLowerCase().trim()),
+  ].filter(Boolean)
+
+  if (allRoles.some((r) => r === 'owner' || r === 'manager')) return '/admin'
+  if (allRoles.some((r) => r === 'driver')) return '/driver'
+  if (allRoles.some((r) => r === 'picker')) return '/picker'
+  return '/'
+}
+
+/**
+ * Check if a user (with dual roles) is an admin. Returns true if any of
+ * their roles (primary or additional) is OWNER or MANAGER.
+ */
+export function isAdminWithAdditionalRoles(
+  primaryRole: string,
+  additionalRoles: string[] = [],
+): boolean {
+  const check = (r: string) => {
+    const lower = (r || '').toLowerCase().trim()
+    return lower === 'owner' || lower === 'manager'
+  }
+  if (check(primaryRole)) return true
+  return additionalRoles.some(check)
 }
 
 /**

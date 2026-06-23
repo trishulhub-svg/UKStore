@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { getRoleBasedRedirect } from '@/lib/auth-client'
+import { getRoleBasedRedirectFromRoles } from '@/lib/auth-client'
 import type { ServerUser } from '@/lib/auth/server'
 import { apiFetch } from '@/lib/api-fetch'
 import { dispatchAuthUserUpdated } from '@/lib/auth-events'
@@ -43,6 +43,11 @@ export function ProfileClient({ user }: ProfileClientProps) {
   const [email, setEmail] = useState(user.email)
   const [originalEmail, setOriginalEmail] = useState(user.email)
   const [role, setRole] = useState(user.role)
+  // Track additional roles so the dashboard link can be computed correctly
+  // for dual-role users (e.g. primary PICKER + additional MANAGER → /admin).
+  const [additionalRoles, setAdditionalRoles] = useState<string[]>(
+    user.additionalRoles ?? [],
+  )
   const [mustReset, setMustReset] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -63,6 +68,7 @@ export function ProfileClient({ user }: ProfileClientProps) {
           setEmail(data.user.email)
           setOriginalEmail(data.user.email)
           setRole(data.user.role)
+          setAdditionalRoles(data.user.additionalRoles ?? [])
           setMustReset(data.user.mustResetPassword === true)
         }
       })
@@ -131,7 +137,10 @@ export function ProfileClient({ user }: ProfileClientProps) {
     }
   }
 
-  const dashboardLink = getRoleBasedRedirect(role)
+  // Use the COMBINED-roles redirect so dual-role admins see the right
+  // "Back to dashboard" link (e.g. primary PICKER + additional MANAGER
+  // → link points to /admin, not /picker).
+  const dashboardLink = getRoleBasedRedirectFromRoles(role, additionalRoles)
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">

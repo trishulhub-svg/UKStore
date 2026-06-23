@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { getRoleBasedRedirect } from '@/lib/auth-client'
+import { getRoleBasedRedirectFromRoles } from '@/lib/auth-client'
 
 export function ResetPasswordClient() {
   const router = useRouter()
@@ -71,8 +71,11 @@ export function ResetPasswordClient() {
         if (sessRes.ok) {
           const sessData = await sessRes.json()
           const role = sessData?.user?.role || 'customer'
+          // Use COMBINED roles so dual-role admins land on /admin, not
+          // /picker or /driver. Matches the login-page redirect logic.
+          const additionalRoles = sessData?.user?.additionalRoles ?? []
           if (isForced) {
-            router.push(getRoleBasedRedirect(role))
+            router.push(getRoleBasedRedirectFromRoles(role, additionalRoles))
           } else {
             router.push('/account/profile')
           }

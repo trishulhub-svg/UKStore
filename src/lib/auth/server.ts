@@ -26,6 +26,15 @@ export interface ServerUser {
   role: string
   authProvider: 'local'
   sid?: string  // session row ID
+  /**
+   * Additional roles the user holds beyond their primary `role`
+   * (parsed from User.additionalRoles at login time, embedded in the
+   * session token). Used by server-rendered pages (e.g. /account/profile)
+   * to compute the correct dashboard link for dual-role users.
+   *
+   * Optional for backwards compatibility with older tokens.
+   */
+  additionalRoles?: string[]
 }
 
 /**
@@ -141,6 +150,7 @@ export async function getServerUser(): Promise<ServerUser | null> {
       role: payload.role,
       authProvider: 'local',
       sid: payload.sid,
+      additionalRoles: payload.additionalRoles ?? [],
     }
 
     sessionCache.set(token, { user, ts: now })

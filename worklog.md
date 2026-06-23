@@ -1053,3 +1053,65 @@ Stage Summary:
 - New test scripts (committed):
   * scripts/test-permissions-task17.mjs
   * scripts/test-picker-redirect.mjs
+
+---
+Task ID: 12
+Agent: Main
+Task: Fix bug where admin login occasionally redirected to /picker or /driver dashboard instead of /admin
+
+Work Log:
+- Read prior worklog (Tasks 1–11) to understand the dual-role system: users have a primary `role` plus an optional `additionalRoles` JSON array on the User row. Combined-roles redirect logic was added in Task 11 via `getRoleBasedRedirectFromRoles()` in `src/lib/auth/roles.ts`, which correctly prioritises ADMIN (OWNER/MANAGER) over DRIVER/PICKER.
+- Audited every caller of `getRoleBasedRedirect()` (the OLD primary-role-only function) vs `getRoleBasedRedirectFromRoles()` (the NEW combined-roles function). Found 5 client-side files still using the OLD function:
+  1. `src/components/auth/home-auth-form.tsx` — login from home page modal
+  2. `src/components/auth/auth-modal.tsx` — auth modal (used by navbar, etc.)
+  3. `src/components/customer/home-client.tsx` — home page session-check redirect
+  4. `src/components/account/profile-client.tsx` — dashboard link
+  5. `src/components/auth/reset-password-client.tsx` — post-forced-password-reset redirect
+- Root cause confirmed: if a user's primary role is PICKER (or DRIVER) but they hold MANAGER (or OWNER) in `additionalRoles`, the OLD `getRoleBasedRedirect()` sends them to /picker (or /driver) on login — because it only inspects the primary role. The NEW `getRoleBasedRedirectFromRoles()` correctly sends them to /admin. The dedicated `/auth/login` page (login-client.tsx) was already fixed in Task 11, but the home-page modal, navbar modal, home-page session check, profile page, and password-reset page were not. This is why the user "once" landed on /picker after logging in as an admin — they happened to log in via one of these other entry points.
+- Additional bug discovered: `PATCH /api/user/profile` was re-issuing the session token WITHOUT `additionalRoles` whenever an OWNER changed their email. This silently stripped the user's additional roles from their token after a profile update, which would cause subsequent redirect checks to use only the primary role — potentially re-introducing the same admin-to-/picker bug. Fixed by including `additionalRoles` in the re-issued token.
+- Additional bug discovered: `GET /api/user/profile` was not returning `additionalRoles` at all, so `profile-client.tsx` had no way to compute the correct dashboard link for dual-role users. Fixed by adding `additionalRoles` to the Prisma `select` and parsing the JSON string into an array in the response.
+- Additional bug discovered: `ServerUser` interface in `src/lib/auth/server.ts` did not include `additionalRoles`, so server-rendered pages (like /account/profile) had no access to the user's additional roles. Fixed by adding `additionalRoles?: string[]` to the interface and populating it from `payload.additionalRoles` in `getServerUser()`.
+
+Changes Made:
+- `src/lib/auth/server.ts`:
+  * Added `additionalRoles?: string[]` to `ServerUser` interface
+  * `getServerUser()` now populates `additionalRoles` from the session token payload (defaulting to [])
+- `src/components/auth/home-auth-form.tsx`:
+  * Switched import from `getRoleBasedRedirect` → `getRoleBasedRedirectFromRoles`
+  * `handleLogin()` now passes both `role` and `additionalRoles` to the new function
+- `src/components/auth/auth-modal.tsx`:
+  * Same fix as home-auth-form.tsx
+- `src/components/customer/home-client.tsx`:
+  * Same fix in the `useEffect` that checks the session and redirects from `/`
+- `src/components/account/profile-client.tsx`:
+  * Switched import from `getRoleBasedRedirect` → `getRoleBasedRedirectFromRoles`
+  * Added `additionalRoles` state, seeded from `user.additionalRoles` and refreshed from `/api/user/profile`
+  * `dashboardLink` now uses the combined-roles function
+- `src/components/auth/reset-password-client.tsx`:
+  * Switched import from `getRoleBasedRedirect` → `getRoleBasedRedirectFromRoles`
+  * `handleSubmit()` now reads `additionalRoles` from the session response and passes it to the new function
+- `src/app/api/user/profile/route.ts`:
+  * `GET`: added `additionalRoles: true` to Prisma `select`; response now includes the parsed array
+  * `PATCH`: added `additionalRoles: true` to Prisma `select`; response now includes the parsed array; re-issued session token on email change now includes `additionalRoles` (was previously dropped, silently demoting dual-role admins)
+  * Added import of `parseAdditionalRoles` from `@/lib/auth/roles`
+- `scripts/test-admin-redirect.mjs` (new):
+  * Verification script that exercises 16 role combinations through `getRoleBasedRedirectFromRoles`
+  * Confirms no admin role combination (OWNER or MANAGER anywhere) ever produces /picker or /driver
+  * All 16 cases pass
+
+Not Changed:
+- `src/middleware.ts` — left as-is. The home-page redirect on `/` was already using `getRoleBasedRedirectFromRoles` correctly. Considered adding defense-in-depth route guards (e.g. redirect admin away from /picker, /driver) but decided against it: it would break legitimate dual-role use cases (e.g. an admin who is also a driver doing driver shifts via the driver UI). The client-side fix is sufficient for the reported bug.
+- `src/lib/auth/roles.ts` and `src/lib/auth-client.ts` — `getRoleBasedRedirectFromRoles()` was already correct from Task 11. No changes needed.
+- `src/app/api/auth/login/route.ts` and `src/app/api/auth/session/route.ts` — both already return `additionalRoles` correctly. No changes needed.
+
+Verification:
+- `npx tsc --noEmit` on the 8 modified files: 0 errors (pre-existing errors in unrelated files unchanged)
+- `npx eslint` on the 8 modified files: 0 errors, 0 warnings
+- `node scripts/test-admin-redirect.mjs`: 16/16 cases pass, including the exact bug scenario (PICKER primary + MANAGER additional → /admin)
+- Dev server (port 3000) confirmed serving /, /auth/login, /account/profile (307 redirect when unauth) without errors
+
+Stage Summary:
+- Root cause: 5 client-side auth components and 1 API endpoint were using the OLD `getRoleBasedRedirect()` (primary-role only) instead of the NEW `getRoleBasedRedirectFromRoles()` (combined primary + additionalRoles). For dual-role admins (primary PICKER/DRIVER + additional MANAGER/OWNER), this caused login redirects to send them to /picker or /driver instead of /admin.
+- The bug was intermittent because the main `/auth/login` page was already fixed in Task 11 — it only triggered when the user logged in via the home-page modal, navbar auth modal, or after a forced password reset, or after an email change (which stripped additionalRoles from the token).
+- Fix: all login/session-check/redirect paths now use `getRoleBasedRedirectFromRoles()`. The profile API and ServerUser type now expose `additionalRoles`. The profile PATCH endpoint no longer strips `additionalRoles` from the re-issued token.
+- Result: an admin (any user with OWNER or MANAGER in any of their roles) will now ALWAYS be redirected to /admin on login, regardless of which login form they use or what their primary role is.

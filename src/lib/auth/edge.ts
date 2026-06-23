@@ -22,6 +22,17 @@ export interface SessionPayload {
   ver: number
   authProvider?: 'local'
   sid?: string  // session row ID — used by server-side session validation
+  /**
+   * Additional roles the user holds beyond their primary `role`.
+   * Populated from User.additionalRoles at login time. Used by middleware
+   * and login clients to compute the correct landing dashboard — e.g. a
+   * user whose primary role is PICKER but who also has MANAGER in
+   * additionalRoles should land on /admin, not /picker.
+   *
+   * Optional for backwards compatibility with tokens issued before this
+   * field was added (treated as [] when absent).
+   */
+  additionalRoles?: string[]
 }
 
 export const SESSION_COOKIE_NAME = 'fresh_mart_session'
@@ -72,7 +83,7 @@ export async function verifySessionTokenEdge(token: string): Promise<SessionPayl
  */
 export async function getUserFromCookies(
   cookies: { get: (name: string) => { value: string } | undefined }
-): Promise<{ uid: string; email: string; role: string; name: string; authProvider: 'local' } | null> {
+): Promise<{ uid: string; email: string; role: string; name: string; authProvider: 'local'; additionalRoles: string[] } | null> {
   const token = cookies.get(SESSION_COOKIE_NAME)?.value
   if (!token) return null
 
@@ -85,5 +96,6 @@ export async function getUserFromCookies(
     role: payload.role,
     name: payload.name,
     authProvider: 'local',
+    additionalRoles: payload.additionalRoles ?? [],
   }
 }

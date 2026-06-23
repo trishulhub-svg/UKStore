@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
-import { authLogin, authRegister, getRoleBasedRedirect } from '@/lib/auth-client'
+import { authLogin, authRegister, getRoleBasedRedirectFromRoles } from '@/lib/auth-client'
 
 type AuthTab = 'login' | 'register' | 'forgot-password' | 'success'
 
@@ -58,9 +58,15 @@ export function HomeAuthForm({ onSuccess }: HomeAuthFormProps) {
         return
       }
 
-      // Redirect based on role
+      // Redirect based on COMBINED roles (primary + additionalRoles).
+      // This is critical for dual-role users — e.g. a user whose primary
+      // role is PICKER but who also has MANAGER in additionalRoles must
+      // land on /admin, NOT /picker. The old getRoleBasedRedirect() only
+      // looked at the primary role and caused admins to occasionally land
+      // on /picker or /driver after logging in via the home page modal.
       const role = user?.role || 'customer'
-      const redirectPath = getRoleBasedRedirect(role)
+      const additionalRoles = user?.additionalRoles ?? []
+      const redirectPath = getRoleBasedRedirectFromRoles(role, additionalRoles)
       window.location.href = redirectPath
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)

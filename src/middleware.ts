@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getUserFromCookies } from '@/lib/auth/edge'
-import { getRoleBasedRedirect } from '@/lib/auth/roles'
+import { getRoleBasedRedirectFromRoles } from '@/lib/auth/roles'
 
 export async function middleware(request: NextRequest) {
-  let user: { uid: string; email: string; role: string; name: string; authProvider: 'local' } | null = null
+  let user: { uid: string; email: string; role: string; name: string; authProvider: 'local'; additionalRoles: string[] } | null = null
 
   try {
     user = await getUserFromCookies(request.cookies)
@@ -12,9 +12,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // ─── Role-based redirect on home page ─────────────────────────
-  // If an admin or driver user lands on `/`, redirect them to their dashboard
+  // If an admin or driver user lands on `/`, redirect them to their dashboard.
+  // Use the combined-roles logic (primary + additionalRoles) so that e.g.
+  // a user whose primary role is PICKER but who also has MANAGER in
+  // additionalRoles is correctly redirected to /admin, not /picker.
   if (user && request.nextUrl.pathname === '/') {
-    const redirectPath = getRoleBasedRedirect(user.role)
+    const redirectPath = getRoleBasedRedirectFromRoles(user.role, user.additionalRoles ?? [])
     if (redirectPath !== '/') {
       const redirectUrl = request.nextUrl.clone()
       redirectUrl.pathname = redirectPath

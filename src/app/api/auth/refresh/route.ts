@@ -39,11 +39,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Issue a fresh token with the same payload but a new `iat`.
+    // Preserve additionalRoles so dual-role users keep their correct
+    // landing dashboard after token refresh.
     const freshToken = createSessionToken({
       uid: payload.uid,
       email: payload.email,
       role: payload.role,
       name: payload.name,
+      additionalRoles: payload.additionalRoles,
     })
 
     const response = NextResponse.json({
@@ -53,6 +56,7 @@ export async function POST(request: NextRequest) {
         email: payload.email,
         name: payload.name,
         role: payload.role,
+        additionalRoles: payload.additionalRoles ?? [],
       },
     })
 

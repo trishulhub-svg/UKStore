@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { CustomerLayout } from '@/components/layout/customer-layout'
 import { useCartStore } from '@/store/cart'
 import { formatPrice } from '@/lib/vat'
-import { authGetSession, getRoleBasedRedirect, type AuthUser } from '@/lib/auth-client'
+import { authGetSession, getRoleBasedRedirectFromRoles, type AuthUser } from '@/lib/auth-client'
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Store, Category, ProductWithCategory } from '@/types'
@@ -74,7 +74,15 @@ export function HomeClient({ store, categories, featuredProducts }: HomeClientPr
     authGetSession().then(({ user }) => {
       setUser(user)
       if (user?.role) {
-        const redirectPath = getRoleBasedRedirect(user.role)
+        // Use the COMBINED-roles redirect logic so dual-role admins
+        // (e.g. primary PICKER + additional MANAGER) are sent to /admin
+        // instead of /picker. The middleware does the same check on the
+        // server side — this client-side check just avoids a flash of
+        // the home page before the redirect kicks in.
+        const redirectPath = getRoleBasedRedirectFromRoles(
+          user.role,
+          user.additionalRoles ?? [],
+        )
         if (redirectPath !== '/') {
           router.replace(redirectPath)
         }

@@ -21,6 +21,10 @@ export async function GET(request: NextRequest) {
         email: payload.email,
         name: payload.name,
         role: payload.role,
+        // Include additionalRoles so client-side code (e.g. home-client
+        // redirect on `/`) can compute the correct dashboard for dual-role
+        // users. Defaults to [] for older tokens that predate this field.
+        additionalRoles: payload.additionalRoles ?? [],
       },
     })
   } catch {

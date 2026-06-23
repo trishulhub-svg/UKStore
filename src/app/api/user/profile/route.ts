@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { getServerUser } from '@/lib/auth/server'
 import { createSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
+import { parseAdditionalRoles } from '@/lib/auth/roles'
 
 /**
  * GET /api/user/profile — returns the current user's profile
@@ -23,6 +24,7 @@ export async function GET() {
         name: true,
         phone: true,
         role: true,
+        additionalRoles: true,
         avatarUrl: true,
         isActive: true,
         mustResetPassword: true,
@@ -34,7 +36,15 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ user: dbUser })
+    // Return additionalRoles as a parsed array (it's stored as a JSON
+    // string in the DB). The client uses this to compute the correct
+    // dashboard link for dual-role users.
+    return NextResponse.json({
+      user: {
+        ...dbUser,
+        additionalRoles: parseAdditionalRoles(dbUser.additionalRoles),
+      },
+    })
   } catch (err) {
     console.error('[User Profile GET]', err)
     return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 })
@@ -117,16 +127,34 @@ export async function PATCH(request: NextRequest) {
         name: true,
         phone: true,
         role: true,
+        additionalRoles: true,
         avatarUrl: true,
         mustResetPassword: true,
       },
     })
 
+    // Parse additionalRoles (stored as JSON string) into an array for
+    // the response. Also used below to preserve the user's additional
+    // roles in the re-issued session token.
+    const additionalRoles = parseAdditionalRoles(updated.additionalRoles)
+    const responseBody = {
+      user: {
+        ...updated,
+        additionalRoles,
+      },
+    }
+
     // If the owner changed their email, re-issue the session token so the
     // new email is reflected in the token payload. The cookie's maxAge is
     // preserved (sliding window still works as before — the token gets a
     // fresh iat).
-    const response = NextResponse.json({ user: updated })
+    //
+    // CRITICAL: include `additionalRoles` in the re-issued token. The old
+    // code omitted this field, which silently demoted dual-role admins
+    // (e.g. primary PICKER + additional MANAGER) to single-role users
+    // after a profile update — causing them to be redirected to /picker
+    // instead of /admin on their next login. See worklog Task 12.
+    const response = NextResponse.json(responseBody)
     if (emailChanged) {
       const freshToken = createSessionToken({
         uid: updated.id,
@@ -135,6 +163,7 @@ export async function PATCH(request: NextRequest) {
         // Fall back to email local-part if name is null — token payload
         // requires a non-null name string.
         name: updated.name || updated.email.split('@')[0],
+        additionalRoles,
       })
       response.cookies.set(SESSION_COOKIE_NAME, freshToken, SESSION_COOKIE_OPTIONS)
     }

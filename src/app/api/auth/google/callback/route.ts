@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSetting } from '@/lib/settings'
 import { getPrisma } from '@/lib/auth/prisma'
 import { createSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
+import { getRoleBasedRedirectFromRoles, parseAdditionalRoles } from '@/lib/auth/roles'
 
 interface GoogleTokenResponse {
   access_token: string
@@ -137,22 +138,25 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Create session token with the user's role from the database
+    // Create session token with the user's role + additionalRoles from the database.
+    // additionalRoles is what enables dual-role staff (e.g. a PICKER who is also
+    // a MANAGER) — without it, the redirect below would send them to the wrong
+    // dashboard.
+    const additionalRoles = parseAdditionalRoles(user.additionalRoles)
     const token = createSessionToken({
       uid: user.id,
       email: user.email,
       role: user.role,
       name: user.name || '',
+      additionalRoles,
     })
 
-    // Determine redirect destination based on role
-    const role = user.role.toUpperCase()
-    let redirectTo = '/'
-    if (role === 'OWNER' || role === 'MANAGER') {
-      redirectTo = '/admin'
-    } else if (role === 'DRIVER' || role === 'PICKER') {
-      redirectTo = '/driver'
-    }
+    // Determine redirect destination based on the user's combined roles
+    // (primary + additional). This fixes the bug where a user with primary
+    // role PICKER but additionalRoles including MANAGER would be sent to
+    // /picker instead of /admin. Also fixes the older bug where PICKER
+    // users were sent to /driver.
+    const redirectTo = getRoleBasedRedirectFromRoles(user.role, additionalRoles)
 
     // Build redirect response
     const response = NextResponse.redirect(new URL(redirectTo, request.url))

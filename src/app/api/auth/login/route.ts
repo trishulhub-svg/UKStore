@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { verifyPassword, createSessionToken, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
+import { parseAdditionalRoles } from '@/lib/auth/roles'
 import {
   parseUserAgent,
   getClientIp,
@@ -155,6 +156,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Parse the user's additionalRoles (JSON-encoded array on the User row).
+    // This is what enables dual-role staff — e.g. a user whose primary role
+    // is PICKER but who also has MANAGER in additionalRoles. We embed the
+    // parsed array in the session token so the middleware (Edge runtime,
+    // can't hit Prisma) and the login clients can compute the correct
+    // landing dashboard without an extra DB lookup.
+    const additionalRoles = parseAdditionalRoles(user.additionalRoles)
+
     // Create session token (without sid first — we'll regenerate with sid)
     // We need the sid in the token, so we create the token, then create the
     // session row using the token hash, then re-create the token with the sid.
@@ -163,6 +172,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       role: user.role,
       name: user.name || '',
+      additionalRoles,
     })
 
     // Create the session row using this token's hash
@@ -179,6 +189,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       role: user.role,
       name: user.name || '',
+      additionalRoles,
       sid,
     })
 
@@ -206,6 +217,9 @@ export async function POST(request: NextRequest) {
         email: user.email,
         name: user.name,
         role: user.role,
+        // Include the user's additional roles so login clients can compute
+        // the correct landing dashboard (e.g. PICKER + MANAGER → /admin).
+        additionalRoles,
         createdAt: user.createdAt.toISOString(),
       },
       // True for newly-created employee accounts that haven't reset their temp password yet.

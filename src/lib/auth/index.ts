@@ -46,11 +46,22 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 export interface SessionPayload {
   uid: string       // user ID
   email: string     // user email
-  role: string      // user role
+  role: string      // user primary role
   name: string      // display name
   iat: number       // issued at (epoch seconds)
   ver: number       // token version
   sid?: string      // session row ID (for revocation checks). Optional for backwards compat.
+  /**
+   * Additional roles the user holds beyond their primary `role`
+   * (parsed from User.additionalRoles at login time). Used by middleware
+   * and login clients to compute the correct landing dashboard when the
+   * user has multiple roles (e.g. primary PICKER + additional MANAGER
+   * should land on /admin, not /picker).
+   *
+   * Optional for backwards compatibility with tokens issued before this
+   * field was added.
+   */
+  additionalRoles?: string[]
 }
 
 export function createSessionToken(payload: Omit<SessionPayload, 'iat' | 'ver'>): string {
@@ -128,4 +139,12 @@ export const SESSION_COOKIE_OPTIONS = {
 // These are safe to import from here in Node.js contexts (API routes, server components).
 // For Edge Runtime contexts (middleware), import from @/lib/auth/roles instead.
 
-export { getRoleBasedRedirect, isAdminRole, isDriverRole, isValidRole } from './roles'
+export {
+  getRoleBasedRedirect,
+  getRoleBasedRedirectFromRoles,
+  isAdminRole,
+  isAdminWithAdditionalRoles,
+  isDriverRole,
+  isValidRole,
+  parseAdditionalRoles,
+} from './roles'

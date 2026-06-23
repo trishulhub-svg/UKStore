@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import type { TechnicalError } from '@/components/ui/error-alert'
-import { authLogin, getRoleBasedRedirect } from '@/lib/auth-client'
+import { authLogin, getRoleBasedRedirectFromRoles } from '@/lib/auth-client'
 
 export function LoginClient() {
   const { store: storeInfo } = useStoreInfo()
@@ -63,8 +63,13 @@ export function LoginClient() {
       // the idle timer redirects to /auth/login?redirect=/admin/products, the
       // user should land back on /admin/products after re-logging in, not on
       // the role-based default.
+      //
+      // We use the COMBINED-roles logic (primary + additionalRoles) so that
+      // a user with primary role PICKER but additionalRoles including MANAGER
+      // lands on /admin, not /picker.
       const role = user?.role || 'customer'
-      const roleDefault = getRoleBasedRedirect(role)
+      const additionalRoles = user?.additionalRoles ?? []
+      const roleDefault = getRoleBasedRedirectFromRoles(role, additionalRoles)
       // Only honour the redirect param if it's a path the user is allowed to
       // see for their role. Simple heuristic: customers can go anywhere
       // customer-facing; staff get their role-based default. The middleware

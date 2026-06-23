@@ -23,6 +23,7 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
   const { store } = useStoreInfo()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [enabledFeatures, setEnabledFeatures] = useState<string[] | null>(null)
+  const [userRoles, setUserRoles] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(true)
 
   const storeName = store?.name || 'Fresh Mart'
@@ -34,11 +35,11 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
       const { user } = await authGetSession()
       if (cancelled) return
       setUser(user)
-      if (user && user.role.toLowerCase() !== 'picker') {
-        router.push('/')
-        return
-      }
-      // Fetch feature permissions for this user
+      // Fetch feature permissions AND the user's full role list (primary +
+      // additional) from the server. We deliberately do NOT redirect based
+      // on `user.role` alone here — the permissions endpoint returns the
+      // merged `roles` array which lets dual-role staff (e.g. a picker who
+      // is also a driver) access both dashboards.
       if (user) {
         try {
           const res = await apiFetch(`/api/user/permissions`, { redirectOn401: false })
@@ -46,9 +47,32 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
             const data = await res.json()
             if (cancelled) return
             setEnabledFeatures(data.features)
+            const roles: string[] = Array.isArray(data.roles)
+              ? data.roles.map((r: unknown) => String(r).toUpperCase())
+              : [String(user.role).toUpperCase()]
+            setUserRoles(roles)
+            // Redirect only if the user has NEITHER the picker role as primary
+            // NOR as an additional role. Managers/Owners are also allowed
+            // (they have admin-level access).
+            const hasPicker = roles.includes('PICKER')
+            const hasAdmin = roles.includes('MANAGER') || roles.includes('OWNER')
+            if (!hasPicker && !hasAdmin) {
+              router.push('/')
+              return
+            }
+          } else {
+            // Permissions endpoint failed — fall back to primary role check
+            if (user.role.toLowerCase() !== 'picker') {
+              router.push('/')
+              return
+            }
           }
         } catch {
-          // Non-critical — fail open
+          // Non-critical — fall back to primary role check
+          if (user.role.toLowerCase() !== 'picker') {
+            router.push('/')
+            return
+          }
         }
       }
       if (!cancelled) setLoading(false)
@@ -79,7 +103,19 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (!user || user.role.toLowerCase() !== 'picker') {
+  // Determine picker access: either the user has PICKER as a primary or
+  // additional role, OR they're a manager/owner (admin fallback).
+  const hasPickerAccess = (() => {
+    if (!user) return false
+    const primary = user.role.toLowerCase()
+    if (primary === 'picker' || primary === 'manager' || primary === 'owner') return true
+    if (userRoles && userRoles.some((r) => r === 'PICKER' || r === 'MANAGER' || r === 'OWNER')) {
+      return true
+    }
+    return false
+  })()
+
+  if (!user || !hasPickerAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="text-center">

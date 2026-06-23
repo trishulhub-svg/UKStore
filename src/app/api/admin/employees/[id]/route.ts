@@ -87,6 +87,39 @@ export async function PATCH(
       userUpdates.role = body.role
     }
 
+    // additionalRoles — OWNER only.
+    // Accept either:
+    //   - null / undefined → no change
+    //   - array of strings (e.g. ['DRIVER']) → set exactly those roles
+    //   - empty array → clear all additional roles
+    // We sanitize to UPPERCASE and filter to the allowed employee role set,
+    // and we strip out the user's primary role (it's already in `role`).
+    // This is what enables "dual-role" employees — e.g. a PICKER who is
+    // also allowed to drive.
+    if (body.additionalRoles !== undefined) {
+      if (!isOwner) {
+        return NextResponse.json(
+          { error: 'Only the store owner can change additional roles' },
+          { status: 403 }
+        )
+      }
+      const incoming = body.additionalRoles
+      if (!Array.isArray(incoming)) {
+        return NextResponse.json(
+          { error: 'additionalRoles must be an array of strings' },
+          { status: 400 }
+        )
+      }
+      const validRoles = new Set(['DRIVER', 'PICKER', 'MANAGER'])
+      const primaryRole = (typeof body.role === 'string' ? body.role : targetUser.role).toUpperCase()
+      const cleaned: string[] = Array.from(new Set(
+        incoming
+          .map((r: unknown) => (typeof r === 'string' ? r.toUpperCase().trim() : ''))
+          .filter((r: string) => validRoles.has(r) && r !== primaryRole)
+      ))
+      userUpdates.additionalRoles = JSON.stringify(cleaned)
+    }
+
     // isActive toggle — OWNER only
     if (typeof body.isActive === 'boolean') {
       if (!isOwner) {

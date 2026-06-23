@@ -32,6 +32,8 @@ interface Order {
   total: number
   deliveryFee: number
   createdAt: string
+  // ISO timestamp set by admin/driver when assigning a driver.
+  estimatedDeliveryAt: string | null
   items: OrderItem[]
   driver: { id: string; name: string } | null
   address: { addressLine1: string; postcode: string }
@@ -218,6 +220,27 @@ export function OrdersClient() {
                       <MapPin className="h-3 w-3" />
                       <span>{order.address.addressLine1}, {order.address.postcode}</span>
                     </div>
+
+                    {/* ETA badge — shown only while the order is en route */}
+                    {order.estimatedDeliveryAt &&
+                      ['ready', 'out_for_delivery'].includes(order.status) &&
+                      (() => {
+                        const eta = new Date(order.estimatedDeliveryAt)
+                        const mins = Math.round((eta.getTime() - Date.now()) / 60_000)
+                        const isSameDay = eta.toDateString() === new Date().toDateString()
+                        const timeStr = eta.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' })
+                        const label = isSameDay && mins > 0 && mins <= 90
+                          ? `Will be delivered in ~${mins} min`
+                          : isSameDay
+                            ? `Will be delivered by ${timeStr}`
+                            : `Will be delivered ${eta.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} by ${timeStr}`
+                        return (
+                          <div className="flex items-center gap-1.5 text-xs text-[#15803d] bg-[#16a34a]/10 rounded-md px-2 py-1 mb-2 w-fit">
+                            <Clock className="h-3 w-3" />
+                            <span className="font-medium">{label}</span>
+                          </div>
+                        )
+                      })()}
 
                     <div className="flex items-center justify-between">
                       <p className="font-bold text-gray-900">£{order.total.toFixed(2)}</p>

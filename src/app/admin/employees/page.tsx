@@ -44,12 +44,29 @@ interface Employee {
   email: string
   phone: string | null
   role: string
+  // JSON-encoded string array of additional Role enum values
+  // (e.g. '["DRIVER"]' for a picker who can also drive).
+  additionalRoles?: string | null
   isActive: boolean
   mustResetPassword?: boolean
   createdAt: string
   employeeProfile: EmployeeProfile | null
   driverProfile: DriverProfile | null
   todayOrderCount: number
+}
+
+/** Parse a user's additionalRoles JSON string into a clean uppercase array. */
+function parseAdditionalRoles(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((r) => (typeof r === 'string' ? r.toUpperCase().trim() : ''))
+      .filter(Boolean)
+  } catch {
+    return []
+  }
 }
 
 const roleLabels: Record<string, string> = {
@@ -106,6 +123,10 @@ export default function AdminEmployeesPage() {
   const [editEmail, setEditEmail] = useState('')
   const [editIsActive, setEditIsActive] = useState(true)
   const [editRole, setEditRole] = useState('')
+  // Additional roles toggle state — { DRIVER: true, PICKER: true, MANAGER: false }
+  // These are roles the employee holds IN ADDITION to their primary `role`.
+  // Used to enable dual-role staff (e.g. a picker who is also a driver).
+  const [editAdditionalRoles, setEditAdditionalRoles] = useState<Record<string, boolean>>({})
   const [editFeatures, setEditFeatures] = useState<string[] | null>(null)
 
   const fetchEmployees = useCallback(async () => {
@@ -141,6 +162,13 @@ export default function AdminEmployeesPage() {
     setEditEmail(employee.email)
     setEditIsActive(employee.isActive)
     setEditRole(employee.role)
+    // Populate additional roles from the user record.
+    const parsed = parseAdditionalRoles(employee.additionalRoles)
+    setEditAdditionalRoles({
+      DRIVER: parsed.includes('DRIVER'),
+      PICKER: parsed.includes('PICKER'),
+      MANAGER: parsed.includes('MANAGER'),
+    })
     setEditDialogOpen(true)
   }
 
@@ -237,6 +265,11 @@ export default function AdminEmployeesPage() {
       if (editRole !== editEmployee.role) {
         body.role = editRole
       }
+      // Always send additionalRoles so the toggle list is the source of truth.
+      // The API sanitizes & strips the primary role automatically.
+      const additional = (['DRIVER', 'PICKER', 'MANAGER'] as const)
+        .filter((r) => editAdditionalRoles[r] && r !== editRole)
+      body.additionalRoles = additional
       if (editIsActive !== editEmployee.isActive) {
         body.isActive = editIsActive
       }
@@ -330,9 +363,20 @@ export default function AdminEmployeesPage() {
                         <td className="py-3 px-4 text-gray-500">{emp.email}</td>
                         <td className="py-3 px-4 text-gray-500">{emp.phone || '—'}</td>
                         <td className="py-3 px-4">
-                          <Badge className={`text-xs ${roleColors[emp.role] || 'bg-gray-100 text-gray-700'}`}>
-                            {roleLabels[emp.role] || emp.role}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge className={`text-xs ${roleColors[emp.role] || 'bg-gray-100 text-gray-700'}`}>
+                              {roleLabels[emp.role] || emp.role}
+                            </Badge>
+                            {parseAdditionalRoles(emp.additionalRoles).map((r) => (
+                              <Badge
+                                key={r}
+                                className={`text-[10px] ${roleColors[r] || 'bg-gray-100 text-gray-700'} opacity-80`}
+                                title="Additional role"
+                              >
+                                +{roleLabels[r] || r}
+                              </Badge>
+                            ))}
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           {emp.employeeProfile ? (
@@ -582,6 +626,57 @@ export default function AdminEmployeesPage() {
                     </Select>
                   </div>
                 </div>
+
+                {/* Additional Roles — lets the owner grant this employee
+                    one or more secondary roles alongside their primary role.
+                    E.g. a Picker who can also Drive. Hidden for Owner. */}
+                {editEmployee.role !== 'OWNER' && (
+                  <div className="space-y-2 rounded-md border border-gray-200 p-3 bg-gray-50/50">
+                    <div>
+                      <Label className="text-xs text-gray-600 font-medium">
+                        Additional Roles
+                      </Label>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Grant this employee extra roles beyond their primary role above.
+                        For example, a Picker who can also Drive will see both the
+                        picker and driver dashboards.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                      {(['DRIVER', 'PICKER', 'MANAGER'] as const).map((r) => {
+                        const isPrimary = editRole === r
+                        const label = r === 'DRIVER' ? 'Driver' : r === 'PICKER' ? 'Picker' : 'Manager'
+                        return (
+                          <label
+                            key={r}
+                            className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs cursor-pointer transition-colors ${
+                              isPrimary
+                                ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : editAdditionalRoles[r]
+                                  ? 'border-[#16a34a] bg-[#16a34a]/10 text-[#15803d]'
+                                  : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-3.5 w-3.5 accent-[#16a34a]"
+                              checked={isPrimary || !!editAdditionalRoles[r]}
+                              disabled={isPrimary}
+                              onChange={(e) => {
+                                setEditAdditionalRoles((prev) => ({
+                                  ...prev,
+                                  [r]: e.target.checked,
+                                }))
+                              }}
+                            />
+                            <span className="font-medium">{label}</span>
+                            {isPrimary && <span className="ml-auto text-[10px] text-gray-400">primary</span>}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {editEmployee.mustResetPassword && (
                   <div className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">

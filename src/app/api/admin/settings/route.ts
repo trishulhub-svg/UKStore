@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { invalidateSettingsCache } from '@/lib/settings'
+import { invalidateEmailTransportCache } from '@/lib/email'
 
 const STORE_ID = 'store-fresh-mart-001'
 
@@ -14,6 +15,13 @@ const VALID_KEYS = new Set([
   'google_oauth_client_secret',
   'sendgrid_api_key',
   'taxjar_api_key',
+  // SMTP provider (owner-configurable transactional email)
+  'smtp_host',
+  'smtp_port',
+  'smtp_user',
+  'smtp_pass',
+  'smtp_secure',
+  'smtp_from_email',
 ])
 
 function buildApiError(
@@ -195,6 +203,12 @@ export async function PUT(request: NextRequest) {
             google_oauth_client_secret: 'integrations',
             sendgrid_api_key: 'notifications',
             taxjar_api_key: 'integrations',
+            smtp_host: 'notifications',
+            smtp_port: 'notifications',
+            smtp_user: 'notifications',
+            smtp_pass: 'notifications',
+            smtp_secure: 'notifications',
+            smtp_from_email: 'notifications',
           }
           const secretKeys = new Set([
             'stripe_secret_key',
@@ -202,6 +216,7 @@ export async function PUT(request: NextRequest) {
             'google_oauth_client_secret',
             'sendgrid_api_key',
             'taxjar_api_key',
+            'smtp_pass',
           ])
 
           const category = (categoryMap[item.key] || 'general') as 'integrations' | 'delivery' | 'notifications' | 'general'
@@ -230,6 +245,13 @@ export async function PUT(request: NextRequest) {
 
       // Invalidate the settings cache so the next read gets fresh data
       invalidateSettingsCache()
+
+      // If any SMTP/email settings were changed, invalidate the cached
+      // nodemailer transport so the next send picks up the new credentials.
+      const emailKeysTouched = settings.some((s) => s.key.startsWith('smtp_') || s.key === 'sendgrid_api_key')
+      if (emailKeysTouched) {
+        invalidateEmailTransportCache()
+      }
 
       const allSuccess = results.every((r) => r.success)
       return NextResponse.json({

@@ -25,6 +25,7 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
   const { store } = useStoreInfo()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [enabledFeatures, setEnabledFeatures] = useState<string[] | null>(null)
+  const [userRoles, setUserRoles] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(true)
 
   const storeName = store?.name || 'Fresh Mart'
@@ -36,11 +37,9 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
       const { user } = await authGetSession()
       if (cancelled) return
       setUser(user)
-      if (user && user.role.toLowerCase() !== 'driver') {
-        router.push('/')
-        return
-      }
-      // Fetch feature permissions for this user (if any restriction exists)
+      // Fetch feature permissions AND the user's full role list (primary +
+      // additional) from the server. The `roles` array lets dual-role staff
+      // (e.g. a picker who is also a driver) access both dashboards.
       if (user) {
         try {
           const res = await apiFetch(`/api/user/permissions`, { redirectOn401: false })
@@ -48,9 +47,30 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
             const data = await res.json()
             if (cancelled) return
             setEnabledFeatures(data.features)
+            const roles: string[] = Array.isArray(data.roles)
+              ? data.roles.map((r: unknown) => String(r).toUpperCase())
+              : [String(user.role).toUpperCase()]
+            setUserRoles(roles)
+            // Redirect only if the user has NEITHER the driver role as primary
+            // NOR as an additional role. Managers/Owners are also allowed.
+            const hasDriver = roles.includes('DRIVER')
+            const hasAdmin = roles.includes('MANAGER') || roles.includes('OWNER')
+            if (!hasDriver && !hasAdmin) {
+              router.push('/')
+              return
+            }
+          } else {
+            if (user.role.toLowerCase() !== 'driver') {
+              router.push('/')
+              return
+            }
           }
         } catch {
-          // Non-critical — fail open (null = full access)
+          // Non-critical — fall back to primary role check
+          if (user.role.toLowerCase() !== 'driver') {
+            router.push('/')
+            return
+          }
         }
       }
       if (!cancelled) setLoading(false)
@@ -82,7 +102,19 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (!user || user.role.toLowerCase() !== 'driver') {
+  // Determine driver access: either the user has DRIVER as a primary or
+  // additional role, OR they're a manager/owner (admin fallback).
+  const hasDriverAccess = (() => {
+    if (!user) return false
+    const primary = user.role.toLowerCase()
+    if (primary === 'driver' || primary === 'manager' || primary === 'owner') return true
+    if (userRoles && userRoles.some((r) => r === 'DRIVER' || r === 'MANAGER' || r === 'OWNER')) {
+      return true
+    }
+    return false
+  })()
+
+  if (!user || !hasDriverAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="text-center">

@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
   AlertDialog,
@@ -126,10 +127,14 @@ function KanbanCard({
   order: Order
   drivers: Driver[]
   onMove: (orderId: string, newStatus: string) => void
-  onAssignDriver: (orderId: string, driverId: string) => void
+  onAssignDriver: (orderId: string, driverId: string, etaMinutes?: number) => void
   onRefund: (orderId: string, reason: string) => Promise<void>
 }) {
   const [assigningDriver, setAssigningDriver] = useState(false)
+  // ETA minutes entered by the admin when assigning a driver. Pre-filled to 30
+  // as a sensible default for a London grocery delivery within the zone.
+  const [etaMinutes, setEtaMinutes] = useState<string>('30')
+  const [selectedDriver, setSelectedDriver] = useState<string>('')
   const [moving, setMoving] = useState(false)
   const [refundReason, setRefundReason] = useState('')
   const [refunding, setRefunding] = useState(false)
@@ -153,9 +158,20 @@ function KanbanCard({
     setMoving(false)
   }
 
-  const handleAssignDriver = async (driverId: string) => {
-    await onAssignDriver(order.id, driverId)
+  const handleAssignDriver = async () => {
+    if (!selectedDriver) {
+      toast.error('Please select a driver')
+      return
+    }
+    const mins = parseInt(etaMinutes, 10)
+    if (!isNaN(mins) && mins > 0) {
+      await onAssignDriver(order.id, selectedDriver, mins)
+    } else {
+      await onAssignDriver(order.id, selectedDriver)
+    }
     setAssigningDriver(false)
+    setSelectedDriver('')
+    setEtaMinutes('30')
   }
 
   return (
@@ -242,8 +258,8 @@ function KanbanCard({
             </Button>
           )}
           {order.status === 'ready' && assigningDriver && (
-            <div className="space-y-1.5">
-              <Select onValueChange={handleAssignDriver}>
+            <div className="space-y-2">
+              <Select onValueChange={(v) => setSelectedDriver(v)} value={selectedDriver}>
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Select driver..." />
                 </SelectTrigger>
@@ -253,14 +269,48 @@ function KanbanCard({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full h-7 text-xs text-gray-500"
-                onClick={() => setAssigningDriver(false)}
-              >
-                Cancel
-              </Button>
+              <div className="space-y-1">
+                <Label htmlFor={`eta-${order.id}`} className="text-[11px] text-gray-600 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Approx. delivery time (minutes from now)
+                </Label>
+                <Input
+                  id={`eta-${order.id}`}
+                  type="number"
+                  min={1}
+                  max={240}
+                  inputMode="numeric"
+                  value={etaMinutes}
+                  onChange={(e) => setEtaMinutes(e.target.value)}
+                  className="h-8 text-xs"
+                  placeholder="30"
+                />
+                <p className="text-[10px] text-gray-400">
+                  Shown to customer as &quot;will be delivered in ~X min&quot;.
+                </p>
+              </div>
+              <div className="flex gap-1.5">
+                <Button
+                  size="sm"
+                  className="flex-1 h-8 text-xs bg-orange-500 hover:bg-orange-600 text-white"
+                  onClick={handleAssignDriver}
+                  disabled={!selectedDriver}
+                >
+                  Confirm & Dispatch
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs text-gray-500 px-2"
+                  onClick={() => {
+                    setAssigningDriver(false)
+                    setSelectedDriver('')
+                    setEtaMinutes('30')
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
           )}
           {order.status === 'out_for_delivery' && (
@@ -574,15 +624,30 @@ export function KanbanOrderBoard() {
     }
   }
 
-  const handleAssignDriver = async (orderId: string, driverId: string) => {
+  const handleAssignDriver = async (orderId: string, driverId: string, etaMinutes?: number) => {
     try {
+      const payload: Record<string, unknown> = {
+        orderId,
+        driverId,
+        status: 'out_for_delivery',
+      }
+      // Send ETA as minutes-from-now; the API converts to a Date.
+      // If omitted, no ETA is set (the customer tracking page will simply
+      // not show the "will be delivered in ~X min" banner).
+      if (etaMinutes && etaMinutes > 0) {
+        payload.estimatedDeliveryAt = etaMinutes
+      }
       const res = await apiFetch('/api/admin/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, driverId, status: 'out_for_delivery' }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) throw new Error()
-      toast.success('Driver assigned & order dispatched')
+      toast.success(
+        etaMinutes
+          ? `Driver assigned — ETA ${etaMinutes} min`
+          : 'Driver assigned & order dispatched'
+      )
       fetchOrders()
     } catch (err: any) {
       if (err?.message !== 'Session expired — redirecting to login') {

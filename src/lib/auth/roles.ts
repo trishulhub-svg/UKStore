@@ -7,6 +7,13 @@
  * Determine the correct dashboard URL for a user based on their role.
  * Used after login to redirect admin/driver users to the right place.
  * Role is case-insensitive.
+ *
+ * NOTE: picker and driver are distinct destinations — pickers go to
+ * /picker (the packing dashboard) and drivers go to /driver (the
+ * delivery dashboard). If a user has BOTH roles (dual-role employee,
+ * see User.additionalRoles), the caller should pass the primary role
+ * (the one stored in User.role) — that's what determines the landing
+ * page. The user can then navigate to the other dashboard manually.
  */
 export function getRoleBasedRedirect(role: string): string {
   const r = (role || '').toLowerCase().trim()
@@ -15,8 +22,12 @@ export function getRoleBasedRedirect(role: string): string {
     return '/admin'
   }
 
-  if (r === 'driver' || r === 'picker') {
+  if (r === 'driver') {
     return '/driver'
+  }
+
+  if (r === 'picker') {
+    return '/picker'
   }
 
   // Default: customer goes to home page

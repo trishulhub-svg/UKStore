@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requirePicker } from '@/lib/feature-permissions'
+import { sendOrderStatusEmail } from '@/lib/email'
 
 // PATCH /api/picker/orders/[id] — mark item as picked or mark order as packed
 export async function PATCH(
@@ -18,7 +19,7 @@ export async function PATCH(
 
     const order = await prisma.order.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: true, customer: { select: { id: true, name: true, email: true } } },
     })
 
     if (!order) {
@@ -44,6 +45,16 @@ export async function PATCH(
           where: { id },
           data: { status: 'picking' },
         })
+
+        // Fire-and-forget email; no-ops if email not configured.
+        sendOrderStatusEmail('picking', {
+          orderId: order.id,
+          customerName: order.customer.name || order.customer.email,
+          customerEmail: order.customer.email,
+          total: `£${order.total.toFixed(2)}`,
+        }, { userId: order.customer.id }).catch((err) => {
+          console.error('[Picker Orders PATCH] sendOrderStatusEmail (picking) failed:', err)
+        })
       }
 
       return NextResponse.json({ success: true, allPicked })
@@ -66,6 +77,9 @@ export async function PATCH(
           packedAt: new Date(),
         },
       })
+
+      // No customer email for 'ready' — it's an internal handoff state.
+      // The customer will be notified when the order goes out_for_delivery.
 
       return NextResponse.json({ success: true })
     }

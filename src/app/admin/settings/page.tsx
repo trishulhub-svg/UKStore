@@ -6,6 +6,7 @@ import { StoreStatusManager } from '@/components/admin/store-status-manager'
 import { BankHolidayManager } from '@/components/admin/bank-holiday-manager'
 import { NotificationEditor } from '@/components/admin/notification-editor'
 import { StoreProfileEditor } from '@/components/admin/store-profile-editor'
+import { SETTING_DEFINITIONS } from '@/types'
 import type { StoreSetting } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -27,17 +28,45 @@ export default async function AdminSettingsPage() {
       where: { storeId: STORE_ID },
     })
 
-    settings = dbSettings.map((s) => ({
-      id: s.id,
-      store_id: s.storeId,
-      key: s.key,
-      value: s.value,
-      is_secret: s.isSecret,
-      category: s.category as StoreSetting['category'],
-      description: s.description,
-      created_at: s.createdAt.toISOString(),
-      updated_at: s.updatedAt.toISOString(),
-    }))
+    const nowIso = new Date().toISOString()
+
+    // Build a map of existing DB rows by key for quick lookup
+    const existingByKey: Record<string, StoreSetting> = {}
+    for (const s of dbSettings) {
+      existingByKey[s.key] = {
+        id: s.id,
+        store_id: s.storeId,
+        key: s.key,
+        value: s.value,
+        is_secret: s.isSecret,
+        category: s.category as StoreSetting['category'],
+        description: s.description,
+        created_at: s.createdAt.toISOString(),
+        updated_at: s.updatedAt.toISOString(),
+      }
+    }
+
+    // Synthesize empty placeholder rows for any defined setting key that
+    // doesn't have a row yet. This way the Admin Settings UI shows every
+    // known field (including the SMTP block) even on a fresh install — the
+    // owner can type in values and save to create the actual DB rows.
+    for (const [key, def] of Object.entries(SETTING_DEFINITIONS)) {
+      if (!existingByKey[key]) {
+        existingByKey[key] = {
+          id: `placeholder-${key}`,
+          store_id: STORE_ID,
+          key,
+          value: '',
+          is_secret: def.is_secret,
+          category: def.category as StoreSetting['category'],
+          description: def.description,
+          created_at: nowIso,
+          updated_at: nowIso,
+        }
+      }
+    }
+
+    settings = Object.values(existingByKey).sort((a, b) => a.key.localeCompare(b.key))
   } catch (err) {
     console.warn('[Admin Settings Page] Failed to fetch settings:', err)
   }

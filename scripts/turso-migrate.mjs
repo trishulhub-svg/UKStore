@@ -116,6 +116,8 @@ const COLUMN_MIGRATIONS = [
   { table: 'shifts', column: 'manualHours', typeDef: 'REAL' },
   // users
   { table: 'users', column: 'mustResetPassword', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
+  // users — dual-role support (JSON-encoded string array of secondary Role enum values)
+  { table: 'users', column: 'additionalRoles', typeDef: "TEXT NOT NULL DEFAULT '[]'" },
   // orders
   { table: 'orders', column: 'promotionId', typeDef: 'TEXT' },
   { table: 'orders', column: 'discountAmount', typeDef: 'REAL NOT NULL DEFAULT 0' },
@@ -126,6 +128,9 @@ const COLUMN_MIGRATIONS = [
   { table: 'orders', column: 'packedAt', typeDef: 'DATETIME' },
   { table: 'orders', column: 'dispatchedAt', typeDef: 'DATETIME' },
   { table: 'orders', column: 'deliveredAt', typeDef: 'DATETIME' },
+  // orders — approximate delivery time set by admin/driver when assigning a driver.
+  // Drives the "Will be delivered by HH:MM" customer-facing ETA display.
+  { table: 'orders', column: 'estimatedDeliveryAt', typeDef: 'DATETIME' },
   { table: 'orders', column: 'hasChallenge25', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
   { table: 'orders', column: 'challenge25Verified', typeDef: 'BOOLEAN NOT NULL DEFAULT 0' },
   // order_items

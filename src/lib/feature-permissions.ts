@@ -397,9 +397,51 @@ export function getFeatureKeyForEmployeeApiRoute(pathname: string): string | nul
 // is non-null (ServerUser). This avoids TS18047 errors at call sites.
 
 /**
+ * Check whether a user has a given role, considering BOTH their primary
+ * `role` field AND any secondary roles stored in `additionalRoles`
+ * (a JSON-encoded string array of Role enum values on the User row).
+ *
+ * This is what enables "dual-role" employees — e.g. one person can be
+ * both a PICKER (primary) and a DRIVER (additional), and access both
+ * /api/picker/* and /api/driver/* routes.
+ *
+ * OWNER and MANAGER always pass (they're admins with full access).
+ */
+async function userHasRole(userId: string, primaryRole: string, targetRole: 'DRIVER' | 'PICKER' | 'MANAGER'): Promise<boolean> {
+  const upper = primaryRole.toUpperCase()
+  // OWNER always passes (admins have full access to all routes)
+  if (upper === 'OWNER') return true
+  // Primary role matches target → pass
+  if (upper === targetRole) return true
+  // MANAGER primary always passes for any employee-target route
+  // (managers have admin-level access to driver/picker endpoints too)
+  if (upper === 'MANAGER') return true
+
+  // Otherwise check additionalRoles — e.g. a PICKER who also has DRIVER in
+  // their additionalRoles array should be allowed to access /api/driver/*.
+  try {
+    const prisma = await getPrisma()
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { additionalRoles: true },
+    })
+    if (!user?.additionalRoles) return false
+    try {
+      const roles: string[] = JSON.parse(user.additionalRoles)
+      return roles.some((r) => r.toUpperCase() === targetRole)
+    } catch {
+      return false
+    }
+  } catch (err) {
+    console.error('[feature-permissions] userHasRole DB lookup failed:', err)
+    return false
+  }
+}
+
+/**
  * Guard for /api/driver/* routes.
- * Verifies: user is authenticated, has DRIVER role, and has the
- * specified feature enabled (if any).
+ * Verifies: user is authenticated, has DRIVER role (either as primary
+ * or as an additional role), and has the specified feature enabled (if any).
  *
  * Usage:
  *   const { error, user } = await requireDriver({ feature: 'driver_earnings' })
@@ -414,7 +456,8 @@ export async function requireDriver(options?: { feature?: string }) {
       user: null,
     } as const
   }
-  if (user.role.toUpperCase() !== 'DRIVER') {
+  const hasDriverRole = await userHasRole(user.id, user.role, 'DRIVER')
+  if (!hasDriverRole) {
     return {
       error: NextResponse.json(
         { error: 'Forbidden — driver role required' },
@@ -444,8 +487,8 @@ export async function requireDriver(options?: { feature?: string }) {
 
 /**
  * Guard for /api/picker/* routes.
- * Verifies: user is authenticated, has PICKER role, and has the
- * specified feature enabled (if any).
+ * Verifies: user is authenticated, has PICKER role (either as primary
+ * or as an additional role), and has the specified feature enabled (if any).
  */
 export async function requirePicker(options?: { feature?: string }) {
   const user = await getServerUser()
@@ -455,7 +498,8 @@ export async function requirePicker(options?: { feature?: string }) {
       user: null,
     } as const
   }
-  if (user.role.toUpperCase() !== 'PICKER') {
+  const hasPickerRole = await userHasRole(user.id, user.role, 'PICKER')
+  if (!hasPickerRole) {
     return {
       error: NextResponse.json(
         { error: 'Forbidden — picker role required' },

@@ -3,8 +3,35 @@ import { getServerUser } from '@/lib/auth/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { calculateVatFromGross } from '@/lib/vat'
 import { getStripeConfig, getSetting } from '@/lib/settings'
+import { sendOrderStatusEmail } from '@/lib/email'
 
 const STORE_ID = 'store-fresh-mart-001'
+
+/**
+ * Fire-and-forget: send the customer an order-confirmation email for a
+ * freshly placed order. No-ops if the store owner hasn't configured SMTP /
+ * SendGrid credentials yet, so checkout never breaks on email failures.
+ */
+function fireOrderPlacedEmail(
+  orderId: string,
+  customerName: string | null,
+  customerEmail: string,
+  total: number,
+  userId: string,
+) {
+  sendOrderStatusEmail(
+    'placed',
+    {
+      orderId,
+      customerName: customerName || customerEmail,
+      customerEmail,
+      total: `£${total.toFixed(2)}`,
+    },
+    { userId },
+  ).catch((err) => {
+    console.error('[Checkout] sendOrderStatusEmail (placed) failed:', err)
+  })
+}
 
 function buildApiError(
   message: string,
@@ -368,6 +395,8 @@ export async function POST(request: NextRequest) {
           },
         })
 
+        fireOrderPlacedEmail(order.id, user.name, user.email, finalTotal, user.id)
+
         return NextResponse.json({
           orderId: order.id,
           paymentMethod: 'cash',
@@ -449,6 +478,8 @@ export async function POST(request: NextRequest) {
         const bankSortCode = await getSetting('bank_sort_code', 'BANK_SORT_CODE', '')
         const bankAccountNumber = await getSetting('bank_account_number', 'BANK_ACCOUNT_NUMBER', '')
         const bankAccountName = await getSetting('bank_account_name', 'BANK_ACCOUNT_NAME', '')
+
+        fireOrderPlacedEmail(order.id, user.name, user.email, finalTotal, user.id)
 
         return NextResponse.json({
           orderId: order.id,
@@ -584,6 +615,8 @@ export async function POST(request: NextRequest) {
           data: { stripeSessionId: session.id },
         })
 
+        fireOrderPlacedEmail(order.id, user.name, user.email, finalTotal, user.id)
+
         return NextResponse.json({
           orderId: order.id,
           sessionId: session.id,
@@ -648,6 +681,8 @@ export async function POST(request: NextRequest) {
           },
         },
       })
+
+      fireOrderPlacedEmail(order.id, user.name, user.email, finalTotal, user.id)
 
       return NextResponse.json({
         orderId: order.id,

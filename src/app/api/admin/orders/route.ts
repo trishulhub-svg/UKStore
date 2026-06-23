@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
 import { getServerUser } from '@/lib/auth/server'
+import { sendOrderStatusEmail } from '@/lib/email'
 
 const STORE_ID = 'store-fresh-mart-001'
 
@@ -92,7 +93,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const prisma = await getPrisma()
     const body = await request.json()
-    const { orderId, status, driverId } = body
+    const { orderId, status, driverId, estimatedDeliveryAt } = body
 
     if (!orderId) {
       return NextResponse.json({ error: 'orderId is required' }, { status: 400 })
@@ -131,6 +132,22 @@ export async function PATCH(request: NextRequest) {
     if (status) data.status = status
     if (driverId !== undefined) data.driverId = driverId || null
     if (body.bankTransferVerified !== undefined) data.bankTransferVerified = body.bankTransferVerified
+
+    // ETA — accept ISO string, Date, null (to clear), or numeric minutes-from-now.
+    // When a driver is assigned, the admin sets an approximate delivery time so
+    // we can show "Expected delivery by HH:MM" on the customer tracking page
+    // and populate the {eta} placeholder in the out-for-delivery email.
+    if (estimatedDeliveryAt !== undefined) {
+      if (estimatedDeliveryAt === null) {
+        data.estimatedDeliveryAt = null
+      } else if (typeof estimatedDeliveryAt === 'string') {
+        const parsed = new Date(estimatedDeliveryAt)
+        if (!isNaN(parsed.getTime())) data.estimatedDeliveryAt = parsed
+      } else if (typeof estimatedDeliveryAt === 'number') {
+        // Treat as "minutes from now" — convenient for the UI
+        data.estimatedDeliveryAt = new Date(Date.now() + estimatedDeliveryAt * 60_000)
+      }
+    }
 
     // Auto-set timestamp fields based on the new status
     if (status === 'picking' && !existing.packedAt) {
@@ -187,6 +204,23 @@ export async function PATCH(request: NextRequest) {
         // Non-fatal — the status change itself succeeded
         console.error('[Admin Orders PATCH] Failed to write audit log:', logErr)
       }
+    }
+
+    // ─── Email notification to customer ────────────────────────
+    // Fire-and-forget. sendOrderStatusEmail() gracefully no-ops if no
+    // email provider is configured (the owner hasn't entered SMTP creds yet),
+    // and always creates an in-app Notification row as a backup channel.
+    if (statusChanged) {
+      sendOrderStatusEmail(toStatus, {
+        orderId: order.id,
+        customerName: order.customer.name || order.customer.email,
+        customerEmail: order.customer.email,
+        total: `£${order.total.toFixed(2)}`,
+        driverName: order.driver?.name,
+        eta: order.estimatedDeliveryAt,
+      }, { userId: order.customer.id }).catch((err) => {
+        console.error('[Admin Orders PATCH] sendOrderStatusEmail failed:', err)
+      })
     }
 
     return NextResponse.json({ order })

@@ -94,6 +94,10 @@ export async function GET() {
           email: emp.email,
           phone: emp.phone,
           role: emp.role,
+          // JSON-encoded string array of secondary roles (e.g. '["DRIVER"]').
+          // The frontend parses this to populate the "Additional Roles" toggles
+          // in the edit dialog and the role badges in the employee list.
+          additionalRoles: emp.additionalRoles || '[]',
           isActive: emp.isActive,
           mustResetPassword: emp.mustResetPassword,
           createdAt: emp.createdAt.toISOString(),

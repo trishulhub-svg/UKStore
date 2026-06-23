@@ -67,6 +67,11 @@ model User {
   passwordHash         String?
   phone                String?
   role                 Role     @default(CUSTOMER)
+  // Additional staff roles a user can perform alongside their primary `role`.
+  // Stored as a JSON-encoded string array of Role enum values (e.g. '["DRIVER","PICKER"]').
+  // This allows a single user to be both an employee (PICKER/MANAGER) AND a driver.
+  // The primary `role` is still used for routing/redirect and primary identity.
+  additionalRoles      String   @default("[]")  // JSON string array, parsed in app code
   avatarUrl            String?
   isActive             Boolean  @default(true)
   mustResetPassword    Boolean  @default(false)  // Force password reset on next login (used for new employee accounts)
@@ -240,6 +245,10 @@ model Order {
   packedAt             DateTime?
   dispatchedAt         DateTime?
   deliveredAt          DateTime?
+  // Approximate delivery time set by admin/driver when assigning a driver.
+  // Shown to customers as "Expected delivery by HH:MM" on tracking page,
+  // order confirmation, and order history. Also used to populate {eta} in emails.
+  estimatedDeliveryAt  DateTime?
   deliveryPhotoUrl     String?
   bankTransferRef      String?
   bankTransferVerified Boolean       @default(false)

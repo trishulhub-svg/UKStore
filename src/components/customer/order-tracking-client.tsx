@@ -63,6 +63,9 @@ interface OrderDetail {
   notes: string | null
   createdAt: string
   updatedAt: string
+  // ISO timestamp set by admin/driver when assigning a driver.
+  // Drives the "Expected delivery by HH:MM" badge shown to the customer.
+  estimatedDeliveryAt: string | null
   driver: DriverInfo | null
   address: AddressInfo
   items: OrderItem[]
@@ -128,6 +131,33 @@ export function OrderTrackingClient() {
   const currentStepIndex = statusSteps.findIndex((s) => s.key === order.status)
   const isCancelled = order.status === 'cancelled'
 
+  // ─── ETA helper ────────────────────────────────────────────
+  // Renders the approximate delivery time set by the admin/driver.
+  // - For today: "Will be delivered by 3:45 PM" / "Will be delivered in ~25 min"
+  // - For another day: "Will be delivered tomorrow by 10:30 AM" / etc.
+  // - Once delivered: hidden (the Delivered badge already covers it)
+  const eta = order.estimatedDeliveryAt ? new Date(order.estimatedDeliveryAt) : null
+  const showEta = !!eta && !isCancelled && order.status !== 'delivered'
+  const etaLabel = (() => {
+    if (!eta) return null
+    const now = new Date()
+    const minsUntil = Math.round((eta.getTime() - now.getTime()) / 60_000)
+    const isSameDay = eta.toDateString() === now.toDateString()
+    const tomorrow = new Date(now)
+    tomorrow.setDate(now.getDate() + 1)
+    const isTomorrow = eta.toDateString() === tomorrow.toDateString()
+    const timeStr = eta.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' })
+
+    // If ETA is in the near future (≤90 min) on the same day, show a friendly
+    // "in X min" countdown instead of a clock time.
+    if (isSameDay && minsUntil > 0 && minsUntil <= 90) {
+      return `Will be delivered in ~${minsUntil} min`
+    }
+    if (isSameDay) return `Will be delivered by ${timeStr}`
+    if (isTomorrow) return `Will be delivered tomorrow by ${timeStr}`
+    return `Will be delivered ${eta.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} by ${timeStr}`
+  })()
+
   return (
     <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
       {/* Header */}
@@ -155,6 +185,23 @@ export function OrderTrackingClient() {
           {isCancelled ? 'Cancelled' : statusSteps[currentStepIndex]?.label || order.status}
         </Badge>
       </div>
+
+      {/* ETA banner — shown when the admin/driver has set an approximate delivery time */}
+      {showEta && etaLabel && (
+        <Card className="shadow-sm border-[#16a34a]/30 bg-[#16a34a]/5">
+          <CardContent className="p-3 sm:p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-[#16a34a]/15 flex items-center justify-center shrink-0">
+              <Clock className="h-4 w-4 text-[#16a34a]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#15803d] leading-tight">{etaLabel}</p>
+              <p className="text-xs text-[#16a34a]/80 mt-0.5">
+                Approximate time — may vary with traffic and route.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Status Timeline */}
       {!isCancelled && (

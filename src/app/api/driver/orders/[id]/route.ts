@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireDriver } from '@/lib/feature-permissions'
+import { sendOrderStatusEmail } from '@/lib/email'
 
 const STORE_ID = 'store-fresh-mart-001'
 
@@ -66,10 +67,14 @@ export async function PATCH(
     const prisma = await getPrisma()
     const { id } = await params
     const body = await request.json()
-    const { itemId, picked, status, assignToMe, challenge25Verified } = body
+    const { itemId, picked, status, assignToMe, challenge25Verified, estimatedDeliveryAt } = body
 
     const order = await prisma.order.findFirst({
       where: { id, storeId: STORE_ID },
+      include: {
+        customer: { select: { id: true, name: true, email: true, phone: true } },
+        driver: { select: { id: true, name: true } },
+      },
     })
 
     if (!order) {
@@ -137,12 +142,59 @@ export async function PATCH(
         )
       }
 
+      // Driver may optionally set/clear an ETA when dispatching.
+      // The kanban admin UI sets this during driver-assign; the driver
+      // app can refine it when starting the delivery.
+      const updateData: any = {
+        status,
+        driverId: order.driverId || user.id,
+      }
+      if (estimatedDeliveryAt !== undefined) {
+        if (estimatedDeliveryAt === null) {
+          updateData.estimatedDeliveryAt = null
+        } else if (typeof estimatedDeliveryAt === 'string') {
+          const parsed = new Date(estimatedDeliveryAt)
+          if (!isNaN(parsed.getTime())) updateData.estimatedDeliveryAt = parsed
+        } else if (typeof estimatedDeliveryAt === 'number') {
+          updateData.estimatedDeliveryAt = new Date(Date.now() + estimatedDeliveryAt * 60_000)
+        }
+      }
+      if (status === 'out_for_delivery' && !updateData.dispatchedAt && !order.dispatchedAt) {
+        updateData.dispatchedAt = new Date()
+      }
+      if (status === 'delivered' && !updateData.deliveredAt && !order.deliveredAt) {
+        updateData.deliveredAt = new Date()
+      }
+
       await prisma.order.update({
         where: { id },
-        data: {
-          status,
-          driverId: order.driverId || user.id,
-        },
+        data: updateData,
+      })
+
+      // Re-fetch driver name for the email template (driver may have just self-assigned).
+      const driverName = (order.driver?.name)
+        || (assignToMe ? user.name : undefined)
+        || (order.driverId ? (await prisma.user.findUnique({
+              where: { id: order.driverId },
+              select: { name: true },
+            }))?.name : undefined)
+
+      // Re-fetch the order to get the latest ETA (in case it was just set).
+      const freshOrder = await prisma.order.findUnique({
+        where: { id },
+        select: { estimatedDeliveryAt: true },
+      })
+
+      // Fire-and-forget email; no-ops if email not configured.
+      sendOrderStatusEmail(status, {
+        orderId: order.id,
+        customerName: order.customer.name || order.customer.email,
+        customerEmail: order.customer.email,
+        total: `£${order.total.toFixed(2)}`,
+        driverName,
+        eta: freshOrder?.estimatedDeliveryAt,
+      }, { userId: order.customer.id }).catch((err) => {
+        console.error('[Driver Order PATCH] sendOrderStatusEmail failed:', err)
       })
     }
 

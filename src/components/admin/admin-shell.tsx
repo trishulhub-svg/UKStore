@@ -132,6 +132,17 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
               )}
             </div>
           </div>
+          {/* If the user is a PICKER or DRIVER (here because they have admin features),
+              show a link back to their primary dashboard. */}
+          {userRole && (userRole.toUpperCase() === 'PICKER' || userRole.toUpperCase() === 'DRIVER') && (
+            <Link
+              href={userRole.toUpperCase() === 'PICKER' ? '/picker' : '/driver'}
+              className="flex items-center gap-2 mb-2 px-3 py-2 rounded-md bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-medium transition-colors"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Back to {userRole.toUpperCase() === 'PICKER' ? 'Picker' : 'Driver'} Dashboard
+            </Link>
+          )}
           <div className="flex gap-2">
             <Link href="/account/profile" className="flex-1">
               <Button variant="outline" size="sm" className="w-full text-xs">
@@ -221,8 +232,27 @@ export function AdminShell({ children, profile, userEmail, userRole, enabledFeat
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{profile.full_name}</p>
                       <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+                      {userRole && (
+                        <p className="text-[10px] uppercase tracking-wider text-gray-400 mt-0.5">
+                          {userRole}
+                          {enabledFeatures !== null && enabledFeatures !== undefined && (
+                            <span className="ml-1 text-amber-600">· Restricted</span>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </div>
+                  {/* If the user is a PICKER or DRIVER, show a link back to their primary dashboard. */}
+                  {userRole && (userRole.toUpperCase() === 'PICKER' || userRole.toUpperCase() === 'DRIVER') && (
+                    <Link
+                      href={userRole.toUpperCase() === 'PICKER' ? '/picker' : '/driver'}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-2 mb-3 px-3 py-2.5 rounded-md bg-orange-50 hover:bg-orange-100 text-orange-700 text-sm font-medium transition-colors min-h-[44px]"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Back to {userRole.toUpperCase() === 'PICKER' ? 'Picker' : 'Driver'} Dashboard
+                    </Link>
+                  )}
                   <div className="grid grid-cols-3 gap-2">
                     <Link href="/account/profile" onClick={() => setMobileMenuOpen(false)}>
                       <Button variant="outline" size="sm" className="w-full min-h-[44px]">

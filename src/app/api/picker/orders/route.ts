@@ -4,9 +4,12 @@ import { requirePicker } from '@/lib/feature-permissions'
 
 const STORE_ID = 'store-fresh-mart-001'
 
-// GET /api/picker/orders — get orders that need packing
+// GET /api/picker/orders — get orders that need packing.
+// Accessible by pickers with EITHER picker_dashboard (view stats) OR picker_packing (pack orders).
+// This way, a picker who only has picker_dashboard can still see the dashboard's stats,
+// and a picker with picker_packing can use the packing workflow.
 export async function GET(request: NextRequest) {
-  const { error, user } = await requirePicker({ feature: 'picker_packing' })
+  const { error, user } = await requirePicker({ anyOf: ['picker_dashboard', 'picker_packing'] })
   if (error) return error
 
   try {

@@ -56,7 +56,15 @@ export function FeaturePermissionsSection({
 
   const useRestrictions = features !== null
 
-  // Fetch the catalog (and current features for Edit mode) once on mount
+  // Fetch the catalog (and current features for Edit mode).
+  //
+  // Edit mode (userId provided): re-runs when userId/role changes — fetches
+  // the user's current feature permissions and the full catalog.
+  //
+  // Create mode (no userId): only fetches the catalog. We do NOT call
+  // onFeaturesChange here — the parent's initial state (null = full access)
+  // is the right default, and we don't want to clobber the user's selections
+  // if they change the role dropdown after picking features.
   useEffect(() => {
     if (!role || role.toUpperCase() === 'OWNER') return
 
@@ -64,30 +72,27 @@ export function FeaturePermissionsSection({
     setLoading(true)
     ;(async () => {
       try {
-        // For Edit mode, hit the existing permissions endpoint which returns both catalog + current features.
-        // For Create mode, hit the same endpoint with a placeholder userId — but that 404s.
-        // Instead, we fetch the catalog from a dedicated endpoint that requires no user id.
         let catalogData: FeatureCatalogEntry[] = []
-        let currentFeatures: string[] | null = null
 
         if (userId) {
+          // Edit mode — fetch catalog + current features
           const res = await apiFetch(`/api/admin/employees/${userId}/permissions`)
           if (!res.ok) throw new Error('Failed to load permissions')
           const data = await res.json()
           catalogData = data.catalog || []
-          currentFeatures = data.features
+          const currentFeatures: string[] | null = data.features
+          if (cancelled) return
+          setCatalog(catalogData)
+          onFeaturesChange(currentFeatures)
         } else {
-          // Create mode — fetch catalog only
+          // Create mode — fetch catalog only, do NOT touch features state
           const res = await apiFetch('/api/admin/feature-catalog')
           if (!res.ok) throw new Error('Failed to load feature catalog')
           const data = await res.json()
           catalogData = data.catalog || []
-          currentFeatures = null
+          if (cancelled) return
+          setCatalog(catalogData)
         }
-
-        if (cancelled) return
-        setCatalog(catalogData)
-        onFeaturesChange(currentFeatures)
       } catch (err: any) {
         if (err?.message !== 'Session expired — redirecting to login') {
           toast.error('Failed to load feature catalog')
@@ -100,7 +105,6 @@ export function FeaturePermissionsSection({
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, role])
 
   // Hide entirely for OWNER
@@ -135,17 +139,9 @@ export function FeaturePermissionsSection({
     }
   }
 
-  // Group catalog by group
+  // Group catalog by group — show ALL features regardless of role.
+  // Owner can grant any feature to any employee.
   const groupedCatalog = catalog.reduce((acc, entry) => {
-    if (!acc[entry.group]) acc[entry.group] = []
-    acc[entry.group].push(entry)
-    return acc
-  }, {} as Record<string, FeatureCatalogEntry[]>)
-
-  // Filter catalog entries by the user's role
-  const roleKey = role.toUpperCase()
-  const filteredCatalog = catalog.filter((c) => c.appliesTo.includes(roleKey))
-  const filteredGroupedCatalog = filteredCatalog.reduce((acc, entry) => {
     if (!acc[entry.group]) acc[entry.group] = []
     acc[entry.group].push(entry)
     return acc
@@ -170,7 +166,7 @@ export function FeaturePermissionsSection({
       )}
 
       <p className="text-xs text-gray-500">
-        Choose which features this employee can access. Default is full access.
+        Choose which features this employee can access. All features are available regardless of role — the owner decides what each employee can do.
       </p>
 
       {/* Access mode toggle */}
@@ -211,7 +207,7 @@ export function FeaturePermissionsSection({
         <>
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-600">
-              {features?.length || 0} of {filteredCatalog.length} features enabled
+              {features?.length || 0} of {catalog.length} features enabled
             </p>
             <div className="flex gap-1">
               <Button type="button" variant="ghost" size="sm" onClick={handleSelectAll} className="h-7 text-xs">
@@ -225,9 +221,9 @@ export function FeaturePermissionsSection({
 
           <Separator />
 
-          {/* Feature groups — filtered by role */}
+          {/* Feature groups — show ALL features (not filtered by role) */}
           <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-1">
-            {Object.entries(filteredGroupedCatalog).map(([group, entries]) => (
+            {Object.entries(groupedCatalog).map(([group, entries]) => (
               <div key={group} className="space-y-1.5">
                 <h5 className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{group}</h5>
                 <div className="space-y-1.5">
@@ -262,16 +258,16 @@ export function FeaturePermissionsSection({
                 </div>
               </div>
             ))}
-            {filteredCatalog.length === 0 && (
+            {catalog.length === 0 && (
               <p className="text-xs text-gray-500 italic">
-                No configurable features for the {roleKey} role.
+                No configurable features available.
               </p>
             )}
           </div>
 
           {features?.length === 0 && (
             <div className="rounded-md bg-amber-50 border border-amber-200 p-2 text-[11px] text-amber-800">
-              No features selected — this employee will not be able to access any admin features.
+              No features selected — this employee will not be able to access any features.
             </div>
           )}
         </>

@@ -11,16 +11,20 @@ import { getEnabledFeaturesList, FEATURE_CATALOG } from '@/lib/feature-permissio
  * Response:
  *   {
  *     features: string[] | null,   // null = full access, array = restricted to listed features
- *     catalog: FeatureCatalogEntry[],  // the catalog entries applicable to the user's role
+ *     catalog: FeatureCatalogEntry[],  // the FULL feature catalog (NOT filtered by role)
  *     role: string,                // primary role (e.g. 'PICKER')
  *     roles: string[]              // primary + additionalRoles (e.g. ['PICKER','DRIVER'])
  *   }
  *
- * Used by client-side layouts (driver, picker) to filter nav items based
- * on the feature permissions set by the admin, AND to gate access by role.
- * The `roles` array enables dual-role access — e.g. a user whose primary
- * role is PICKER but who also has DRIVER in additionalRoles can access
- * both /picker and /driver dashboards.
+ * Used by client-side layouts (driver, picker, admin) to filter nav items
+ * based on the feature permissions set by the admin, AND to gate access by
+ * role. The `roles` array enables dual-role access — e.g. a user whose
+ * primary role is PICKER but who also has DRIVER in additionalRoles can
+ * access both /picker and /driver dashboards.
+ *
+ * As of Task 17, the catalog is NOT filtered by the user's role — the
+ * owner can grant any feature to any employee, so the client needs the
+ * full catalog to know which nav items to show.
  */
 export async function GET() {
   const user = await getServerUser()
@@ -71,15 +75,11 @@ export async function GET() {
 
   const features = await getEnabledFeaturesList(user.id, user.role)
 
-  // Filter catalog to features applicable to ANY of the user's roles
-  // (so a PICKER+DRIVER dual-role user sees both picker and driver features)
-  const applicableCatalog = FEATURE_CATALOG.filter((f) =>
-    f.appliesTo.some((r) => roles.includes(r))
-  )
-
+  // Return the FULL catalog — owner can grant any feature to any employee.
+  // The client decides which nav items to show based on `features`.
   return NextResponse.json({
     features,
-    catalog: applicableCatalog,
+    catalog: FEATURE_CATALOG,
     role: user.role,
     roles,
   })

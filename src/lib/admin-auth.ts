@@ -1,7 +1,13 @@
 // ============================================================
 // Admin API auth helper
-// Checks that the requesting user has OWNER or MANAGER role
-// Optionally checks feature-permission access for non-owner users
+//
+// As of Task 17, access is granted based on ROLE + FEATURE PERMISSION:
+//   - OWNER: always allowed (full access, cannot be restricted)
+//   - MANAGER: always allowed into admin area, but feature permissions
+//     still gate individual endpoints
+//   - DRIVER / PICKER: only allowed if they have the specific feature
+//     enabled (e.g. a picker granted `orders` can call /api/admin/orders).
+//     This supports the "owner grants admin features to picker/driver" workflow.
 // ============================================================
 
 import { getServerUser } from '@/lib/auth/server'
@@ -27,13 +33,22 @@ export async function requireAdmin(options?: RequireAdminOptions) {
   }
 
   const role = user.role.toUpperCase()
+
+  // OWNER and MANAGER always pass the role check.
+  // DRIVER and PICKER only pass if a feature is required AND they have it
+  // (this is the new behavior — they can be granted admin features).
   if (role !== 'OWNER' && role !== 'MANAGER') {
-    return {
-      error: NextResponse.json(
-        { error: 'Forbidden — owner or manager role required' },
-        { status: 403 }
-      ),
-      user: null,
+    // For DRIVER/PICKER: if no specific feature is required, deny access
+    // (they shouldn't be hitting unguarded admin endpoints).
+    // If a feature IS required, check it below — they pass only if they have it.
+    if (!options?.feature) {
+      return {
+        error: NextResponse.json(
+          { error: 'Forbidden — admin role or specific feature permission required' },
+          { status: 403 }
+        ),
+        user: null,
+      }
     }
   }
 

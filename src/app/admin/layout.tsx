@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getServerUser } from '@/lib/auth/server'
 import { AdminShell } from '@/components/admin/admin-shell'
-import { getEnabledFeaturesList } from '@/lib/feature-permissions'
+import { getEnabledFeaturesList, hasAnyAdminFeature } from '@/lib/feature-permissions'
 import type { Profile } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -17,10 +17,20 @@ export default async function AdminLayout({
     redirect('/auth/login?redirect=/admin')
   }
 
-  // Check user's role - only owners and managers can access admin
-  // Support both uppercase (Prisma enum) and lowercase (legacy tokens)
+  // Fetch feature permissions for the user (null = full access, array = restricted to listed features)
+  // OWNER always returns null (full access). Other roles may have a restriction row.
+  const enabledFeatures = await getEnabledFeaturesList(user.id, user.role)
+
+  // Check user's role - owners and managers always have access.
+  // Drivers/pickers can access /admin/* ONLY if they have at least one
+  // admin-group feature enabled (e.g. `orders`, `kanban`, `wastage`).
+  // This supports the "owner grants admin features to picker/driver" workflow.
   const role = user.role.toUpperCase()
-  if (role !== 'OWNER' && role !== 'MANAGER') {
+  const isOwnerOrManager = role === 'OWNER' || role === 'MANAGER'
+  const isEmployeeWithAdminFeature =
+    (role === 'DRIVER' || role === 'PICKER') && hasAnyAdminFeature(enabledFeatures)
+
+  if (!isOwnerOrManager && !isEmployeeWithAdminFeature) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center max-w-md">
@@ -31,7 +41,10 @@ export default async function AdminLayout({
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
           <p className="text-gray-600 mb-4">
-            Only store owners and managers can access the admin dashboard. Your current role is <strong>{user.role}</strong>.
+            You don&apos;t have permission to access the admin dashboard. Your current role is <strong>{user.role}</strong>.
+            {role === 'DRIVER' || role === 'PICKER'
+              ? ' Ask the store owner to grant you admin feature permissions.'
+              : ''}
           </p>
           <a href="/" className="inline-flex items-center px-4 py-2 bg-[#16a34a] text-white rounded-md hover:bg-[#15803d] font-medium">
             Return to Store
@@ -40,10 +53,6 @@ export default async function AdminLayout({
       </div>
     )
   }
-
-  // Fetch feature permissions for the user (null = full access, array = restricted to listed features)
-  // OWNER always returns null (full access). MANAGER may have a restriction row.
-  const enabledFeatures = await getEnabledFeaturesList(user.id, user.role)
 
   // Construct a Profile-like object from the local auth user
   const profile: Profile = {

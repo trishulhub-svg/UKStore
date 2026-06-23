@@ -169,6 +169,10 @@ export default function AdminEmployeesPage() {
       PICKER: parsed.includes('PICKER'),
       MANAGER: parsed.includes('MANAGER'),
     })
+    // Reset to null (full access) so the FeaturePermissionsSection can re-fetch
+    // the actual permissions for this employee without showing stale state
+    // from the previously-edited employee.
+    setEditFeatures(null)
     setEditDialogOpen(true)
   }
 
@@ -924,10 +928,10 @@ export default function AdminEmployeesPage() {
                   value={newRole}
                   onValueChange={(v: 'DRIVER' | 'PICKER' | 'MANAGER') => {
                     setNewRole(v)
-                    // Reset feature selection when role changes so the
-                    // FeaturePermissionsSection re-fetches the catalog for
-                    // the new role.
-                    setNewFeatures(null)
+                    // Note: we do NOT reset newFeatures when role changes.
+                    // As of Task 17, all features apply to all roles, so
+                    // the user's feature selections should persist across
+                    // role changes.
                   }}
                 >
                   <SelectTrigger>

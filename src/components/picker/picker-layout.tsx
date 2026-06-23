@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Package, User, LogOut } from 'lucide-react'
+import { LayoutDashboard, Package, User, LogOut, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
@@ -16,6 +16,27 @@ const navItems = [
   { href: '/picker/packing', label: 'Packing', icon: Package, feature: 'picker_packing' },
   { href: '/picker/profile', label: 'Profile', icon: User, feature: 'picker_profile' },
 ]
+
+// Admin-group feature keys — if the picker has ANY of these enabled,
+// we show an "Admin" link in the header so they can jump to /admin.
+const ADMIN_FEATURE_KEYS = new Set([
+  'admin_dashboard',
+  'kanban',
+  'orders',
+  'products',
+  'categories',
+  'customers',
+  'drivers',
+  'employees',
+  'banners',
+  'shifts',
+  'finance',
+  'wastage',
+  'promotions',
+  'delivery_zones',
+  'analytics',
+  'settings',
+])
 
 export function PickerLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -92,6 +113,12 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
     return enabledFeatures.includes(item.feature)
   })
 
+  // Show "Admin" link if the picker has any admin-group feature enabled.
+  // null = full access → also show the link.
+  const hasAdminAccess =
+    enabledFeatures === null ||
+    enabledFeatures.some((f) => ADMIN_FEATURE_KEYS.has(f))
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -141,7 +168,17 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
             <StoreLogo size={28} />
             <span className="font-bold text-base text-white">{storeName} Picker</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            {hasAdminAccess && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+                title="Open admin dashboard"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                <span>Admin</span>
+              </Link>
+            )}
             <Button
               variant="ghost"
               size="sm"

@@ -9,6 +9,10 @@
 //   - Other employees (MANAGER / DRIVER / PICKER): if no
 //     EmployeeFeaturePermission row exists → full access (default open).
 //     If a row exists → only the listed features are accessible.
+//
+// All features are toggleable for ALL non-OWNER roles. The `group`
+// field is purely for UI categorization (Admin / Driver / Picker),
+// not a hard restriction. Owner can grant any feature to any employee.
 // ============================================================
 
 import { getPrisma } from '@/lib/auth/prisma'
@@ -23,124 +27,132 @@ export interface FeatureCatalogEntry {
   key: string
   label: string
   description: string
-  /** Roles for which this feature can be toggled. OWNER is always excluded. */
+  /**
+   * Roles for which this feature can be toggled. OWNER is always excluded.
+   * As of Task 17, all non-OWNER roles can be granted any feature — the
+   * owner decides what each employee can access. The `appliesTo` field is
+   * kept for backward compatibility and as a "default suggestion" hint.
+   */
   appliesTo: ('MANAGER' | 'DRIVER' | 'PICKER')[]
   /** Group for UI categorization. */
   group: 'Admin' | 'Driver' | 'Picker'
 }
 
+/** All non-OWNER employee roles. Used so the catalog can grant any feature to any employee. */
+const ALL_EMPLOYEE_ROLES: ('MANAGER' | 'DRIVER' | 'PICKER')[] = ['MANAGER', 'DRIVER', 'PICKER']
+
 export const FEATURE_CATALOG: FeatureCatalogEntry[] = [
-  // ─── Admin-area features (toggled for MANAGER, sometimes DRIVER/PICKER) ──
+  // ─── Admin-area features ──
   {
     key: 'admin_dashboard',
     label: 'Admin Dashboard',
     description: 'View the main admin dashboard with KPIs and recent orders.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'kanban',
     label: 'Order Kanban Board',
     description: 'View and use the kanban-style order management board.',
-    appliesTo: ['MANAGER', 'DRIVER', 'PICKER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'orders',
     label: 'Order Management',
     description: 'View, edit, and update orders. Includes the kanban board.',
-    appliesTo: ['MANAGER', 'DRIVER', 'PICKER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'products',
     label: 'Products',
     description: 'Add, edit, delete, and manage inventory for products.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'categories',
     label: 'Categories',
     description: 'Manage product categories and sub-categories.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'customers',
     label: 'Customers',
     description: 'View the customer list and toggle customer active status.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'drivers',
     label: 'Drivers',
     description: 'View and manage driver profiles and verification.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'employees',
     label: 'Employees',
     description: 'View, create, and manage employee accounts.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'banners',
     label: 'Banners',
     description: 'Upload, edit, and manage promotional banners.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'shifts',
     label: 'Shifts',
     description: 'View and assign staff shifts.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'finance',
     label: 'Finance',
     description: 'View revenue, expenses, and finance reports.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'wastage',
     label: 'Wastage',
     description: 'Log and view product wastage reports.',
-    appliesTo: ['MANAGER', 'PICKER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'promotions',
     label: 'Promotions',
     description: 'Create and manage promotional discounts.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'delivery_zones',
     label: 'Delivery Zones',
     description: 'Configure delivery zones, fees, and minimum orders.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'analytics',
     label: 'Analytics',
     description: 'View store performance analytics.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
   {
     key: 'settings',
     label: 'Store Settings',
     description: 'Configure store profile, hours, and bank holiday mode.',
-    appliesTo: ['MANAGER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Admin',
   },
 
@@ -149,21 +161,21 @@ export const FEATURE_CATALOG: FeatureCatalogEntry[] = [
     key: 'driver_dashboard',
     label: 'Driver Dashboard',
     description: 'View active deliveries and driver home page.',
-    appliesTo: ['DRIVER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Driver',
   },
   {
     key: 'driver_earnings',
     label: 'Driver Earnings',
     description: 'View earnings breakdown and history.',
-    appliesTo: ['DRIVER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Driver',
   },
   {
     key: 'driver_profile',
     label: 'Driver Profile',
     description: 'View and edit driver profile and documents.',
-    appliesTo: ['DRIVER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Driver',
   },
 
@@ -172,24 +184,51 @@ export const FEATURE_CATALOG: FeatureCatalogEntry[] = [
     key: 'picker_dashboard',
     label: 'Picker Dashboard',
     description: 'View picking queue and picker home page.',
-    appliesTo: ['PICKER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Picker',
   },
   {
     key: 'picker_packing',
     label: 'Picker Packing',
     description: 'Access the packing workflow page.',
-    appliesTo: ['PICKER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Picker',
   },
   {
     key: 'picker_profile',
     label: 'Picker Profile',
     description: 'View and edit picker profile.',
-    appliesTo: ['PICKER'],
+    appliesTo: ALL_EMPLOYEE_ROLES,
     group: 'Picker',
   },
 ]
+
+/**
+ * Set of feature keys that belong to the "Admin" group.
+ * Used by the admin layout to decide if a non-admin-role user (DRIVER/PICKER)
+ * should be allowed into /admin/* — they're allowed in if they have any
+ * admin feature enabled.
+ */
+export const ADMIN_GROUP_FEATURE_KEYS: Set<string> = new Set(
+  FEATURE_CATALOG.filter((f) => f.group === 'Admin').map((f) => f.key)
+)
+
+/**
+ * Check whether a feature key belongs to the admin group.
+ */
+export function isAdminFeatureKey(key: string): boolean {
+  return ADMIN_GROUP_FEATURE_KEYS.has(key)
+}
+
+/**
+ * Check whether a list of enabled features contains any admin-group feature.
+ * Used to decide if a DRIVER/PICKER should be allowed into /admin/*.
+ * `null` means full access → returns true.
+ */
+export function hasAnyAdminFeature(enabledFeatures: string[] | null): boolean {
+  if (enabledFeatures === null) return true
+  return enabledFeatures.some((k) => ADMIN_GROUP_FEATURE_KEYS.has(k))
+}
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_CATALOG.map((f) => f.key)
 
@@ -396,6 +435,17 @@ export function getFeatureKeyForEmployeeApiRoute(pathname: string): string | nul
 // can infer the discriminated union — when `error` is null, `user`
 // is non-null (ServerUser). This avoids TS18047 errors at call sites.
 
+interface EmployeeGuardOptions {
+  /** If set, the user must have this feature enabled. */
+  feature?: string
+  /**
+   * If set (and `feature` is not), the user must have AT LEAST ONE of these
+   * features enabled. Useful for endpoints that span multiple features
+   * (e.g. /api/picker/orders is used by both picker_dashboard and picker_packing).
+   */
+  anyOf?: string[]
+}
+
 /**
  * Check whether a user has a given role, considering BOTH their primary
  * `role` field AND any secondary roles stored in `additionalRoles`
@@ -447,8 +497,11 @@ async function userHasRole(userId: string, primaryRole: string, targetRole: 'DRI
  *   const { error, user } = await requireDriver({ feature: 'driver_earnings' })
  *   if (error) return error
  *   // ... use user.id  (TS knows user is non-null here)
+ *
+ *   // OR-logic — user must have any one of these features:
+ *   const { error, user } = await requireDriver({ anyOf: ['driver_dashboard', 'driver_earnings'] })
  */
-export async function requireDriver(options?: { feature?: string }) {
+export async function requireDriver(options?: EmployeeGuardOptions) {
   const user = await getServerUser()
   if (!user) {
     return {
@@ -481,6 +534,23 @@ export async function requireDriver(options?: { feature?: string }) {
         user: null,
       } as const
     }
+  } else if (options?.anyOf && options.anyOf.length > 0) {
+    const checks = await Promise.all(
+      options.anyOf.map((f) => hasFeatureAccess(user.id, user.role, f))
+    )
+    if (!checks.some(Boolean)) {
+      return {
+        error: NextResponse.json(
+          {
+            error: 'Access denied — none of the required features are enabled for your account.',
+            code: 'FEATURE_NOT_ENABLED',
+            requiredAnyOf: options.anyOf,
+          },
+          { status: 403 }
+        ),
+        user: null,
+      } as const
+    }
   }
   return { error: null, user } as const
 }
@@ -489,8 +559,14 @@ export async function requireDriver(options?: { feature?: string }) {
  * Guard for /api/picker/* routes.
  * Verifies: user is authenticated, has PICKER role (either as primary
  * or as an additional role), and has the specified feature enabled (if any).
+ *
+ * Usage:
+ *   const { error, user } = await requirePicker({ feature: 'picker_packing' })
+ *
+ *   // OR-logic — user must have any one of these features:
+ *   const { error, user } = await requirePicker({ anyOf: ['picker_dashboard', 'picker_packing'] })
  */
-export async function requirePicker(options?: { feature?: string }) {
+export async function requirePicker(options?: EmployeeGuardOptions) {
   const user = await getServerUser()
   if (!user) {
     return {
@@ -517,6 +593,23 @@ export async function requirePicker(options?: { feature?: string }) {
             error: 'Access denied — this feature is not enabled for your account.',
             code: 'FEATURE_NOT_ENABLED',
             feature: options.feature,
+          },
+          { status: 403 }
+        ),
+        user: null,
+      } as const
+    }
+  } else if (options?.anyOf && options.anyOf.length > 0) {
+    const checks = await Promise.all(
+      options.anyOf.map((f) => hasFeatureAccess(user.id, user.role, f))
+    )
+    if (!checks.some(Boolean)) {
+      return {
+        error: NextResponse.json(
+          {
+            error: 'Access denied — none of the required features are enabled for your account.',
+            code: 'FEATURE_NOT_ENABLED',
+            requiredAnyOf: options.anyOf,
           },
           { status: 403 }
         ),

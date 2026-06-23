@@ -30,6 +30,9 @@ export function PickerDashboardClient() {
   const [stats, setStats] = useState<Stats>({ bagsCompletedToday: 0, ordersToPack: 0 })
   const [readyOrders, setReadyOrders] = useState<ReadyOrder[]>([])
   const [loading, setLoading] = useState(true)
+  // Fetch the picker's enabled features so we can conditionally show
+  // the "Start Packing" quick action (only if they have picker_packing).
+  const [enabledFeatures, setEnabledFeatures] = useState<string[] | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -52,6 +55,28 @@ export function PickerDashboardClient() {
     const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
   }, [fetchData])
+
+  // Fetch the picker's feature permissions on mount.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await apiFetch('/api/user/permissions', { redirectOn401: false })
+        if (res.ok) {
+          const data = await res.json()
+          if (!cancelled) setEnabledFeatures(data.features)
+        }
+      } catch {
+        // Non-critical — fail open (null = full access)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // Show "Start Packing" only if picker_packing is enabled.
+  // null = full access → show.
+  const canPack =
+    enabledFeatures === null || enabledFeatures.includes('picker_packing')
 
   if (loading) {
     return (
@@ -90,26 +115,28 @@ export function PickerDashboardClient() {
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-lg font-bold text-gray-900 mb-3">Quick Actions</h2>
-        <Link href="/picker/packing">
-          <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-orange-500">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                  <Package className="h-5 w-5 text-orange-500" />
+      {/* Quick Actions — only show "Start Packing" if picker_packing is enabled */}
+      {canPack && (
+        <div>
+          <h2 className="text-lg font-bold text-gray-900 mb-3">Quick Actions</h2>
+          <Link href="/picker/packing">
+            <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-orange-500">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                    <Package className="h-5 w-5 text-orange-500" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-gray-900">Start Packing</p>
+                    <p className="text-xs text-gray-500">{stats.ordersToPack} orders waiting</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-sm text-gray-900">Start Packing</p>
-                  <p className="text-xs text-gray-500">{stats.ordersToPack} orders waiting</p>
-                </div>
-              </div>
-              <ArrowRight className="h-5 w-5 text-gray-400" />
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
+                <ArrowRight className="h-5 w-5 text-gray-400" />
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+      )}
 
       {/* Recent Ready Orders */}
       <div>

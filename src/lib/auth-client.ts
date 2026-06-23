@@ -169,13 +169,15 @@ export async function authGetSession(): Promise<AuthResponse> {
 /**
  * Get the correct redirect path based on user role.
  * Owner/Manager → /admin
- * Driver/Picker → /driver
+ * Driver → /driver
+ * Picker → /picker
  * Customer → /
  */
 export function getRoleBasedRedirect(role: string): string {
   const r = (role || '').toLowerCase().trim()
   if (r === 'owner' || r === 'manager') return '/admin'
-  if (r === 'driver' || r === 'picker') return '/driver'
+  if (r === 'driver') return '/driver'
+  if (r === 'picker') return '/picker'
   return '/'
 }
 

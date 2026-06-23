@@ -980,3 +980,76 @@ Stage Summary:
 - Next actions for the user:
   * Visit /admin/settings -> Notifications section -> enter real SMTP credentials (e.g. smtp.gmail.com / 587 / your-email@gmail.com / app-specific-password / from-email). Save. Order status emails will start sending automatically.
   * Visit /admin/employees -> edit a driver -> check the "Picker" box under Additional Roles -> Save. The driver can now log in and access both /driver and /picker dashboards.
+Task ID: 17-permissions-overhaul
+Agent: main
+Task: User reported: "its good that owner can select the permissions of access for every new employee to add. but the features selected are not showing on a picker i added. please check that and fix it. also add all the features to be included in the toggling options for every new employee to add or existing employee. owner should be able to change the permission of access for all employee"
+
+Work Log:
+- Diagnosed root cause: Three interconnected bugs prevented granted features from working for picker/driver users:
+  1. `getRoleBasedRedirect` (in both `src/lib/auth/roles.ts` and `src/lib/auth-client.ts`) sent PICKER users to `/driver` instead of `/picker` — so when a picker logged in, they landed on the driver dashboard and saw driver features (which they didn't have), making it look like "selected features aren't showing".
+  2. `FEATURE_CATALOG.appliesTo` filtered features by role — e.g. `admin_dashboard` was `appliesTo: ['MANAGER']` only, so the owner couldn't toggle admin features for a PICKER/DRIVER. The toggle UI also filtered by role, hiding non-applicable features.
+  3. Admin layout (`src/app/admin/layout.tsx`) and `requireAdmin` (`src/lib/admin-auth.ts`) hard-blocked any user whose role wasn't OWNER/MANAGER — so even if a picker was granted `orders` (an admin feature), they got "Access Denied" when navigating to /admin/orders.
+- Fixed `getRoleBasedRedirect` in both files: PICKER → `/picker`, DRIVER → `/driver`, OWNER/MANAGER → `/admin`, CUSTOMER → `/`.
+- Updated `FEATURE_CATALOG` in `src/lib/feature-permissions.ts`:
+  * Changed `appliesTo` for ALL features to `['MANAGER', 'DRIVER', 'PICKER']` (via shared `ALL_EMPLOYEE_ROLES` constant).
+  * Added `ADMIN_GROUP_FEATURE_KEYS` set + `isAdminFeatureKey()` + `hasAnyAdminFeature()` helpers — used by admin layout to decide if a PICKER/DRIVER should be allowed into /admin/*.
+- Updated `GET /api/admin/employees/[id]/permissions` route: returns the FULL catalog (not role-filtered). PUT route no longer filters by target user's role — owner can grant any feature to any employee.
+- Updated `GET /api/user/permissions` route: returns the FULL catalog (not role-filtered) so the client can show all nav items the user has access to.
+- Updated `FeaturePermissionsSection` component (`src/components/admin/feature-permissions-section.tsx`):
+  * Removed the `filteredCatalog` logic — shows ALL features grouped by Admin/Driver/Picker.
+  * In Create mode, no longer calls `onFeaturesChange(null)` on every role change (was clobbering the user's feature selections when they switched the role dropdown).
+  * Updated help text to reflect "owner decides what each employee can do".
+- Updated `EmployeePermissionsDialog` (no code change needed — already used unfiltered catalog).
+- Updated admin layout (`src/app/admin/layout.tsx`):
+  * Now allows PICKER and DRIVER roles to access /admin/* if they have ANY admin-group feature enabled (via `hasAnyAdminFeature()`).
+  * Error message updated to suggest "Ask the store owner to grant you admin feature permissions" for picker/driver users.
+- Updated `requireAdmin` in `src/lib/admin-auth.ts`:
+  * PICKER/DRIVER roles now pass the role check if a specific `feature` is required AND they have it.
+  * If no feature is required, DRIVER/PICKER are still denied (they shouldn't hit unguarded admin endpoints).
+  * MANAGER/OWNER always pass the role check.
+- Extended `requirePicker` and `requireDriver` helpers in `src/lib/feature-permissions.ts` to support a new `anyOf?: string[]` option for OR-logic (user must have at least one of the listed features).
+- Updated `GET /api/picker/orders` route: now uses `requirePicker({ anyOf: ['picker_dashboard', 'picker_packing'] })` so a picker with only `picker_dashboard` can still see their dashboard stats (previously required `picker_packing` and 403'd if absent).
+- Added "Admin" link to picker and driver layout headers (visible only if the user has any admin-group feature enabled) — clicking it navigates to /admin where they see all their granted admin features in the sidebar.
+- Added "Back to Picker/Driver Dashboard" link in the admin shell's user-info section (both desktop sidebar and mobile sheet menu) so PICKER/DRIVER users in /admin can navigate back to their primary dashboard.
+- Updated picker dashboard client to conditionally show the "Start Packing" quick action only if the user has `picker_packing` enabled (previously always shown — would 403 when clicked without the permission).
+- Reset `editFeatures` to null in `handleEdit` (admin employees page) so opening the Edit dialog for a different employee doesn't briefly show stale features from the previous one.
+- Removed the `setNewFeatures(null)` call on role-change in the create dialog — no longer needed since the catalog isn't role-filtered anymore, and resetting would clobber the user's selections.
+
+Smoke tests written and passing:
+- `scripts/test-permissions-task17.mjs` (18 checks): owner login, create picker with restricted features including `orders`, picker login, picker CAN access /api/admin/orders, picker CANNOT access /api/admin/products (403 FEATURE_NOT_ENABLED), picker CAN access /api/picker/orders (anyOf), owner updates permissions to add `products`, picker can now access /api/admin/products, owner sets picker to full access (null).
+- `scripts/test-picker-redirect.mjs`: static check that both `roles.ts` and `auth-client.ts` have the picker → /picker mapping.
+- Live middleware test: confirmed picker visiting `/` gets HTTP 307 redirect to `/picker` (was `/driver` before the fix).
+
+Verified:
+- TypeScript: zero errors in any of the modified files (other errors in src/ are pre-existing in unrelated files: stripe module missing, kanban-order-board, etc.)
+- Next.js production build: ✓ Compiled successfully in 11.8s
+- ESLint: zero errors in modified files (only one unused-disable warning fixed)
+
+Stage Summary:
+- The "features selected not showing on picker" bug is fixed at three layers:
+  1. Picker now lands on /picker (not /driver) after login.
+  2. All 24 features are now toggleable for any non-OWNER role (owner picks what each employee can access).
+  3. Picker/Driver with admin features can actually access /admin/* (both page layout and API guards now permit it).
+- Owner can change permissions for ALL employees (existing or new) via TWO UIs:
+  * "Permissions" button on each employee row (opens dedicated dialog).
+  * "Edit" button on each employee row (Edit dialog has the permissions section embedded at the bottom).
+- Picker/Driver who have admin features see an "Admin" link in their header; clicking it takes them to /admin where they see only the features they've been granted (sidebar is filtered by their `enabledFeatures`).
+- The /api/admin/orders endpoint now accepts PICKER/DRIVER with the `orders` feature (previously hard-blocked by role).
+- Files modified:
+  * src/lib/auth/roles.ts — picker redirect fix
+  * src/lib/auth-client.ts — picker redirect fix (client-side mirror)
+  * src/lib/feature-permissions.ts — expanded appliesTo for all features; added hasAnyAdminFeature helper; added anyOf option to requirePicker/requireDriver
+  * src/lib/admin-auth.ts — requireAdmin now allows DRIVER/PICKER with specific feature
+  * src/app/admin/layout.tsx — allows PICKER/DRIVER with admin features
+  * src/app/api/admin/employees/[id]/permissions/route.ts — no longer filters catalog/features by role
+  * src/app/api/user/permissions/route.ts — returns full catalog
+  * src/app/api/picker/orders/route.ts — uses anyOf for picker_dashboard OR picker_packing
+  * src/components/admin/feature-permissions-section.tsx — shows all features, no role filter
+  * src/components/admin/admin-shell.tsx — "Back to Picker/Driver" link for picker/driver users
+  * src/components/picker/picker-layout.tsx — "Admin" link in header
+  * src/components/driver/driver-layout.tsx — "Admin" link in header
+  * src/components/picker/picker-dashboard-client.tsx — conditional "Start Packing" link
+  * src/app/admin/employees/page.tsx — reset editFeatures on open; removed role-change features reset
+- New test scripts (committed):
+  * scripts/test-permissions-task17.mjs
+  * scripts/test-picker-redirect.mjs

@@ -14,7 +14,7 @@ import {
  * Response:
  *   {
  *     features: string[] | null,   // null = full access, array = restricted to listed features
- *     catalog: FeatureCatalogEntry[]  // the full feature catalog (filtered by the user's role)
+ *     catalog: FeatureCatalogEntry[]  // the full feature catalog (NOT filtered by role — owner can grant any feature to any employee)
  *   }
  */
 export async function GET(
@@ -63,14 +63,12 @@ export async function GET(
       }
     }
 
-    // Filter catalog to features that apply to this role
-    const applicableCatalog = FEATURE_CATALOG.filter((f) =>
-      f.appliesTo.includes(role as 'MANAGER' | 'DRIVER' | 'PICKER')
-    )
-
+    // Return the FULL catalog — owner can grant any feature to any employee.
+    // The UI groups by `group` (Admin / Driver / Picker) for organization,
+    // but does NOT filter by role.
     return NextResponse.json({
       features,
-      catalog: applicableCatalog,
+      catalog: FEATURE_CATALOG,
       canRestrict: true,
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
     })
@@ -91,6 +89,10 @@ export async function GET(
  *     - string[] → only these features are accessible
  *
  * Only OWNER can change permissions. MANAGERs cannot.
+ *
+ * As of Task 17, features are NOT filtered by the target user's role —
+ * the owner can grant any feature to any employee (e.g. grant `orders`
+ * to a PICKER so they can help with order management).
  */
 export async function PUT(
   request: NextRequest,
@@ -139,19 +141,12 @@ export async function PUT(
       // Remove restriction (full access)
       normalizedFeatures = null
     } else if (Array.isArray(features)) {
-      // Validate: all features must be strings
+      // Validate: all features must be strings AND must be known feature keys.
+      // We do NOT filter by target user's role — owner can grant any feature.
       const validKeys = new Set(FEATURE_CATALOG.map((f) => f.key))
-      const filtered = features.filter(
+      normalizedFeatures = features.filter(
         (f) => typeof f === 'string' && validKeys.has(f)
       )
-
-      // Filter to features applicable to this role
-      const applicableKeys = new Set(
-        FEATURE_CATALOG.filter((f) =>
-          f.appliesTo.includes(role as 'MANAGER' | 'DRIVER' | 'PICKER')
-        ).map((f) => f.key)
-      )
-      normalizedFeatures = filtered.filter((f) => applicableKeys.has(f))
     } else {
       return NextResponse.json(
         { error: 'features must be an array of feature keys or null' },

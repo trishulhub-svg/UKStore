@@ -198,3 +198,158 @@ export async function PATCH(
     return NextResponse.json({ error: 'Failed to update employee' }, { status: 500 })
   }
 }
+
+/**
+ * DELETE /api/admin/employees/[id]
+ *
+ * Removes an employee from the active staff list. OWNER-only.
+ *
+ * We use a SOFT-DELETE-with-anonymisation strategy instead of a hard
+ * SQL DELETE, because the user may be referenced by audit trails
+ * (OrderStatusLog.changedById) and historical orders (Order.driverId).
+ * Hard-deleting the row would either fail (FK constraint) or destroy
+ * the audit trail. Instead, we:
+ *
+ *   1. Scrub PII (name, phone, passwordHash, avatarUrl, additionalRoles)
+ *      so the user can never log in or be identified.
+ *   2. Replace the email with a unique anonymised placeholder so the
+ *      original email is freed up for re-use (e.g. if the employee is
+ *      re-hired). Format: deleted-<timestamp>-<random>@anonymised.local
+ *   3. Set isActive = false (so they don't appear in active staff lists).
+ *   4. Revoke ALL active sessions (delete Session rows) — instant logout.
+ *   5. Delete DriverProfile, EmployeeProfile, EmployeeFeaturePermission
+ *      rows (these cascade anyway, but we're explicit for clarity).
+ *   6. Null out Order.driverId for any orders currently assigned to this
+ *      driver so those orders aren't "stuck" on a deleted user. Historical
+ *      orders (status = delivered / cancelled / etc.) keep the driverId
+ *      for record-keeping — we only null it on active orders.
+ *
+ * Guard rails:
+ *   - Cannot delete yourself (id === user.id) — would lock yourself out.
+ *   - Cannot delete another OWNER — must transfer ownership first
+ *     (not implemented; requires a separate ownership-transfer flow).
+ *   - MANAGER cannot delete anyone — OWNER-only, full stop.
+ *
+ * Returns: { success: true, anonymisedEmail: string }
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  // OWNER-only — managers can deactivate (via PATCH) but cannot delete.
+  // This is a deliberate permission boundary: deletion is irreversible
+  // (anonymisation can't be undone), so only the highest authority can do it.
+  const { error, user } = await requireAdmin()
+  if (error) return error
+
+  if (user.role.toUpperCase() !== 'OWNER') {
+    return NextResponse.json(
+      { error: 'Only the store owner can delete employees. Managers may deactivate instead.' },
+      { status: 403 }
+    )
+  }
+
+  try {
+    const prisma = await getPrisma()
+    const { id } = await params
+
+    // Look up the target user
+    const targetUser = await prisma.user.findUnique({ where: { id } })
+    if (!targetUser) {
+      return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
+    }
+
+    // Only allow deleting staff (DRIVER / PICKER / MANAGER). Other owners
+    // cannot be deleted via this endpoint — ownership transfer is a
+    // separate (not-yet-implemented) flow.
+    const role = targetUser.role.toUpperCase()
+    if (!['DRIVER', 'PICKER', 'MANAGER'].includes(role)) {
+      return NextResponse.json(
+        { error: 'Only drivers, pickers, and managers can be deleted. Owners cannot be deleted via this endpoint.' },
+        { status: 400 }
+      )
+    }
+
+    // Guard: cannot delete yourself
+    if (id === user.id) {
+      return NextResponse.json(
+        { error: 'You cannot delete your own account.' },
+        { status: 400 }
+      )
+    }
+
+    // ─── Anonymise the user row ─────────────────────────────────
+    // Use a timestamp + random suffix to guarantee uniqueness even if
+    // the same email is deleted twice (shouldn't happen, but defends
+    // against races). The placeholder is at @anonymised.local which is
+    // a reserved TLD that will never resolve, so it can't be used to
+    // actually send mail or log in.
+    const ts = Date.now()
+    const rand = Math.random().toString(36).slice(2, 10)
+    const anonymisedEmail = `deleted-${ts}-${rand}@anonymised.local`
+
+    // ─── Transaction: scrub PII + nullify active driver assignments ─
+    // We do this in a transaction so we never end up in a half-deleted
+    // state if one of the writes fails.
+    await prisma.$transaction([
+      // 1. Scrub the user row. passwordHash → null means they can never
+      //    log in with any password (the login API rejects users with
+      //    no passwordHash). additionalRoles → "[]" clears dual-role
+      //    privileges. avatarUrl → null removes any uploaded photo ref.
+      prisma.user.update({
+        where: { id },
+        data: {
+          email: anonymisedEmail,
+          name: null,
+          phone: null,
+          passwordHash: null,
+          avatarUrl: null,
+          additionalRoles: '[]',
+          isActive: false,
+          mustResetPassword: false,
+        },
+      }),
+
+      // 2. Revoke all active sessions (instant logout on every device).
+      //    The Session table has onDelete: Cascade on the user relation,
+      //    so this would happen automatically on hard-delete — but since
+      //    we're soft-deleting, we need to do it explicitly.
+      prisma.session.deleteMany({ where: { userId: id } }),
+
+      // 3. Delete the driver profile (vehicle type, verification status).
+      //    Cascade on the relation would handle this on hard-delete; we
+      //    do it explicitly here for clarity.
+      prisma.driverProfile.deleteMany({ where: { userId: id } }),
+
+      // 4. Delete the employee profile (salary, wage, bank details).
+      //    This is GDPR-sensitive data we should not retain after deletion.
+      prisma.employeeProfile.deleteMany({ where: { userId: id } }),
+
+      // 5. Delete the feature-permission row (so if this email is ever
+      //    re-used for a new hire, they start with a clean slate).
+      prisma.employeeFeaturePermission.deleteMany({ where: { userId: id } }),
+
+      // 6. Null out Order.driverId for any ACTIVE orders (placed, picking,
+      //    ready, out_for_delivery) currently assigned to this driver.
+      //    Historical orders (delivered, cancelled, returned) keep the
+      //    driverId for record-keeping so admins can still see who
+      //    delivered what.
+      prisma.order.updateMany({
+        where: {
+          driverId: id,
+          status: { in: ['placed', 'picking', 'ready', 'out_for_delivery'] },
+        },
+        data: { driverId: null },
+      }),
+    ])
+
+    return NextResponse.json({
+      success: true,
+      anonymisedEmail,
+      message: `Employee "${targetUser.email}" has been deleted. Their account is deactivated, their PII has been scrubbed, and their sessions have been revoked. Active orders have been unassigned.`,
+    })
+  } catch (err) {
+    console.error('[Admin Employee DELETE]', err)
+    return NextResponse.json({ error: 'Failed to delete employee' }, { status: 500 })
+  }
+}

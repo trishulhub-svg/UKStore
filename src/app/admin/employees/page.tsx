@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Users, Edit2, Loader2, AlertTriangle, Package, Truck, UserPlus, Copy, Check, Mail, KeyRound, AlertCircle, Shield, Monitor } from 'lucide-react'
+import { Users, Edit2, Loader2, AlertTriangle, Package, Truck, UserPlus, Copy, Check, Mail, KeyRound, AlertCircle, Shield, Monitor, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -14,6 +14,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
@@ -22,6 +32,7 @@ import { apiFetch } from '@/lib/api-fetch'
 import { EmployeePermissionsDialog } from '@/components/admin/employee-permissions-dialog'
 import { EmployeeSessionsDialog } from '@/components/admin/employee-sessions-dialog'
 import { FeaturePermissionsSection } from '@/components/admin/feature-permissions-section'
+import { authGetSession } from '@/lib/auth-client'
 
 interface EmployeeProfile {
   id: string
@@ -95,6 +106,26 @@ export default function AdminEmployeesPage() {
   const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [sessionsEmployee, setSessionsEmployee] = useState<Employee | null>(null)
   const [sessionsOpen, setSessionsOpen] = useState(false)
+
+  // Delete-confirmation dialog state
+  // OWNER-only — managers don't see the delete button at all (gated in render).
+  const [deleteEmployee, setDeleteEmployee] = useState<Employee | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  // Current user's role — fetched once on mount so we can gate the
+  // Delete button (OWNER-only) without re-fetching on every render.
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null)
+  const isCurrentUserOwner = currentUserRole?.toUpperCase() === 'OWNER'
+
+  useEffect(() => {
+    authGetSession().then(({ user }) => {
+      if (user?.role) setCurrentUserRole(user.role)
+    }).catch(() => {
+      // Non-critical — if the session fetch fails, the user just won't
+      // see the Delete button until the page is reloaded.
+    })
+  }, [])
 
   // Create employee dialog state
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -301,6 +332,38 @@ export default function AdminEmployeesPage() {
     }
   }
 
+  // ─── Delete employee ─────────────────────────────────────────
+  // Opens the confirmation dialog (gated to OWNER in the render layer).
+  // The actual DELETE call happens after the user confirms.
+  const handleDeleteClick = (employee: Employee) => {
+    setDeleteEmployee(employee)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteEmployee) return
+    setDeleting(true)
+    try {
+      const res = await apiFetch(`/api/admin/employees/${deleteEmployee.id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed')
+      }
+      toast.success(`${deleteEmployee.name || deleteEmployee.email} has been deleted`)
+      setDeleteDialogOpen(false)
+      setDeleteEmployee(null)
+      fetchEmployees()
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err.message || 'Failed to delete employee')
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div>
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -442,6 +505,18 @@ export default function AdminEmployeesPage() {
                             >
                               <Monitor className="h-3.5 w-3.5 mr-1" /> Sessions
                             </Button>
+                            {/* Delete — OWNER-only, never on OWNER rows (use ownership-transfer flow instead) */}
+                            {isCurrentUserOwner && emp.role !== 'OWNER' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                onClick={() => handleDeleteClick(emp)}
+                                title="Delete employee"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -539,6 +614,17 @@ export default function AdminEmployeesPage() {
                         <Monitor className="h-4 w-4 mr-1" /> Sessions
                       </Button>
                     </div>
+                    {/* Delete — OWNER-only, never on OWNER rows */}
+                    {isCurrentUserOwner && emp.role !== 'OWNER' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full min-h-10 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                        onClick={() => handleDeleteClick(emp)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" /> Delete Employee
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1009,6 +1095,72 @@ export default function AdminEmployeesPage() {
         open={sessionsOpen}
         onOpenChange={setSessionsOpen}
       />
+
+      {/* Delete Confirmation Dialog — OWNER-only destructive action.
+          Uses AlertDialog (instead of Dialog) because it's a confirmation,
+          not a form. The action button is styled red to signal irreversibility. */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => {
+        // Don't allow closing while the delete request is in flight
+        if (deleting && !open) return
+        setDeleteDialogOpen(open)
+        if (!open) setDeleteEmployee(null)
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              Delete employee account?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  You are about to delete <strong>{deleteEmployee?.name || 'this employee'}</strong>
+                  {' '}(<strong>{deleteEmployee?.email}</strong>).
+                </p>
+                <p className="text-red-700 font-medium">
+                  This action cannot be undone.
+                </p>
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                  <p className="font-semibold mb-1">What happens when you delete:</p>
+                  <ul className="list-disc pl-5 space-y-0.5 text-xs">
+                    <li>Their email is freed up — they can be re-hired under the same address.</li>
+                    <li>Their password is scrubbed — they can no longer log in.</li>
+                    <li>All active sessions are revoked (instant logout on every device).</li>
+                    <li>Driver/employee profiles, salary, wage, and bank details are removed.</li>
+                    <li>Any active orders currently assigned to them (as driver) are unassigned.</li>
+                    <li>Historical orders and audit logs (status changes they made) are kept for record-keeping, but their name on those records becomes blank.</li>
+                  </ul>
+                </div>
+                <p>
+                  If you only want to temporarily disable access, cancel this dialog and use the
+                  {' '}<strong>Edit</strong> button to set their status to <em>Inactive</em> instead.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleDeleteConfirm()
+              }}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white focus:ring-red-600"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete Permanently
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

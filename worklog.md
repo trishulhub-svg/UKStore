@@ -1115,3 +1115,63 @@ Stage Summary:
 - The bug was intermittent because the main `/auth/login` page was already fixed in Task 11 — it only triggered when the user logged in via the home-page modal, navbar auth modal, or after a forced password reset, or after an email change (which stripped additionalRoles from the token).
 - Fix: all login/session-check/redirect paths now use `getRoleBasedRedirectFromRoles()`. The profile API and ServerUser type now expose `additionalRoles`. The profile PATCH endpoint no longer strips `additionalRoles` from the re-issued token.
 - Result: an admin (any user with OWNER or MANAGER in any of their roles) will now ALWAYS be redirected to /admin on login, regardless of which login form they use or what their primary role is.
+
+---
+Task ID: 13
+Agent: Main
+Task: Add "Delete employee" option to the admin employees page
+
+Work Log:
+- Audited existing employee management: `GET/POST /api/admin/employees` (list/create) and `PATCH /api/admin/employees/[id]` (update). No DELETE endpoint existed — managers could only set `isActive=false` via PATCH to "deactivate" but never truly remove an employee.
+- Audited Prisma schema for referential constraints that affect deletion strategy:
+  * `OrderStatusLog.changedById` → User (non-cascade FK; audit trail of every status change)
+  * `Order.driverId` → User (nullable, non-cascade FK; historical orders reference the driver)
+  * `Order.customerId` → User (non-cascade; but we're only deleting employees, not customers)
+  * Cascade-on-delete tables: Favourite, Notification, DriverProfile, AttendanceLog, Shift, EmployeeProfile, Session, EmployeeFeaturePermission
+- Decided on a SOFT-DELETE-WITH-ANONYMISATION strategy. A hard SQL DELETE would either fail (FK constraint from OrderStatusLog) or destroy the audit trail. Anonymisation preserves audit integrity while making the user functionally gone: they can't log in, their PII is scrubbed, and their email is freed for re-use (e.g. if rehired).
+
+Changes Made:
+- `src/app/api/admin/employees/[id]/route.ts`:
+  * Added new `DELETE` handler (OWNER-only)
+  * Guard rails: cannot delete self, cannot delete another OWNER (ownership transfer is a separate flow), MANAGER cannot delete at all (403)
+  * Transaction-writes:
+    1. Scrub user PII: email → `deleted-<ts>-<rand>@anonymised.local` (frees original email for re-use), name → null, phone → null, passwordHash → null (can never log in), avatarUrl → null, additionalRoles → "[]", isActive → false, mustResetPassword → false
+    2. Delete all Session rows (instant logout on every device)
+    3. Delete DriverProfile rows
+    4. Delete EmployeeProfile rows (salary, wage, bank details — GDPR-sensitive)
+    5. Delete EmployeeFeaturePermission rows (so rehires start clean)
+    6. Null out `Order.driverId` for any ACTIVE orders (placed/picking/ready/out_for_delivery) currently assigned to this driver — so orders aren't stuck on a deleted user. Historical orders (delivered/cancelled/returned) KEEP the driverId for record-keeping.
+  * Returns `{ success, anonymisedEmail, message }` on success
+- `src/app/api/admin/employees/route.ts` (GET handler):
+  * Added `email: { not: { endsWith: '@anonymised.local' } }` filter so deleted (anonymised) users don't appear in the active employees list. They still exist in the DB for audit-trail integrity but are hidden from the UI.
+- `src/app/admin/employees/page.tsx` (UI):
+  * Added imports: `Trash2` icon, `AlertDialog*` components, `authGetSession`
+  * Added state: `deleteEmployee`, `deleteDialogOpen`, `deleting`, `currentUserRole`, `isCurrentUserOwner`
+  * Added `useEffect` to fetch the current user's role on mount (so we can gate the Delete button to OWNER-only)
+  * Added `handleDeleteClick(employee)` — opens confirmation dialog
+  * Added `handleDeleteConfirm()` — calls DELETE endpoint, refreshes list on success
+  * Desktop table (Actions column): added a red-outline "Delete" button, visible only when `isCurrentUserOwner && emp.role !== 'OWNER'`
+  * Mobile card view: added a full-width "Delete Employee" button with the same gating
+  * Added `AlertDialog` confirmation modal with:
+    - Clear warning icon + "Delete employee account?" title
+    - Detailed list of what happens (email freed, password scrubbed, sessions revoked, profiles deleted, active orders unassigned, historical orders preserved)
+    - "This action cannot be undone" warning
+    - Tip to use Edit → Inactive instead for temporary disable
+    - Cancel + "Delete Permanently" (red) buttons
+    - Loading state on the action button while the request is in flight
+    - Block dialog close during deletion to prevent half-states
+
+Verification:
+- `npx tsc --noEmit` on modified files: 0 errors
+- `npx eslint` on modified files: 0 errors, 0 warnings
+- `curl -X DELETE /api/admin/employees/test-id` (unauth): 401 Authentication required — endpoint is wired and auth-gated
+- `curl -I /api/admin/employees` (unauth): 401 — list endpoint still properly protected
+- `curl -I /admin/employees` (unauth): 307 → /auth/login — page route still properly protected
+
+Stage Summary:
+- Owner can now delete employees (DRIVER/PICKER/MANAGER) from the admin employees page via a red "Delete" button + confirmation dialog.
+- Deletion is OWNER-only — managers don't see the button and get 403 from the API.
+- Deletion is irreversible but uses soft-delete-with-anonymisation: the user row stays (for audit-trail integrity) but PII is scrubbed, the email is freed, and the account is permanently disabled.
+- Active orders assigned to a deleted driver are automatically unassigned so they're not stuck.
+- Deleted employees disappear from the active employees list.
+- The confirmation dialog explains exactly what will happen and suggests using Edit → Inactive as a non-destructive alternative.

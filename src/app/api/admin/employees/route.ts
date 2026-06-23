@@ -43,10 +43,15 @@ export async function GET() {
   try {
     const prisma = await getPrisma()
 
-    // Get all non-customer users
+    // Get all non-customer users.
+    // Filter out anonymised (deleted) users — the DELETE endpoint
+    // replaces the email with `deleted-<ts>-<rand>@anonymised.local`
+    // and sets isActive=false. We exclude both patterns so deleted
+    // employees don't clutter the active staff list.
     const employees = await prisma.user.findMany({
       where: {
         role: { in: ['DRIVER', 'PICKER', 'OWNER', 'MANAGER'] },
+        email: { not: { endsWith: '@anonymised.local' } },
       },
       include: {
         employeeProfile: true,

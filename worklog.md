@@ -1175,3 +1175,44 @@ Stage Summary:
 - Active orders assigned to a deleted driver are automatically unassigned so they're not stuck.
 - Deleted employees disappear from the active employees list.
 - The confirmation dialog explains exactly what will happen and suggests using Edit → Inactive as a non-destructive alternative.
+
+---
+Task ID: 14
+Agent: Main
+Task: Two UX fixes — (1) temp-password copy button must copy only the password, not the whole welcome-email body; (2) hide the "Admin Dashboard" link on /account for employees who have no admin feature access
+
+Work Log:
+- Analysed the screenshot (IMG_5874.png) showing a login page where the password field was pre-filled with the entire welcome-message text ("Welcome to Fresh Mart! Your employe...") — confirming that the admin's "Copy" button was putting the full email body on the clipboard, which the user then pasted as the password.
+- Audited the copy path in `src/app/admin/employees/page.tsx`:
+  * `handleCopyCredentials` was building a multi-line welcome email body (greeting + email + temp password + login URL) and copying that whole string via `navigator.clipboard.writeText(text)`.
+  * The user explicitly wants the welcome email body reserved for the actual email that gets sent once SMTP credentials are configured — the copy button's job is just to give the admin the password to hand to the employee.
+- Audited the admin-link rendering across all surfaces that show a "go to /admin" affordance:
+  * `src/components/picker/picker-layout.tsx` — already correctly gated by `hasAdminAccess` (feature-based, null = full access)
+  * `src/components/driver/driver-layout.tsx` — already correctly gated by `hasAdminAccess`
+  * `src/components/customer/account-client.tsx` — BUG: gated purely by `user.role.toUpperCase() === 'OWNER' || 'MANAGER'`, ignoring feature permissions. A MANAGER whose admin features were all toggled off still saw the link.
+
+Changes Made:
+- `src/app/admin/employees/page.tsx`:
+  * `handleCopyCredentials` now copies `createdResult.tempPassword` only (no surrounding text, no email body).
+  * Toast updated: "Credentials copied to clipboard" → "Password copied to clipboard".
+  * Copy button title updated: "Copy credentials" → "Copy password".
+  * Added an explanatory comment that the welcome-message body is reserved for the SMTP email.
+- `src/components/customer/account-client.tsx`:
+  * Added `useEffect` import.
+  * Added `apiFetch` import.
+  * Defined a local `ADMIN_FEATURE_KEYS` Set (16 admin-group feature keys) — deliberately not imported from `@/lib/feature-permissions` because that module pulls in server-only code (Prisma, NextResponse) which would bloat the client bundle. Mirrors the same constant already inlined in picker-layout.tsx / driver-layout.tsx.
+  * Added `enabledFeatures` state (`string[] | null | undefined`) and a `useEffect` that fetches `/api/user/permissions` on mount.
+  * Computed `hasAdminAccess = isOwner || enabledFeatures === null || (Array.isArray(enabledFeatures) && enabledFeatures.some(f => ADMIN_FEATURE_KEYS.has(f)))`. OWNER always qualifies. null = full access (default-open). Array = must contain at least one admin-group key.
+  * Replaced the role-only check `{(user.role === 'OWNER' || user.role === 'MANAGER') && <Link href="/admin">…}` with `{hasAdminAccess && <Link href="/admin">…}`.
+  * On API failure, fails CLOSED: `setEnabledFeatures([])` so the link is hidden rather than accidentally exposed to a restricted employee during a transient network issue.
+
+Verification:
+- `npx tsc --noEmit` on the modified files: 0 errors (pre-existing errors in unrelated files only).
+- `npx eslint src/components/customer/account-client.tsx src/app/admin/employees/page.tsx`: clean, no warnings.
+- Reviewed final diff: 12 lines changed in employees/page.tsx, 72 lines changed in account-client.tsx — all intended, no incidental edits.
+
+Stage Summary:
+- Admin's "Copy" button on the create-employee success dialog now puts just the temp password on the clipboard — no more login failures from pasting the welcome-message sentence into the password field.
+- The welcome email body is preserved as a future SMTP-email payload (to be sent automatically once email credentials are configured).
+- The "Admin Dashboard" button on /account is now consistent with the picker and driver dashboards: it only appears when the user actually has admin feature access. Restricted managers and dual-role pickers without admin features no longer see a link they can't use.
+- Committed as 53bd02f.

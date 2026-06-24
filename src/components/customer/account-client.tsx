@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { User, Mail, Calendar, ShoppingBag, LogOut, ChevronRight, Package, Clock, MapPin, Settings, KeyRound, UserCircle } from 'lucide-react'
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { CustomerLayout } from '@/components/layout/customer-layout'
 import { authLogout } from '@/lib/auth-client'
 import { formatPrice } from '@/lib/vat'
+import { apiFetch } from '@/lib/api-fetch'
 import type { Order } from '@/types'
 
 interface AccountClientProps {
@@ -24,6 +25,32 @@ interface AccountClientProps {
   }
   orders: Order[]
 }
+
+// Admin-group feature keys — if the user has ANY of these enabled
+// (or full access), we show the "Admin Dashboard" link on /account.
+// This mirrors the logic in picker-layout.tsx / driver-layout.tsx so
+// the link visibility is consistent across every dashboard the
+// employee can reach. We intentionally do NOT import this set from
+// `@/lib/feature-permissions` because that module pulls in server-only
+// code (Prisma / NextResponse) which would balloon the client bundle.
+const ADMIN_FEATURE_KEYS = new Set([
+  'admin_dashboard',
+  'kanban',
+  'orders',
+  'products',
+  'categories',
+  'customers',
+  'drivers',
+  'employees',
+  'banners',
+  'shifts',
+  'finance',
+  'wastage',
+  'promotions',
+  'delivery_zones',
+  'analytics',
+  'settings',
+])
 
 const statusColors: Record<string, string> = {
   placed: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -53,6 +80,40 @@ const deliverySlotLabels: Record<string, string> = {
 export function AccountClient({ storeName, user, orders }: AccountClientProps) {
   const router = useRouter()
   const [loggingOut, setLoggingOut] = useState(false)
+
+  // ─── Feature-permission check for the "Admin Dashboard" link ─────────
+  // The link must only appear if the user actually has admin features
+  // enabled. A MANAGER whose admin features have all been toggled off
+  // (or a dual-role PICKER+MANAGER with no admin features) should NOT
+  // see the link. OWNER always has full access. null = full access
+  // (default-open when no EmployeeFeaturePermission row exists).
+  const [enabledFeatures, setEnabledFeatures] = useState<string[] | null | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    apiFetch('/api/user/permissions', { redirectOn401: false })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        setEnabledFeatures(data.features)
+      })
+      .catch(() => {
+        // Non-critical — fail CLOSED (treat as "no features enabled")
+        // so a transient network error never accidentally exposes the
+        // admin link to a restricted employee. The owner can still
+        // reach /admin directly via URL.
+        if (!cancelled) setEnabledFeatures([])
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  const isOwner = user.role.toUpperCase() === 'OWNER'
+  // OWNER → always full access. Otherwise: null = full access (default open),
+  // array = must contain at least one admin-group feature.
+  const hasAdminAccess =
+    isOwner ||
+    enabledFeatures === null ||
+    (Array.isArray(enabledFeatures) && enabledFeatures.some((f) => ADMIN_FEATURE_KEYS.has(f)))
 
   const handleLogout = async () => {
     setLoggingOut(true)
@@ -103,8 +164,13 @@ export function AccountClient({ storeName, user, orders }: AccountClientProps) {
                     My Profile &amp; Settings
                   </Button>
                 </Link>
-                {/* Admin link for owner/manager roles */}
-                {(user.role.toUpperCase() === 'OWNER' || user.role.toUpperCase() === 'MANAGER') && (
+                {/* Admin link — only when the user actually has admin
+                    feature access. OWNER always qualifies; MANAGER /
+                    dual-role staff only qualify when at least one
+                    admin-group feature is enabled (or they have full
+                    access). This prevents a restricted employee from
+                    seeing a link they can't actually use. */}
+                {hasAdminAccess && (
                   <Link href="/admin" className="block">
                     <Button variant="outline" className="w-full mb-2 border-[#16a34a]/30 text-[#16a34a] hover:bg-[#16a34a]/5">
                       <Settings className="h-4 w-4 mr-2" />

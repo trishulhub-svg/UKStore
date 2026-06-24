@@ -255,11 +255,15 @@ export default function AdminEmployeesPage() {
 
   const handleCopyCredentials = async () => {
     if (!createdResult) return
-    const text = `Welcome to Fresh Mart!\n\nYour employee account has been created.\n\nEmail: ${createdResult.email}\nTemporary password: ${createdResult.tempPassword}\n\nPlease log in at ${window.location.origin}/auth/login and set a new password when prompted.`
+    // Copy ONLY the temp password so the admin can paste it directly into
+    // the login form. The full welcome-message body is reserved for the
+    // email that gets sent automatically once SMTP credentials are
+    // configured — pasting the whole sentence as a password is what was
+    // causing login failures.
     try {
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(createdResult.tempPassword)
       setCopied(true)
-      toast.success('Credentials copied to clipboard')
+      toast.success('Password copied to clipboard')
       setTimeout(() => setCopied(false), 2000)
     } catch (err: any) {
       if (err?.message !== 'Session expired — redirecting to login') {
@@ -930,7 +934,7 @@ export default function AdminEmployeesPage() {
                     variant="outline"
                     size="icon"
                     onClick={handleCopyCredentials}
-                    title="Copy credentials"
+                    title="Copy password"
                   >
                     {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                   </Button>

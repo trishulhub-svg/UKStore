@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { CheckCircle2, MapPin, Clock, Package, ShoppingBag, Truck, RotateCcw, AlertCircle } from 'lucide-react'
+import { useState } from 'react'
+import { CheckCircle2, MapPin, Clock, Package, ShoppingBag, Truck, RotateCcw, AlertCircle, Receipt, X, ExternalLink, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -37,6 +38,29 @@ const categoryIcons: Record<string, string> = {
 
 export function OrderConfirmationClient({ order, orderItems, address, storeName }: OrderConfirmationClientProps) {
   const orderNumber = order.id.substring(0, 8).toUpperCase()
+  const [receiptOpen, setReceiptOpen] = useState(false)
+  const [receiptHtml, setReceiptHtml] = useState<string | null>(null)
+  const [receiptLoading, setReceiptLoading] = useState(false)
+
+  const handleViewReceipt = async () => {
+    setReceiptOpen(true)
+    setReceiptLoading(true)
+    setReceiptHtml(null)
+    try {
+      const res = await fetch(`/api/orders/${order.id}/receipt?format=json`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setReceiptHtml(data.receiptHtml)
+    } catch (err) {
+      // silent fail — modal closes
+      setReceiptOpen(false)
+    } finally {
+      setReceiptLoading(false)
+    }
+  }
 
   return (
     <CustomerLayout storeName={storeName}>
@@ -215,6 +239,58 @@ export function OrderConfirmationClient({ order, orderItems, address, storeName 
           </CardContent>
         </Card>
 
+        {/* Receipt */}
+        {order.receipt_number && (
+          <Card className="mb-6">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#16a34a]/10 flex items-center justify-center">
+                  <Receipt className="h-5 w-5 text-[#16a34a]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-sm">Receipt</p>
+                    <span className="font-mono text-xs text-gray-500">{order.receipt_number}</span>
+                    {order.receipt_sent_at && (
+                      <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                        <Mail className="h-3 w-3 mr-1" />
+                        Emailed to you
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Keep this for your records. Click below to view or print.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleViewReceipt}
+                    >
+                      <Receipt className="h-4 w-4 mr-1.5" />
+                      View Receipt
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      asChild
+                    >
+                      <a
+                        href={`/api/orders/${order.id}/receipt`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-1.5" />
+                        Open / Print
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
           <Button
@@ -233,6 +309,58 @@ export function OrderConfirmationClient({ order, orderItems, address, storeName 
           </Link>
         </div>
       </div>
+
+      {/* Receipt Viewer Modal */}
+      {receiptOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60"
+          onClick={() => setReceiptOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[95vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-3 border-b">
+              <h3 className="font-medium text-sm flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Receipt {order.receipt_number}
+              </h3>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                >
+                  <a
+                    href={`/api/orders/${order.id}/receipt`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Open
+                  </a>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setReceiptOpen(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto bg-gray-50">
+              {receiptLoading ? (
+                <div className="p-8 text-center text-sm text-gray-500">Loading receipt…</div>
+              ) : receiptHtml ? (
+                <div dangerouslySetInnerHTML={{ __html: receiptHtml }} />
+              ) : (
+                <div className="p-8 text-center text-sm text-gray-500">Receipt not available.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </CustomerLayout>
   )
 }

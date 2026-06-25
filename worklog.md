@@ -1409,3 +1409,55 @@ Stage Summary:
 - Logout is now a large, prominent red "Sign Out" button at the bottom of the Profile page — exactly where mobile users expect to find account actions. Both picker and driver profile pages have it.
 - The Profile item in the bottom nav is unchanged (still 4 items: Dashboard, Packing/Earnings, Schedule, Profile) but now has more breathing room since the header is less crowded.
 - Desktop (sm+) view is unchanged — text labels still show next to icons in the header for clarity.
+
+---
+Task ID: 21
+Agent: Main
+Task: Generate receipt on payment, email it (if SMTP configured) or save for later viewing, make orders searchable by receipt number
+
+Work Log:
+- Investigated payment flow: 3 trigger points where paymentStatus → 'paid' (Stripe webhook, demo-mode checkout, bank-transfer verify) + cash-on-delivery path where payment is collected on delivery
+- Schema: added receiptNumber (String? @unique), receiptHtml (String?), receiptSentAt (DateTime?) to Order model + @@index([receiptNumber])
+- Ran prisma db push to apply schema changes (no data loss; nullable fields, new unique index)
+- Created src/lib/receipt.ts with:
+  * generateReceiptNumber() — `FM-YYYY-NNNNNN` format, sequential per year, race-safe via unique constraint + 5-retry loop with timestamp fallback
+  * buildReceiptHtml() — inline-styled HTML, email-client-compatible, includes store header, billed-to + deliver-to blocks, items table, totals, notes, footer
+  * generateAndSaveReceipt() — idempotent (no-ops if receipt already exists), persists receiptNumber + receiptHtml, attempts email send if SMTP/SendGrid configured, sets receiptSentAt on success
+  * resendReceiptEmail() — re-sends an existing receipt (for admin "Resend Email" button)
+- Hooked receipt generation into:
+  * /api/stripe/webhook (checkout.session.completed) — fire-and-forget
+  * /api/checkout (demo-mode branch only, when paymentStatus='paid' immediately) — fire-and-forget
+  * /api/admin/orders/[id]/verify-bank-transfer — fire-and-forget
+  * /api/admin/orders PATCH — when status transitions to 'delivered' AND paymentMethod='cash', also mark paymentStatus='paid' and generate receipt (cash is collected on delivery)
+- Updated /api/admin/orders GET: search OR clause now includes receiptNumber (case-insensitive — uppercase search to match `FM-YYYY-NNNNNN` format)
+- Updated /api/admin/orders/[id] GET: includes receiptNumber + receiptSentAt in response
+- Created /api/admin/orders/[id]/receipt GET (returns HTML or JSON, generates on-demand if missing for paid orders) + POST (resend email)
+- Created /api/orders/[id]/receipt GET — public customer-facing endpoint (order ID is unguessable cuid, matches existing /order/[id] public page pattern)
+- Admin Orders page (/admin/orders):
+  * Search placeholder updated to "Search by receipt no., order ID, or customer..."
+  * New "Receipt" column in desktop table — clickable receipt number (green monospace) shows view dialog; tooltip shows email-sent status
+  * Receipt icon button in Actions column when receipt exists
+  * Receipt info on mobile cards (clickable receipt number under order ID)
+  * New Receipt section in order detail sheet: shows receipt number, email status badge (Sent/Saved), 3 action buttons (View, Open, Resend Email)
+  * New Receipt viewer Sheet — renders saved HTML inline with dangerouslySetInnerHTML (safe — HTML is built server-side from trusted order data, never user input)
+- Customer order page (/order/[id]):
+  * Added receipt_number + receipt_sent_at to Order type
+  * Updated server page to pass receipt fields through to client
+  * Added Receipt card between Total Breakdown and Action Buttons — shows receipt number, "Emailed to you" badge if sent, View Receipt + Open/Print buttons
+  * Receipt viewer modal (full-screen overlay) with inline HTML render + Open in new tab button (for printing)
+- Updated /account page mapper to include receipt_number + receipt_sent_at + payment_method
+- Wrote scripts/test-receipt-flow.ts — end-to-end test: generates receipt number, builds HTML, persists receipt, verifies idempotency on second call, verifies receipt-number suffix search works. All tests pass.
+- Cleaned up test artifacts via scripts/cleanup-receipt-test.ts
+- Ran `npx next build` — ✓ Compiled successfully (only pre-existing "Stripe not installed" warnings)
+
+Stage Summary:
+- Receipts auto-generate on every payment confirmation path (Stripe, demo mode, bank-transfer verify, cash-on-delivery)
+- Each receipt gets a unique human-readable number (FM-2026-000001, etc.) stored on the Order row
+- Full HTML receipt is stored in DB (no external storage / no broken links)
+- If SMTP/SendGrid is configured → receipt is emailed automatically; receiptSentAt records when
+- If email is NOT configured → receipt is still saved to DB; admin can view it from /admin/orders anytime and can manually resend once SMTP is configured
+- Receipt number is searchable from the admin orders search bar (just type the number or its suffix)
+- Customer can view/print their receipt from /order/[id] page
+- Idempotent: re-running on the same order returns the existing receipt without re-sending email
+- Files created: src/lib/receipt.ts, src/app/api/admin/orders/[id]/receipt/route.ts, src/app/api/orders/[id]/receipt/route.ts, scripts/test-receipt-flow.ts, scripts/cleanup-receipt-test.ts
+- Files modified: prisma/schema.prisma, src/types/index.ts, src/app/api/stripe/webhook/route.ts, src/app/api/checkout/route.ts, src/app/api/admin/orders/[id]/verify-bank-transfer/route.ts, src/app/api/admin/orders/route.ts, src/app/api/admin/orders/[id]/route.ts, src/app/admin/orders/page.tsx, src/app/order/[id]/page.tsx, src/components/customer/order-confirmation-client.tsx, src/app/account/page.tsx

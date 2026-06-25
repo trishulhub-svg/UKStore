@@ -254,6 +254,16 @@ model Order {
   bankTransferVerified Boolean       @default(false)
   promotionId          String?       // Applied promotion
   discountAmount       Float         @default(0)   // Discount applied from promotion
+  // ─── Receipt ───────────────────────────────────────────────
+  // Generated when paymentStatus transitions to 'paid'. The receipt number
+  // is human-readable (e.g. "FM-2026-000123") and is searchable from the
+  // admin orders page. receiptHtml holds the full rendered receipt so it can
+  // be re-displayed at any time without recomputation. receiptSentAt records
+  // when the email was successfully delivered (null = email not sent yet,
+  // e.g. SMTP not configured).
+  receiptNumber        String?      @unique
+  receiptHtml          String?
+  receiptSentAt        DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
@@ -265,6 +275,7 @@ model Order {
   items     OrderItem[]
   statusLogs OrderStatusLog[]
 
+  @@index([receiptNumber])
   @@map("orders")
 }
 

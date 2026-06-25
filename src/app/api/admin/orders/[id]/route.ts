@@ -30,7 +30,13 @@ export async function GET(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ order })
+    return NextResponse.json({
+      order: {
+        ...order,
+        receiptNumber: order.receiptNumber,
+        receiptSentAt: order.receiptSentAt?.toISOString() ?? null,
+      },
+    })
   } catch (err) {
     console.error('[Admin Order GET]', err)
     return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 })

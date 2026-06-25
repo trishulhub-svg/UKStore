@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Eye, AlertTriangle, Truck, Package, Clock, CheckCircle2, XCircle, LayoutGrid, List } from 'lucide-react'
+import { Search, Eye, AlertTriangle, Truck, Package, Clock, CheckCircle2, XCircle, LayoutGrid, List, Receipt, Mail, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -66,8 +66,11 @@ interface Order {
   deliveryFee: number
   total: number
   paymentStatus: string
+  paymentMethod?: string | null
   notes: string | null
   createdAt: string
+  receiptNumber?: string | null
+  receiptSentAt?: string | null
   customer: { id: string; name: string; email: string }
   driver: { id: string; name: string } | null
   items: OrderItem[]
@@ -201,6 +204,65 @@ export default function AdminOrdersPage() {
     return next
   }
 
+  // ─── Receipt viewer state ─────────────────────────────────
+  const [receiptOpen, setReceiptOpen] = useState(false)
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
+  const [receiptHtml, setReceiptHtml] = useState<string | null>(null)
+  const [receiptLoading, setReceiptLoading] = useState(false)
+  const [resendingEmail, setResendingEmail] = useState(false)
+
+  const handleViewReceipt = async (orderId: string) => {
+    setReceiptOrderId(orderId)
+    setReceiptOpen(true)
+    setReceiptLoading(true)
+    setReceiptHtml(null)
+    try {
+      const res = await apiFetch(`/api/admin/orders/${orderId}/receipt?format=json`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setReceiptHtml(data.receiptHtml)
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err?.message || 'Failed to load receipt')
+      }
+      setReceiptOpen(false)
+    } finally {
+      setReceiptLoading(false)
+    }
+  }
+
+  const handleOpenReceiptInNewTab = (orderId: string) => {
+    window.open(`/api/admin/orders/${orderId}/receipt`, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleResendReceiptEmail = async () => {
+    if (!receiptOrderId) return
+    setResendingEmail(true)
+    try {
+      const res = await apiFetch(`/api/admin/orders/${receiptOrderId}/receipt`, {
+        method: 'POST',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
+      toast.success('Receipt email sent to customer.')
+      // Refresh the selected order so receiptSentAt updates
+      if (selectedOrder?.id === receiptOrderId) {
+        handleViewDetail(receiptOrderId)
+      }
+    } catch (err: any) {
+      if (err?.message !== 'Session expired — redirecting to login') {
+        toast.error(err?.message || 'Failed to resend receipt email')
+      }
+    } finally {
+      setResendingEmail(false)
+    }
+  }
+
   return (
     <div>
       {/* Header with View Toggle */}
@@ -244,7 +306,7 @@ export default function AdminOrdersPage() {
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="Search by order ID or customer..."
+                    placeholder="Search by receipt no., order ID, or customer..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-9"
@@ -289,6 +351,7 @@ export default function AdminOrdersPage() {
                       <thead>
                         <tr className="border-b border-gray-200 bg-gray-50">
                           <th className="text-left py-3 px-4 font-medium text-gray-500">Order ID</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-500">Receipt</th>
                           <th className="text-left py-3 px-4 font-medium text-gray-500">Customer</th>
                           <th className="text-left py-3 px-4 font-medium text-gray-500">Status</th>
                           <th className="text-left py-3 px-4 font-medium text-gray-500">Payment</th>
@@ -303,6 +366,21 @@ export default function AdminOrdersPage() {
                           return (
                             <tr key={o.id} className="border-b border-gray-100 hover:bg-gray-50">
                               <td className="py-3 px-4 font-mono text-xs">#{o.id.substring(0, 8).toUpperCase()}</td>
+                              <td className="py-3 px-4">
+                                {o.receiptNumber ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewReceipt(o.id)}
+                                    className="inline-flex items-center gap-1 text-xs font-mono text-[#16a34a] hover:underline"
+                                    title={o.receiptSentAt ? `Emailed ${new Date(o.receiptSentAt).toLocaleString('en-GB')}` : 'Saved (not emailed yet)'}
+                                  >
+                                    <Receipt className="h-3 w-3" />
+                                    {o.receiptNumber}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-gray-400">—</span>
+                                )}
+                              </td>
                               <td className="py-3 px-4">
                                 <div className="font-medium">{o.customer.name || 'N/A'}</div>
                                 <div className="text-xs text-gray-500">{o.customer.email}</div>
@@ -327,9 +405,16 @@ export default function AdminOrdersPage() {
                                 })}
                               </td>
                               <td className="py-3 px-4 text-right">
-                                <Button variant="ghost" size="sm" onClick={() => handleViewDetail(o.id)}>
-                                  <Eye className="h-4 w-4 mr-1" /> View
-                                </Button>
+                                <div className="inline-flex items-center gap-1">
+                                  {o.receiptNumber && (
+                                    <Button variant="ghost" size="sm" onClick={() => handleViewReceipt(o.id)} title="View receipt">
+                                      <Receipt className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  <Button variant="ghost" size="sm" onClick={() => handleViewDetail(o.id)}>
+                                    <Eye className="h-4 w-4 mr-1" /> View
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           )
@@ -349,6 +434,16 @@ export default function AdminOrdersPage() {
                             <div className="flex items-start justify-between mb-3">
                               <div>
                                 <p className="font-mono text-xs text-gray-500">#{o.id.substring(0, 8).toUpperCase()}</p>
+                                {o.receiptNumber && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewReceipt(o.id)}
+                                    className="inline-flex items-center gap-1 text-xs font-mono text-[#16a34a] hover:underline mt-0.5"
+                                  >
+                                    <Receipt className="h-3 w-3" />
+                                    {o.receiptNumber}
+                                  </button>
+                                )}
                                 <p className="font-medium text-gray-900 mt-1">{o.customer.name || 'N/A'}</p>
                                 <p className="text-xs text-gray-500">{o.customer.email}</p>
                               </div>
@@ -531,6 +626,72 @@ export default function AdminOrdersPage() {
                     </div>
                   </div>
 
+                  <Separator />
+
+                  {/* Receipt section */}
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm flex items-center gap-1.5">
+                      <Receipt className="h-4 w-4" />
+                      Receipt
+                    </h4>
+                    {selectedOrder.receiptNumber ? (
+                      <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500">Receipt Number</span>
+                          <span className="font-mono text-sm font-medium">{selectedOrder.receiptNumber}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500">Email Status</span>
+                          {selectedOrder.receiptSentAt ? (
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                              <Mail className="h-3 w-3 mr-1" />
+                              Sent {new Date(selectedOrder.receiptSentAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                              Saved (not emailed)
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="bg-[#16a34a] hover:bg-[#15803d]"
+                            onClick={() => handleViewReceipt(selectedOrder.id)}
+                          >
+                            <Receipt className="h-4 w-4 mr-1" />
+                            View Receipt
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenReceiptInNewTab(selectedOrder.id)}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            Open
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setReceiptOrderId(selectedOrder.id)
+                              handleResendReceiptEmail()
+                            }}
+                            disabled={resendingEmail}
+                          >
+                            <Mail className="h-4 w-4 mr-1" />
+                            {resendingEmail ? 'Sending...' : 'Resend Email'}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-500">
+                        No receipt yet — it will be generated automatically when payment is confirmed as <strong>paid</strong>.
+                      </div>
+                    )}
+                  </div>
+
                   {selectedOrder.notes && (
                     <>
                       <Separator />
@@ -542,6 +703,63 @@ export default function AdminOrdersPage() {
                   )}
                 </div>
               ) : null}
+            </SheetContent>
+          </Sheet>
+
+          {/* Receipt Viewer Dialog */}
+          <Sheet open={receiptOpen} onOpenChange={(open) => {
+            setReceiptOpen(open)
+            if (!open) {
+              setReceiptHtml(null)
+              setReceiptOrderId(null)
+            }
+          }}>
+            <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <Receipt className="h-5 w-5" />
+                  Receipt
+                </SheetTitle>
+              </SheetHeader>
+              <div className="py-4">
+                {receiptLoading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Skeleton key={i} className="h-8 w-full" />
+                    ))}
+                  </div>
+                ) : receiptHtml ? (
+                  <>
+                    <div className="flex justify-end gap-2 mb-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => receiptOrderId && handleOpenReceiptInNewTab(receiptOrderId)}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-1" />
+                        Open in new tab
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleResendReceiptEmail}
+                        disabled={resendingEmail}
+                      >
+                        <Mail className="h-4 w-4 mr-1" />
+                        {resendingEmail ? 'Sending...' : 'Resend email'}
+                      </Button>
+                    </div>
+                    <div
+                      className="border rounded-lg overflow-hidden bg-white"
+                      // Receipt HTML is built server-side from order data we control,
+                      // never from user input — safe to render.
+                      dangerouslySetInnerHTML={{ __html: receiptHtml }}
+                    />
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500">No receipt available.</p>
+                )}
+              </div>
             </SheetContent>
           </Sheet>
         </>

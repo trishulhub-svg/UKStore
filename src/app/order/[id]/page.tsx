@@ -44,8 +44,11 @@ export default async function OrderConfirmationPage({ params }: OrderPageProps) 
       stripe_session_id: order.stripeSessionId,
       stripe_payment_intent_id: order.stripePaymentIntentId,
       payment_status: order.paymentStatus as Order['payment_status'],
+      payment_method: order.paymentMethod,
       delivery_slot: order.deliverySlot?.toISOString() ?? null,
       notes: order.notes,
+      receipt_number: order.receiptNumber,
+      receipt_sent_at: order.receiptSentAt?.toISOString() ?? null,
       created_at: order.createdAt.toISOString(),
       updated_at: order.updatedAt.toISOString(),
     }

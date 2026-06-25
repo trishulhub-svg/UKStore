@@ -4,6 +4,7 @@ import { getPrisma } from '@/lib/auth/prisma'
 import { calculateVatFromGross } from '@/lib/vat'
 import { getStripeConfig, getSetting } from '@/lib/settings'
 import { sendOrderStatusEmail } from '@/lib/email'
+import { generateAndSaveReceipt } from '@/lib/receipt'
 
 const STORE_ID = 'store-fresh-mart-001'
 
@@ -683,6 +684,12 @@ export async function POST(request: NextRequest) {
       })
 
       fireOrderPlacedEmail(order.id, user.name, user.email, finalTotal, user.id)
+
+      // Demo-mode payment is "paid" immediately — generate receipt.
+      // Fire-and-forget so checkout stays fast.
+      generateAndSaveReceipt(order.id).catch((err) => {
+        console.error(`[Checkout] Receipt generation failed for order ${order.id}:`, err)
+      })
 
       return NextResponse.json({
         orderId: order.id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
+import { generateAndSaveReceipt } from '@/lib/receipt'
 
 const STORE_ID = 'store-fresh-mart-001'
 
@@ -74,6 +75,13 @@ export async function POST(
     }
 
     console.log(`[Admin Bank Transfer Verify] Order ${id} bank transfer verified by ${user!.id}`)
+
+    // Payment is now confirmed — generate + save receipt (also sends
+    // email if SMTP/SendGrid is configured). Fire-and-forget so the
+    // admin doesn't wait on email delivery.
+    generateAndSaveReceipt(id).catch((err) => {
+      console.error(`[Admin Bank Transfer Verify] Receipt generation failed for order ${id}:`, err)
+    })
 
     return NextResponse.json({
       order: updatedOrder,

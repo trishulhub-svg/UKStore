@@ -145,8 +145,11 @@ export interface Order {
   stripe_session_id: string | null;
   stripe_payment_intent_id: string | null;
   payment_status: PaymentStatus;
+  payment_method?: string | null;
   delivery_slot: string | null;
   notes: string | null;
+  receipt_number?: string | null;
+  receipt_sent_at?: string | null;
   created_at: string;
   updated_at: string;
 }

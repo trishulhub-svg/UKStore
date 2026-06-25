@@ -49,8 +49,11 @@ export default async function AccountPage() {
       stripe_session_id: o.stripeSessionId,
       stripe_payment_intent_id: o.stripePaymentIntentId,
       payment_status: o.paymentStatus as Order['payment_status'],
+      payment_method: o.paymentMethod,
       delivery_slot: o.deliverySlot?.toISOString() ?? null,
       notes: o.notes,
+      receipt_number: o.receiptNumber,
+      receipt_sent_at: o.receiptSentAt?.toISOString() ?? null,
       created_at: o.createdAt.toISOString(),
       updated_at: o.updatedAt.toISOString(),
     }))

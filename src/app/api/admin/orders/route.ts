@@ -3,6 +3,7 @@ import { getPrisma } from '@/lib/auth/prisma'
 import { requireAdmin } from '@/lib/admin-auth'
 import { getServerUser } from '@/lib/auth/server'
 import { sendOrderStatusEmail } from '@/lib/email'
+import { generateAndSaveReceipt } from '@/lib/receipt'
 
 const STORE_ID = 'store-fresh-mart-001'
 
@@ -56,8 +57,13 @@ export async function GET(request: NextRequest) {
     if (paymentMethod) where.paymentMethod = paymentMethod
     if (bankTransferVerified !== null) where.bankTransferVerified = bankTransferVerified === 'true'
     if (search) {
+      // Search by order ID, receipt number, customer email, or customer name.
+      // Receipt numbers look like "FM-2026-000123" — also match case-insensitively
+      // when the user types the numeric part only (e.g. "000123" or "123").
+      const searchUpper = search.toUpperCase()
       where.OR = [
         { id: { contains: search } },
+        { receiptNumber: { contains: searchUpper } },
         { customer: { email: { contains: search } } },
         { customer: { name: { contains: search } } },
       ]
@@ -163,6 +169,19 @@ export async function PATCH(request: NextRequest) {
       data.deliveredAt = new Date()
     }
 
+    // ─── Cash-on-delivery receipt ──────────────────────────────
+    // For cash orders, the customer pays when the order is delivered.
+    // Mark paymentStatus as 'paid' when the order moves to 'delivered'
+    // so finance reports stay accurate, and generate a receipt at that
+    // point (consistent with card / bank-transfer flows above).
+    if (
+      status === 'delivered' &&
+      existing.paymentMethod === 'cash' &&
+      existing.paymentStatus !== 'paid'
+    ) {
+      data.paymentStatus = 'paid'
+    }
+
     const order = await prisma.order.update({
       where: { id: orderId },
       data,
@@ -220,6 +239,19 @@ export async function PATCH(request: NextRequest) {
         eta: order.estimatedDeliveryAt,
       }, { userId: order.customer.id }).catch((err) => {
         console.error('[Admin Orders PATCH] sendOrderStatusEmail failed:', err)
+      })
+    }
+
+    // ─── Receipt generation for cash-on-delivery ───────────────
+    // When a cash order is marked delivered, the payment is now complete —
+    // generate a receipt (idempotent — no-ops if one already exists).
+    if (
+      status === 'delivered' &&
+      existing.paymentMethod === 'cash' &&
+      !existing.receiptNumber
+    ) {
+      generateAndSaveReceipt(order.id).catch((err) => {
+        console.error(`[Admin Orders PATCH] Receipt generation failed for order ${order.id}:`, err)
       })
     }
 

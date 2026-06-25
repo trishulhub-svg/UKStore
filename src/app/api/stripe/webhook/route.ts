@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrisma } from '@/lib/auth/prisma'
 import { getStripeConfig } from '@/lib/settings'
+import { generateAndSaveReceipt } from '@/lib/receipt'
 
 /**
  * Stripe Webhook Handler
@@ -112,6 +113,12 @@ export async function POST(request: NextRequest) {
           }
 
           console.log(`[Stripe Webhook] Order ${order.id} payment confirmed (session: ${sessionId})`)
+
+          // Generate + save receipt (also sends email if SMTP/SendGrid configured)
+          // Fire-and-forget — receipt failure must not break the webhook response.
+          generateAndSaveReceipt(order.id).catch((err) => {
+            console.error(`[Stripe Webhook] Receipt generation failed for order ${order.id}:`, err)
+          })
 
           // Create notification for customer
           try {

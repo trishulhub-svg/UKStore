@@ -22,10 +22,13 @@ import {
   Mail,
   Eye,
   KeyRound,
+  LogOut,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api-fetch'
+import { authLogout } from '@/lib/auth-client'
 
 interface DriverProfileData {
   id: string
@@ -40,6 +43,7 @@ interface DriverProfileData {
 }
 
 export function DriverProfileClient() {
+  const router = useRouter()
   const [profile, setProfile] = useState<DriverProfileData | null>(null)
   const [userInfo, setUserInfo] = useState<{ name: string; email: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -50,6 +54,7 @@ export function DriverProfileClient() {
   const [saved, setSaved] = useState(false)
   const [uploadingDoc, setUploadingDoc] = useState<'rightToWorkUrl' | 'drivingLicenseUrl' | null>(null)
   const [previewDoc, setPreviewDoc] = useState<'rightToWorkUrl' | 'drivingLicenseUrl' | null>(null)
+  const [loggingOut, setLoggingOut] = useState(false)
   const rightToWorkRef = useRef<HTMLInputElement>(null)
   const drivingLicenseRef = useRef<HTMLInputElement>(null)
 
@@ -120,6 +125,17 @@ export function DriverProfileClient() {
       toast.error('Failed to upload document')
     } finally {
       setUploadingDoc(null)
+    }
+  }
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      await authLogout()
+      router.push('/')
+    } catch (err) {
+      console.error('Failed to log out:', err)
+      setLoggingOut(false)
     }
   }
 
@@ -471,6 +487,24 @@ export function DriverProfileClient() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Sign Out — prominent button at the bottom, easy to find on mobile */}
+      <Card className="shadow-sm border-red-200">
+        <CardContent className="p-4">
+          <Button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            variant="destructive"
+            className="w-full h-11 text-sm font-semibold"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            {loggingOut ? 'Signing out...' : 'Sign Out'}
+          </Button>
+          <p className="text-[11px] text-gray-400 text-center mt-2">
+            You will be returned to the home page.
+          </p>
         </CardContent>
       </Card>
 

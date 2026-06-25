@@ -2,9 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, DollarSign, User, Truck, LogOut, Wrench, Package, CalendarDays } from 'lucide-react'
+import { LayoutDashboard, DollarSign, User, Truck, Wrench, Package, CalendarDays } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
 import { StoreLogo } from '@/components/layout/store-logo'
 import { useEffect, useState } from 'react'
@@ -113,11 +112,6 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true }
   }, [router])
 
-  const handleLogout = async () => {
-    await authLogout()
-    router.push('/')
-  }
-
   // Filter nav items by feature permissions
   const visibleNavItems = navItems.filter((item) => {
     if (!item.feature) return true
@@ -200,9 +194,11 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#16a34a] text-white shadow-md">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <StoreLogo size={28} />
-            <span className="font-bold text-base text-white">{storeName} Driver</span>
+            <span className="font-bold text-base text-white truncate">
+              {storeName} <span className="hidden sm:inline">Driver</span>
+            </span>
           </div>
           <div className="flex items-center gap-1">
             {hasPickerRole && (
@@ -210,9 +206,10 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
                 href="/picker"
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors"
                 title="Switch to Picker dashboard"
+                aria-label="Switch to Picker dashboard"
               >
                 <Package className="h-4 w-4" />
-                <span>Picker</span>
+                <span className="hidden sm:inline">Picker</span>
               </Link>
             )}
             {hasAdminAccess && adminToolItems.length > 0 && (
@@ -222,9 +219,10 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
                     type="button"
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors"
                     title="Open admin tools"
+                    aria-label="Open admin tools"
                   >
                     <Wrench className="h-4 w-4" />
-                    <span>Tools</span>
+                    <span className="hidden sm:inline">Tools</span>
                   </button>
                 </SheetTrigger>
                 <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
@@ -256,14 +254,6 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
                 </SheetContent>
               </Sheet>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="text-white/80 hover:text-white hover:bg-white/10"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
           </div>
         </div>
       </header>

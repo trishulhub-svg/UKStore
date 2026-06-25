@@ -2,9 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Package, User, LogOut, ChevronRight, Wrench, Truck, CalendarDays } from 'lucide-react'
+import { LayoutDashboard, Package, User, ChevronRight, Wrench, Truck, CalendarDays } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
 import { StoreLogo } from '@/components/layout/store-logo'
 import { useEffect, useState } from 'react'
@@ -115,11 +114,6 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true }
   }, [router])
 
-  const handleLogout = async () => {
-    await authLogout()
-    router.push('/')
-  }
-
   const visibleNavItems = navItems.filter((item) => {
     if (!item.feature) return true
     if (enabledFeatures === null) return true
@@ -203,9 +197,11 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-orange-500 text-white shadow-md">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <StoreLogo size={28} />
-            <span className="font-bold text-base text-white">{storeName} Picker</span>
+            <span className="font-bold text-base text-white truncate">
+              {storeName} <span className="hidden sm:inline">Picker</span>
+            </span>
           </div>
           <div className="flex items-center gap-1">
             {hasDriverRole && (
@@ -213,9 +209,10 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
                 href="/driver"
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors"
                 title="Switch to Driver dashboard"
+                aria-label="Switch to Driver dashboard"
               >
                 <Truck className="h-4 w-4" />
-                <span>Driver</span>
+                <span className="hidden sm:inline">Driver</span>
               </Link>
             )}
             {hasAdminAccess && adminToolItems.length > 0 && (
@@ -225,9 +222,10 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
                     type="button"
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors"
                     title="Open admin tools"
+                    aria-label="Open admin tools"
                   >
                     <Wrench className="h-4 w-4" />
-                    <span>Tools</span>
+                    <span className="hidden sm:inline">Tools</span>
                   </button>
                 </SheetTrigger>
                 <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
@@ -259,14 +257,6 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
                 </SheetContent>
               </Sheet>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="text-white/80 hover:text-white hover:bg-white/10"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
           </div>
         </div>
       </header>

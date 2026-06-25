@@ -1384,3 +1384,28 @@ Stage Summary:
 - Admin view unchanged — /admin/shifts already showed all assigned shifts in a calendar grid with week navigation.
 - No schema changes (existing Shift model has all needed fields).
 - All security measures respected: /api/user/shifts scoped to session.user.id, no new admin endpoints, no new write paths.
+
+---
+Task ID: 20
+Agent: Main
+Task: Fix mobile visibility of profile section and logout button on picker/driver layouts
+
+Work Log:
+- Problem: On mobile, the picker/driver header had too many items competing for horizontal space (store name + role suffix + dual-role switch button + Tools button + logout icon). The logout icon-only button was getting squeezed/hard to tap, and the bottom-nav Profile item felt cramped as the 4th item.
+- picker-layout.tsx changes:
+  - Header right side: dual-role "Driver" switch button and "Tools" button text labels are now hidden on mobile (`hidden sm:inline`) — icon-only on phones, icon+text on sm+ screens. Added aria-labels for accessibility.
+  - Header store name: "Picker" suffix hidden on mobile (just shows store name); added `truncate` and `min-w-0` so long store names don't push buttons off-screen.
+  - Removed the standalone icon-only logout button from the header entirely. Users now log out from the Profile page (standard mobile pattern).
+  - Removed unused `LogOut` icon import, `authLogout` import, and `handleLogout` function. Kept `Button` import (still used by the "Access Required" fallback screen).
+- driver-layout.tsx changes: mirror of picker-layout (same treatment, swapped "Driver"/"Picker" labels).
+- picker-profile-client.tsx changes:
+  - Added `LogOut` icon, `useRouter`, `authLogout` imports.
+  - Added `loggingOut` state + `handleLogout` function (calls authLogout then redirects to /).
+  - Added prominent red "Sign Out" button card at the bottom of the profile page — full-width, h-11 (large touch target), with descriptive helper text. Disabled while logging out.
+- driver-profile-client.tsx changes: mirror of picker-profile (same Sign Out card added at the bottom, before the document preview modal).
+
+Stage Summary:
+- On mobile, the picker/driver header is now clutter-free: just store logo + store name (truncated) on the left, and up to 2 icon-only buttons on the right (dual-role switch + Tools). No more squeezed logout icon.
+- Logout is now a large, prominent red "Sign Out" button at the bottom of the Profile page — exactly where mobile users expect to find account actions. Both picker and driver profile pages have it.
+- The Profile item in the bottom nav is unchanged (still 4 items: Dashboard, Packing/Earnings, Schedule, Profile) but now has more breathing room since the header is less crowded.
+- Desktop (sm+) view is unchanged — text labels still show next to icons in the header for clarity.

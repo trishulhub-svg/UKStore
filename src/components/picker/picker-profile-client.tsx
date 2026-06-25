@@ -12,9 +12,12 @@ import {
   Save,
   Shield,
   KeyRound,
+  LogOut,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { apiFetch } from '@/lib/api-fetch'
+import { authLogout } from '@/lib/auth-client'
 
 interface PickerProfile {
   id: string
@@ -26,12 +29,14 @@ interface PickerProfile {
 }
 
 export function PickerProfileClient() {
+  const router = useRouter()
   const [profile, setProfile] = useState<PickerProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [phone, setPhone] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     apiFetch('/api/picker/profile')
@@ -68,6 +73,17 @@ export function PickerProfileClient() {
       console.error('Failed to save profile:', err)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      await authLogout()
+      router.push('/')
+    } catch (err) {
+      console.error('Failed to log out:', err)
+      setLoggingOut(false)
     }
   }
 
@@ -211,6 +227,24 @@ export function PickerProfileClient() {
               </Button>
             </Link>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Sign Out — prominent button at the bottom, easy to find on mobile */}
+      <Card className="shadow-sm border-red-200">
+        <CardContent className="p-4">
+          <Button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            variant="destructive"
+            className="w-full h-11 text-sm font-semibold"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            {loggingOut ? 'Signing out...' : 'Sign Out'}
+          </Button>
+          <p className="text-[11px] text-gray-400 text-center mt-2">
+            You will be returned to the home page.
+          </p>
         </CardContent>
       </Card>
 

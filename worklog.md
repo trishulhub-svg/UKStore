@@ -1333,3 +1333,54 @@ Stage Summary:
 - Dual-role staff can switch between their Picker and Driver dashboards via a new header button on each dashboard.
 - Server-side security unchanged: every admin endpoint still calls `requireAdmin({ feature: ... })`; broadening the where-clause only affects which users *qualify* as drivers for selection/assignment, not who can call the endpoint.
 - Login redirect logic unchanged: primary role still wins, so DRIVER/PICKER always land on their own dashboard (never /admin).
+
+---
+Task ID: 19
+Agent: Main
+Task: Employee shift visibility — show today's shift on picker/driver dashboard, weekly shifts on a separate schedule page; admin already sees all assigned shifts on /admin/shifts
+
+Work Log:
+- Investigated current state:
+  - Shift→user assignment IS persisted (userId on Shift row, one-to-many).
+  - Admin /admin/shifts page already shows all assigned shifts in a calendar grid with week navigation (Mon-Sun) and prev/next week buttons. No changes needed there.
+  - Picker and driver dashboards had ZERO shift visibility — only fetched /api/picker/orders and /api/driver/orders.
+  - No /api/picker/shifts, /api/driver/shifts, or /api/user/shifts endpoint existed.
+- Created /api/user/shifts endpoint (src/app/api/user/shifts/route.ts):
+  - GET handler, auth-required (uses session.user.id).
+  - Query param: ?weekStart=YYYY-MM-DD (optional, defaults to Monday of current week).
+  - Returns { shifts: [...], todayShifts: [...], weekStart: ISO }.
+  - Fetches the union of (week range) ∪ (today) in one Prisma query, splits in JS so the dashboard card always has today's shift even if user is browsing a different week on the schedule page.
+  - Each shift has: id, date (ISO), startTime, endTime, manualHours, role, isToday.
+  - Security: scoped to session.user.id — no way to read another user's shifts.
+- Created shared EmployeeScheduleClient (src/components/shared/employee-schedule-client.tsx):
+  - Week-view schedule UI used by both /picker/schedule and /driver/schedule.
+  - Theme prop ('picker' | 'driver') controls accent color (orange vs green).
+  - Prev/next/this-week navigation, today's-shift banner (when on current week), week summary (count + total hours), day-by-day shift list with role badges.
+  - Handles manual-hours shifts correctly (shows "X hours" instead of time range — the gotcha where manual-hours shifts have startTime/endTime = "00:00"/"00:00").
+  - Empty state: "No shifts scheduled" with hint to check with manager.
+  - Loading skeleton + error banner with retry.
+- Created shared TodayShiftCard (src/components/shared/today-shift-card.tsx):
+  - Compact card for the dashboard. Fetches /api/user/shifts, shows today's first shift (or "No shift today").
+  - Loading skeleton keeps card height stable.
+  - Click-through to /picker/schedule or /driver/schedule.
+  - Theme-aware (orange for picker, green for driver).
+  - Role badge so dual-role staff see which role their shift is for.
+- Created /picker/schedule page (src/app/picker/schedule/page.tsx) — thin wrapper around EmployeeScheduleClient with theme='picker'.
+- Created /driver/schedule page (src/app/driver/schedule/page.tsx) — thin wrapper around EmployeeScheduleClient with theme='driver'.
+- Added TodayShiftCard to picker-dashboard-client.tsx (after the stats grid, before Quick Actions).
+- Added TodayShiftCard to driver-dashboard-client.tsx (after the stats grid, before Assigned Orders).
+- Added "Schedule" item with CalendarDays icon to picker-layout.tsx bottom nav (between Packing and Profile). Feature is null = always visible (every employee should see their own schedule).
+- Added "Schedule" item with CalendarDays icon to driver-layout.tsx bottom nav (between Earnings and Profile). Same null feature.
+- Admin /admin/shifts page: no changes needed — already shows all assigned shifts in a calendar grid with week navigation, plus a per-role summary at the bottom (count + total hours per role).
+- TypeScript: zero errors in touched files (verified with `npx tsc --noEmit | grep`).
+- Next build: succeeded. New routes /picker/schedule and /driver/schedule are statically prerendered.
+- Test script scripts/test-user-shifts.ts: creates a test shift for the demo driver, verifies the endpoint query returns it correctly with isToday=true, cleans up. ✅ PASS.
+
+Stage Summary:
+- Employees (pickers AND drivers) can now see their shifts:
+  - On their dashboard: a "Today's Shift" card highlighting today's shift (or "No shift today" with link to schedule).
+  - On a new /picker/schedule or /driver/schedule page: a week-view of all their shifts with prev/next/this-week navigation, day-by-day grouping, role badges, total hours summary.
+- Dual-role staff (e.g. PICKER+DRIVER) see all their shifts in one list, regardless of role — the schedule is per-user, not per-role.
+- Admin view unchanged — /admin/shifts already showed all assigned shifts in a calendar grid with week navigation.
+- No schema changes (existing Shift model has all needed fields).
+- All security measures respected: /api/user/shifts scoped to session.user.id, no new admin endpoints, no new write paths.

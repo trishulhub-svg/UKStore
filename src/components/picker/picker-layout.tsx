@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Package, User, LogOut, ChevronRight, Wrench, Truck } from 'lucide-react'
+import { LayoutDashboard, Package, User, LogOut, ChevronRight, Wrench, Truck, CalendarDays } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
@@ -23,6 +23,7 @@ import { ADMIN_TOOLS_ITEMS } from '@/lib/admin-nav-items'
 const navItems = [
   { href: '/picker', label: 'Dashboard', icon: LayoutDashboard, feature: 'picker_dashboard' },
   { href: '/picker/packing', label: 'Packing', icon: Package, feature: 'picker_packing' },
+  { href: '/picker/schedule', label: 'Schedule', icon: CalendarDays, feature: null },
   { href: '/picker/profile', label: 'Profile', icon: User, feature: 'picker_profile' },
 ]
 

@@ -16,6 +16,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api-fetch'
+import { TodayShiftCard } from '@/components/shared/today-shift-card'
 
 interface OrderItem {
   id: string
@@ -158,6 +159,9 @@ export function DriverDashboardClient() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Today's Shift — pulls from /api/user/shifts */}
+      <TodayShiftCard theme="driver" scheduleHref="/driver/schedule" />
 
       {/* Assigned Orders */}
       <div>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, DollarSign, User, Truck, LogOut, Wrench, Package } from 'lucide-react'
+import { LayoutDashboard, DollarSign, User, Truck, LogOut, Wrench, Package, CalendarDays } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
@@ -25,6 +25,7 @@ import { ADMIN_TOOLS_ITEMS } from '@/lib/admin-nav-items'
 const navItems = [
   { href: '/driver', label: 'Dashboard', icon: LayoutDashboard, feature: 'driver_dashboard' },
   { href: '/driver/earnings', label: 'Earnings', icon: DollarSign, feature: 'driver_earnings' },
+  { href: '/driver/schedule', label: 'Schedule', icon: CalendarDays, feature: null },
   { href: '/driver/profile', label: 'Profile', icon: User, feature: 'driver_profile' },
 ]
 

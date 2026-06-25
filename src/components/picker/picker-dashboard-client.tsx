@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api-fetch'
+import { TodayShiftCard } from '@/components/shared/today-shift-card'
 
 interface Stats {
   bagsCompletedToday: number
@@ -114,6 +115,9 @@ export function PickerDashboardClient() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Today's Shift — pulls from /api/user/shifts */}
+      <TodayShiftCard theme="picker" scheduleHref="/picker/schedule" />
 
       {/* Quick Actions — only show "Start Packing" if picker_packing is enabled */}
       {canPack && (

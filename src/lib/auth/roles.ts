@@ -54,16 +54,15 @@ export function getRoleBasedRedirect(role: string): string {
  * Determine the correct dashboard URL for a user based on their primary
  * role AND any additional roles they hold (dual-role support).
  *
- * Role priority (highest wins):
- *   1. OWNER or MANAGER (anywhere) → /admin
- *   2. DRIVER (anywhere)            → /driver
- *   3. PICKER (anywhere)            → /picker
- *   4. otherwise                     → /
+ * **Primary role wins.** A user whose primary role is PICKER always
+ * goes to /picker — even if they have MANAGER in additionalRoles or
+ * have admin feature permissions enabled. Same for DRIVER → /driver.
+ * This is by design: your primary role is your "main job", and your
+ * login landing page should reflect that. Admin features you've been
+ * granted are linked from your own dashboard, not a redirect to /admin.
  *
- * This fixes the bug where a user with primary role PICKER but
- * additionalRoles including MANAGER would be sent to /picker on login
- * instead of /admin. With this function, the MANAGER additional role
- * takes precedence and sends them to /admin.
+ * For CUSTOMER primary role, we DO check additional roles — e.g. a
+ * customer who is also a picker should go to /picker to do their job.
  *
  * @param primaryRole     The user's primary role (User.role field)
  * @param additionalRoles The user's additional roles (parsed from User.additionalRoles JSON)
@@ -72,24 +71,45 @@ export function getRoleBasedRedirectFromRoles(
   primaryRole: string,
   additionalRoles: string[] = [],
 ): string {
-  const allRoles = [
-    (primaryRole || '').toLowerCase().trim(),
-    ...additionalRoles.map((r) => (r || '').toLowerCase().trim()),
-  ].filter(Boolean)
+  const primary = (primaryRole || '').toLowerCase().trim()
 
-  // Admin (OWNER / MANAGER) wins — never send an admin to a picker/driver dashboard
-  if (allRoles.some((r) => r === 'owner' || r === 'manager')) {
+  // ─── Primary role determines the destination ───────────────────
+  // Picker/driver ALWAYS go to their own dashboard. They can still
+  // access /admin/<feature> pages via direct links in their dashboard
+  // menu (if they have admin features), but their login landing page
+  // is their primary role's dashboard — never /admin.
+  if (primary === 'owner' || primary === 'manager') {
     return '/admin'
   }
 
-  if (allRoles.some((r) => r === 'driver')) {
+  if (primary === 'driver') {
     return '/driver'
   }
 
-  if (allRoles.some((r) => r === 'picker')) {
+  if (primary === 'picker') {
     return '/picker'
   }
 
+  // ─── Customer fallback: check additional roles ─────────────────
+  // A customer might also be an employee (dual role). If so, send
+  // them to their employee dashboard so they can start working.
+  const additional = (additionalRoles || [])
+    .map((r) => (r || '').toLowerCase().trim())
+    .filter(Boolean)
+
+  if (additional.some((r) => r === 'owner' || r === 'manager')) {
+    return '/admin'
+  }
+
+  if (additional.includes('driver')) {
+    return '/driver'
+  }
+
+  if (additional.includes('picker')) {
+    return '/picker'
+  }
+
+  // Default: customer goes to home page
   return '/'
 }
 
@@ -105,8 +125,12 @@ export function isAdminRole(role: string): boolean {
  * Check if a user is an admin, considering BOTH their primary role AND
  * any additional roles. Returns true if any of their roles is OWNER or MANAGER.
  *
- * Use this in middleware / route guards to decide if a user should be
- * allowed into /admin/* (and never redirected away to /picker or /driver).
+ * NOTE: This is used for SECURITY checks (e.g. "can this user access
+ * /admin at all?"), NOT for login redirect. The login redirect uses
+ * `getRoleBasedRedirectFromRoles` which is primary-role-based — a
+ * picker with MANAGER additional role still lands on /picker, but
+ * they ARE an admin for access-control purposes and can navigate to
+ * /admin via URL if they have admin features enabled.
  */
 export function isAdminWithAdditionalRoles(
   primaryRole: string,

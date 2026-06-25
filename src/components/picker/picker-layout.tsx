@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Package, User, LogOut, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Package, User, LogOut, ChevronRight, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
@@ -10,6 +10,15 @@ import { StoreLogo } from '@/components/layout/store-logo'
 import { useEffect, useState } from 'react'
 import type { AuthUser } from '@/lib/auth-client'
 import { apiFetch } from '@/lib/api-fetch'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetTrigger,
+} from '@/components/ui/sheet'
+import { ADMIN_TOOLS_ITEMS } from '@/lib/admin-nav-items'
 
 const navItems = [
   { href: '/picker', label: 'Dashboard', icon: LayoutDashboard, feature: 'picker_dashboard' },
@@ -18,7 +27,10 @@ const navItems = [
 ]
 
 // Admin-group feature keys — if the picker has ANY of these enabled,
-// we show an "Admin" link in the header so they can jump to /admin.
+// we show an "Admin Tools" button in the header that opens a sheet
+// listing each enabled admin feature with a direct link to its
+// /admin/<feature> page. We intentionally do NOT link to /admin
+// root — that's blocked for picker/driver by middleware.
 const ADMIN_FEATURE_KEYS = new Set([
   'admin_dashboard',
   'kanban',
@@ -113,11 +125,27 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
     return enabledFeatures.includes(item.feature)
   })
 
-  // Show "Admin" link if the picker has any admin-group feature enabled.
-  // null = full access → also show the link.
+  // Show "Admin Tools" button if the picker has any admin-group feature
+  // enabled. null = full access → also show the button.
+  // The button opens a Sheet listing each enabled admin feature as a
+  // direct link to /admin/<feature>. We do NOT link to /admin root —
+  // that's blocked for picker/driver by middleware (they'd be redirected
+  // back to /picker). Admin features are surfaced in THEIR dashboard.
   const hasAdminAccess =
     enabledFeatures === null ||
     enabledFeatures.some((f) => ADMIN_FEATURE_KEYS.has(f))
+
+  // Build the list of admin tool links to show in the sheet.
+  // If full access (null), show all admin tools. Otherwise filter to
+  // only the enabled ones.
+  const adminToolItems =
+    enabledFeatures === null
+      ? ADMIN_TOOLS_ITEMS
+      : ADMIN_TOOLS_ITEMS.filter((item) =>
+          item.feature && enabledFeatures.includes(item.feature),
+        )
+
+  const [adminToolsOpen, setAdminToolsOpen] = useState(false)
 
   if (loading) {
     return (
@@ -169,15 +197,46 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-base text-white">{storeName} Picker</span>
           </div>
           <div className="flex items-center gap-1">
-            {hasAdminAccess && (
-              <Link
-                href="/admin"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors"
-                title="Open admin dashboard"
-              >
-                <ShieldCheck className="h-4 w-4" />
-                <span>Admin</span>
-              </Link>
+            {hasAdminAccess && adminToolItems.length > 0 && (
+              <Sheet open={adminToolsOpen} onOpenChange={setAdminToolsOpen}>
+                <SheetTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+                    title="Open admin tools"
+                  >
+                    <Wrench className="h-4 w-4" />
+                    <span>Tools</span>
+                  </button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
+                  <SheetHeader>
+                    <SheetTitle className="flex items-center gap-2">
+                      <Wrench className="h-5 w-5 text-orange-500" />
+                      Admin Tools
+                    </SheetTitle>
+                    <SheetDescription>
+                      Quick access to the admin features you manage. You&apos;ll leave the picker dashboard — use the back arrow to return.
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="grid grid-cols-2 gap-2 p-4">
+                    {adminToolItems.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <Link
+                          key={item.feature}
+                          href={item.href}
+                          onClick={() => setAdminToolsOpen(false)}
+                          className="flex flex-col items-center gap-2 p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors min-h-[88px] justify-center"
+                        >
+                          <Icon className="h-6 w-6 text-orange-500" />
+                          <span className="text-xs font-medium text-gray-700 text-center">{item.label}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </SheetContent>
+              </Sheet>
             )}
             <Button
               variant="ghost"

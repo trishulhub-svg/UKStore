@@ -107,13 +107,32 @@ export function AccountClient({ storeName, user, orders }: AccountClientProps) {
     return () => { cancelled = true }
   }, [])
 
+  // ─── "Admin Dashboard" link visibility ──────────────────────────
+  // Only OWNER and MANAGER (primary role) see the link on /account.
+  // PICKER and DRIVER never see it here — even if they have admin
+  // features enabled, those features are linked from their OWN
+  // dashboard (picker/driver layout) via the "Admin Tools" sheet.
+  // This avoids sending them to /admin root, which is blocked by
+  // middleware for picker/driver.
+  //
+  // For MANAGER: hide the link if they have NO admin features enabled
+  // (per the previous task's requirement — "if admin dashboard is not
+  // given to employee, link not needed"). OWNER always has full access.
   const isOwner = user.role.toUpperCase() === 'OWNER'
-  // OWNER → always full access. Otherwise: null = full access (default open),
-  // array = must contain at least one admin-group feature.
+  const isManager = user.role.toUpperCase() === 'MANAGER'
+  const isPickerOrDriver = user.role.toUpperCase() === 'PICKER' || user.role.toUpperCase() === 'DRIVER'
+
   const hasAdminAccess =
     isOwner ||
-    enabledFeatures === null ||
-    (Array.isArray(enabledFeatures) && enabledFeatures.some((f) => ADMIN_FEATURE_KEYS.has(f)))
+    (isManager && (
+      enabledFeatures === null ||
+      (Array.isArray(enabledFeatures) && enabledFeatures.some((f) => ADMIN_FEATURE_KEYS.has(f)))
+    ))
+  // PICKER / DRIVER: never show on /account (they use their own dashboard)
+  // isPickerOrDriver is used to short-circuit — hasAdminAccess is already
+  // false for them because isOwner and isManager are both false, but we
+  // keep the variable for clarity and future-proofing.
+  void isPickerOrDriver
 
   const handleLogout = async () => {
     setLoggingOut(true)

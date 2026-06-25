@@ -13,9 +13,9 @@ export async function middleware(request: NextRequest) {
 
   // ─── Role-based redirect on home page ─────────────────────────
   // If an admin or driver user lands on `/`, redirect them to their dashboard.
-  // Use the combined-roles logic (primary + additionalRoles) so that e.g.
-  // a user whose primary role is PICKER but who also has MANAGER in
-  // additionalRoles is correctly redirected to /admin, not /picker.
+  // Uses primary-role-based logic: a picker always goes to /picker, a driver
+  // to /driver — even if they have MANAGER in additionalRoles or admin
+  // feature permissions. Owner/manager go to /admin.
   if (user && request.nextUrl.pathname === '/') {
     const redirectPath = getRoleBasedRedirectFromRoles(user.role, user.additionalRoles ?? [])
     if (redirectPath !== '/') {
@@ -47,6 +47,31 @@ export async function middleware(request: NextRequest) {
     redirectUrl.pathname = '/auth/login'
     redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)
     return NextResponse.redirect(redirectUrl)
+  }
+
+  // ─── Block /admin root for PICKER / DRIVER primary roles ────────
+  // A picker/driver with admin feature permissions can access specific
+  // /admin/<feature> sub-routes (e.g. /admin/orders, /admin/products),
+  // but they must NOT land on the /admin dashboard root — that's the
+  // admin shell landing page, and their login already redirected them
+  // to their own dashboard. If they manually type /admin into the URL
+  // bar, send them back to their own dashboard instead.
+  //
+  // OWNER and MANAGER (primary role) can access /admin root normally.
+  // A picker with MANAGER in additionalRoles is still primarily a
+  // picker — they land on /picker and access admin features from there.
+  if (request.nextUrl.pathname === '/admin' && user) {
+    const role = (user.role || '').toUpperCase()
+    if (role === 'PICKER') {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/picker'
+      return NextResponse.redirect(redirectUrl)
+    }
+    if (role === 'DRIVER') {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/driver'
+      return NextResponse.redirect(redirectUrl)
+    }
   }
 
   // Protect picker routes — must be authenticated

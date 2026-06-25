@@ -4,8 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Settings, LayoutDashboard, ChevronRight, User as UserIcon, LogOut, ArrowLeft,
-  Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3, Menu, PoundSterling,
-  CalendarDays, Trash2, Image, UserCog, UserCircle,
+  Menu, PoundSterling, UserCog, UserCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -16,6 +15,7 @@ import { useState } from 'react'
 import type { Profile } from '@/types'
 import { useStoreInfo } from '@/lib/store-info'
 import { StoreLogo } from '@/components/layout/store-logo'
+import { ADMIN_NAV_ITEMS } from '@/lib/admin-nav-items'
 
 interface AdminShellProps {
   children: React.ReactNode
@@ -26,23 +26,9 @@ interface AdminShellProps {
   enabledFeatures?: string[] | null
 }
 
-const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, feature: null as string | null },
-  { href: '/admin/products', label: 'Products', icon: Package, feature: 'products' },
-  { href: '/admin/categories', label: 'Categories', icon: FolderOpen, feature: 'categories' },
-  { href: '/admin/orders', label: 'Orders', icon: ShoppingBag, feature: 'orders' },
-  { href: '/admin/customers', label: 'Customers', icon: Users, feature: 'customers' },
-  { href: '/admin/drivers', label: 'Drivers', icon: Truck, feature: 'drivers' },
-  { href: '/admin/employees', label: 'Employees', icon: UserCog, feature: 'employees' },
-  { href: '/admin/banners', label: 'Banners', icon: Image, feature: 'banners' },
-  { href: '/admin/shifts', label: 'Shifts', icon: CalendarDays, feature: 'shifts' },
-  { href: '/admin/finance', label: 'Finance', icon: PoundSterling, feature: 'finance' },
-  { href: '/admin/wastage', label: 'Wastage', icon: Trash2, feature: 'wastage' },
-  { href: '/admin/promotions', label: 'Promotions', icon: Tag, feature: 'promotions' },
-  { href: '/admin/delivery-zones', label: 'Delivery Zones', icon: MapPin, feature: 'delivery_zones' },
-  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, feature: 'analytics' },
-  { href: '/admin/settings', label: 'Settings', icon: Settings, feature: 'settings' },
-]
+// Use the shared admin nav items. The Dashboard item (feature=null) is
+// always visible; others are filtered by enabledFeatures below.
+const navItems = ADMIN_NAV_ITEMS
 
 function getPageTitle(pathname: string): string {
   const item = navItems.find(

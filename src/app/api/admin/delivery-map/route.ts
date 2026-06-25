@@ -42,10 +42,11 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
-    // Get all active drivers
+    // Get all active drivers (primary DRIVER role OR additionalRoles
+    // contains DRIVER — supports dual-role employees like a picker
+    // who is also a driver, currently out on a delivery).
     const drivers = await prisma.user.findMany({
       where: {
-        role: 'DRIVER',
         isActive: true,
         drivenOrders: {
           some: {
@@ -53,6 +54,10 @@ export async function GET() {
             storeId: STORE_ID,
           },
         },
+        OR: [
+          { role: 'DRIVER' },
+          { additionalRoles: { contains: '"DRIVER"' } },
+        ],
       },
       select: {
         id: true,

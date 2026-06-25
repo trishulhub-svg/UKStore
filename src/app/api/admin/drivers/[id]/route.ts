@@ -14,8 +14,17 @@ export async function GET(
     const prisma = await getPrisma()
     const { id } = await params
 
+    // Match dual-role employees (primary role might not be DRIVER, but
+    // they have DRIVER in additionalRoles). Without this OR clause,
+    // viewing a dual-role driver's detail page would 404.
     const driver = await prisma.user.findFirst({
-      where: { id, role: 'DRIVER' },
+      where: {
+        id,
+        OR: [
+          { role: 'DRIVER' },
+          { additionalRoles: { contains: '"DRIVER"' } },
+        ],
+      },
       include: {
         driverProfile: true,
         drivenOrders: {

@@ -1300,3 +1300,36 @@ Stage Summary:
 - On /account, the "Admin Dashboard" link is now only visible to OWNER and MANAGER — picker/driver use their own dashboard's Tools sheet instead.
 - The admin shell sidebar (visible when a picker/driver navigates to /admin/<feature>) already filters nav items by enabledFeatures, so they only see what they're permitted to access.
 - Committed as 2cca3cb, pushed to origin/main.
+
+---
+Task ID: 18
+Agent: Main
+Task: Fix dual-role (PICKER+DRIVER) employee not appearing in driver assignment list; ensure dual-role staff have a proper interface for both roles
+
+Work Log:
+- Investigated: driver-list endpoints filtered on primary `role: 'DRIVER'` only, excluding employees whose primary role is PICKER with DRIVER in `additionalRoles` JSON column.
+- Fixed `src/app/api/admin/drivers/route.ts` GET: replaced `where: { role: 'DRIVER' }` with `OR: [{ role: 'DRIVER' }, { additionalRoles: { contains: '"DRIVER"' } }]`. Also added `role` and `additionalRoles` to the `select` so the UI can badge dual-role drivers if desired.
+- Fixed `src/app/api/admin/drivers/route.ts` PATCH: same OR clause for the findFirst validation, so admins can update dual-role drivers' verification/active state without 404.
+- Fixed `src/app/api/admin/drivers/[id]/route.ts` GET: same OR clause so the driver detail page works for dual-role drivers.
+- Fixed `src/app/api/admin/orders/batching/route.ts` POST: same OR clause on the driverId validation. Without this, batch-assigning orders to a dual-role driver would have 404'd server-side even after the dropdown was fixed.
+- Fixed `src/app/api/admin/delivery-map/route.ts` GET: same OR clause on the active-drivers query, so dual-role drivers out on delivery show on the live map.
+- Confirmed `src/lib/auth/roles.ts` `getRoleBasedRedirectFromRoles` already sends PICKER→/picker and DRIVER→/driver regardless of additionalRoles (already correct from prior task — picker/driver never redirect to /admin).
+- Confirmed `src/middleware.ts` already blocks `/admin` root for PICKER/DRIVER primary role (redirects back to their own dashboard), while still allowing `/admin/<feature>` sub-routes gated by feature permission.
+- Confirmed both `picker-layout.tsx` and `driver-layout.tsx` already grant access to dual-role staff via the `userRoles` check (sourced from `/api/user/permissions` which returns merged primary + additionalRoles array).
+- Added cross-dashboard "Switch to Picker" button in driver-layout header (visible when `userRoles` includes 'PICKER'), and "Switch to Driver" button in picker-layout header (visible when `userRoles` includes 'DRIVER'). Lets dual-role staff toggle between their two dashboards without typing URLs.
+- Wrote two test scripts in `/home/z/my-project/scripts/`:
+  - `test-dual-role-drivers.ts` — compares OLD vs NEW filter on existing DB
+  - `test-dual-role-seed.ts` — seeds a temporary PICKER+DRIVER user, confirms the NEW filter catches them, then cleans up. Result: ✅ PASS.
+- TypeScript: no new errors in touched files (verified with `npx tsc --noEmit | grep` for each file path).
+- Next build: succeeded (only pre-existing Stripe optional-dep warnings).
+
+Stage Summary:
+- Dual-role employees (e.g. primary PICKER + additional DRIVER) now appear in:
+  - The driver dropdown on the kanban board ("Assign Driver" on packed orders)
+  - The driver dropdown on the orders list page
+  - The admin Drivers management page
+  - The delivery map (live driver positions)
+  - Batch-assignment validation
+- Dual-role staff can switch between their Picker and Driver dashboards via a new header button on each dashboard.
+- Server-side security unchanged: every admin endpoint still calls `requireAdmin({ feature: ... })`; broadening the where-clause only affects which users *qualify* as drivers for selection/assignment, not who can call the endpoint.
+- Login redirect logic unchanged: primary role still wins, so DRIVER/PICKER always land on their own dashboard (never /admin).

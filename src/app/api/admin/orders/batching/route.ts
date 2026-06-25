@@ -90,9 +90,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'driverId is required' }, { status: 400 })
     }
 
-    // Verify driver exists and has driver role
+    // Verify driver exists and has driver role (either as primary role
+    // OR in additionalRoles — supports dual-role employees like a
+    // picker who is also a driver).
     const driver = await prisma.user.findFirst({
-      where: { id: driverId, role: 'DRIVER' },
+      where: {
+        id: driverId,
+        OR: [
+          { role: 'DRIVER' },
+          { additionalRoles: { contains: '"DRIVER"' } },
+        ],
+      },
     })
 
     if (!driver) {

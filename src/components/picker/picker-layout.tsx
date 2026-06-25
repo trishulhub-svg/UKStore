@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Package, User, LogOut, ChevronRight, Wrench } from 'lucide-react'
+import { LayoutDashboard, Package, User, LogOut, ChevronRight, Wrench, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authLogout } from '@/lib/auth-client'
 import { useStoreInfo } from '@/lib/store-info'
@@ -135,6 +135,16 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
     enabledFeatures === null ||
     enabledFeatures.some((f) => ADMIN_FEATURE_KEYS.has(f))
 
+  // Dual-role support: a picker who is ALSO a driver gets a "Switch to
+  // Driver" button in the header. Both dashboards remain accessible by
+  // URL too — this is just a convenience cross-link so they don't have
+  // to type the URL. `userRoles` comes from /api/user/permissions
+  // which returns the merged primary + additionalRoles array.
+  const hasDriverRole = (() => {
+    if (!userRoles) return false
+    return userRoles.some((r) => r === 'DRIVER')
+  })()
+
   // Build the list of admin tool links to show in the sheet.
   // If full access (null), show all admin tools. Otherwise filter to
   // only the enabled ones.
@@ -197,6 +207,16 @@ export function PickerLayout({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-base text-white">{storeName} Picker</span>
           </div>
           <div className="flex items-center gap-1">
+            {hasDriverRole && (
+              <Link
+                href="/driver"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+                title="Switch to Driver dashboard"
+              >
+                <Truck className="h-4 w-4" />
+                <span>Driver</span>
+              </Link>
+            )}
             {hasAdminAccess && adminToolItems.length > 0 && (
               <Sheet open={adminToolsOpen} onOpenChange={setAdminToolsOpen}>
                 <SheetTrigger asChild>

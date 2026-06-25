@@ -12,13 +12,31 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
 
-    const where: any = { role: 'DRIVER' }
-    if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } },
-      ]
+    // A "driver" is anyone whose primary role is DRIVER OR whose
+    // additionalRoles JSON contains "DRIVER". The column stores JSON
+    // like '["DRIVER","PICKER"]', so a `contains` substring match is
+    // safe under SQLite/libSQL. This catches dual-role employees
+    // (e.g. primary PICKER + additional DRIVER) who were previously
+    // excluded from the driver dropdown.
+    const roleCondition = {
+      OR: [
+        { role: 'DRIVER' },
+        { additionalRoles: { contains: '"DRIVER"' } },
+      ],
     }
+    const where: any = search
+      ? {
+          AND: [
+            roleCondition,
+            {
+              OR: [
+                { name: { contains: search } },
+                { email: { contains: search } },
+              ],
+            },
+          ],
+        }
+      : roleCondition
 
     const drivers = await prisma.user.findMany({
       where,
@@ -29,6 +47,8 @@ export async function GET(request: NextRequest) {
         phone: true,
         isActive: true,
         createdAt: true,
+        role: true,
+        additionalRoles: true,
         driverProfile: true,
         drivenOrders: {
           select: { id: true, status: true },
@@ -61,8 +81,18 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'driverId is required' }, { status: 400 })
     }
 
+    // Match dual-role employees (primary role might be PICKER but they
+    // have DRIVER in additionalRoles). Same OR condition as the GET
+    // list above — otherwise the admin could see the driver in the
+    // list but couldn't PATCH them.
     const driver = await prisma.user.findFirst({
-      where: { id: driverId, role: 'DRIVER' },
+      where: {
+        id: driverId,
+        OR: [
+          { role: 'DRIVER' },
+          { additionalRoles: { contains: '"DRIVER"' } },
+        ],
+      },
       include: { driverProfile: true },
     })
     if (!driver) {

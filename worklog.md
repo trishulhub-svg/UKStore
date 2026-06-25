@@ -1216,3 +1216,87 @@ Stage Summary:
 - The welcome email body is preserved as a future SMTP-email payload (to be sent automatically once email credentials are configured).
 - The "Admin Dashboard" button on /account is now consistent with the picker and driver dashboards: it only appears when the user actually has admin feature access. Restricted managers and dual-role pickers without admin features no longer see a link they can't use.
 - Committed as 53bd02f.
+
+---
+Task ID: 15
+Agent: Main
+Task: Picker/driver login must never redirect to /admin — admin features they have should be linked as individual menu items in their own dashboard, not a redirect to the admin shell. All security measures must be complied.
+
+Work Log:
+- Audited the redirect logic chain: `getRoleBasedRedirectFromRoles` (roles.ts) → middleware home redirect → client-side login redirect → picker/driver layouts' "Admin" header link → admin layout access check. Found that Task 12's "combined-roles priority" (ADMIN > DRIVER > PICKER) was sending PICKER+MANAGER users to /admin, which contradicts the new requirement.
+- Audited the picker/driver layouts: both had a hardcoded "Admin" link in the header pointing to `/admin`. This was the redirect-to-admin that the user wants removed.
+- Audited the admin layout (src/app/admin/layout.tsx): already had the correct access check (`isOwnerOrManager || isEmployeeWithAdminFeature`), but didn't distinguish between `/admin` root and `/admin/<feature>` sub-routes — a picker with any admin feature could land on the admin dashboard root.
+- Designed the new security model:
+  * Login redirect: primary role wins (PICKER→/picker, DRIVER→/driver, MANAGER/OWNER→/admin)
+  * /admin root: blocked for PICKER/DRIVER at middleware level (redirected to their dashboard)
+  * /admin/<feature>: accessible by anyone with that feature permission (including picker/driver)
+  * Admin features: linked from picker/driver's own "Tools" sheet, not a redirect to /admin
+
+Changes Made:
+
+1. **src/lib/auth/roles.ts** — `getRoleBasedRedirectFromRoles`:
+   - Changed from "combined-roles priority" (ADMIN wins) to "primary role wins"
+   - Primary PICKER → /picker (always, even with MANAGER additional role)
+   - Primary DRIVER → /driver (always, even with MANAGER additional role)
+   - Primary MANAGER/OWNER → /admin
+   - Customer fallback: checks additionalRoles (rare edge case)
+   - Updated `isAdminWithAdditionalRoles` comment to clarify it's for security checks, not redirect
+
+2. **src/middleware.ts**:
+   - Added new guard: if pathname is exactly `/admin` and user's primary role is PICKER or DRIVER, redirect them to their own dashboard (/picker or /driver)
+   - This runs AFTER the auth check, so unauthenticated users still get sent to login
+   - OWNER/MANAGER can still access /admin root normally
+   - /admin/<feature> sub-routes are NOT blocked by this guard — the admin layout handles per-feature access
+
+3. **src/lib/admin-nav-items.tsx** (NEW):
+   - Shared, client-safe admin nav item definitions
+   - `ADMIN_NAV_ITEMS`: full list with 15 items (Dashboard + 14 features), used by AdminShell
+   - `ADMIN_TOOLS_ITEMS`: same list minus the Dashboard root, used by picker/driver layouts
+   - Each item has: feature key, href, label, Lucide icon
+   - Deliberately does NOT import from feature-permissions.ts (server-only code)
+
+4. **src/components/picker/picker-layout.tsx**:
+   - Removed the `ShieldCheck` "Admin" link that pointed to `/admin`
+   - Added `Wrench` "Tools" button in header that opens a bottom `Sheet`
+   - The Sheet lists each enabled admin feature as a grid of 2-column cards, each linking directly to `/admin/<feature>` (e.g. /admin/orders, /admin/products)
+   - If picker has no admin features (or `enabledFeatures` is empty array), the Tools button is hidden
+   - Uses `ADMIN_TOOLS_ITEMS` from the shared module
+   - Added `adminToolsOpen` state for Sheet open/close
+
+5. **src/components/driver/driver-layout.tsx**:
+   - Same treatment as picker: removed Admin link, added Tools Sheet
+   - Green-themed (#16a34a) to match driver dashboard
+   - Uses `ADMIN_TOOLS_ITEMS` from the shared module
+
+6. **src/components/customer/account-client.tsx**:
+   - "Admin Dashboard" link now only shows for OWNER and MANAGER primary roles
+   - PICKER/DRIVER never see it on /account (they use their own dashboard's Tools sheet)
+   - MANAGER still respects feature permissions (hidden if no admin features enabled, per Task 14)
+   - OWNER always sees it (full access)
+
+7. **src/components/admin/admin-shell.tsx**:
+   - Refactored to use shared `ADMIN_NAV_ITEMS` from admin-nav-items.tsx
+   - Removed duplicated 15-line navItems array (DRY)
+   - Removed unused icon imports (Package, FolderOpen, ShoppingBag, Users, Truck, Tag, MapPin, BarChart3, CalendarDays, Trash2, Image)
+   - `getPageTitle` and nav rendering work identically (same items, same structure)
+
+8. **scripts/test-admin-redirect.mjs**:
+   - Updated inline copy of `getRoleBasedRedirectFromRoles` to match new primary-role-wins logic
+   - Updated test cases: PICKER+MANAGER→/picker, DRIVER+MANAGER→/driver, PICKER+DRIVER→/picker, etc.
+   - Added new customer-fallback cases: CUSTOMER+PICKER→/picker, CUSTOMER+MANAGER→/admin
+   - All 19 test cases pass
+   - Added explicit assertion: "No picker/driver primary role ever redirects to /admin"
+
+Verification:
+- `npx tsc --noEmit` on modified files: 0 new errors (pre-existing errors in unrelated files only)
+- `npx eslint` on all 8 modified files: clean, no warnings
+- `node scripts/test-admin-redirect.mjs`: all 19 cases pass, including the new "picker/driver never redirect to /admin" assertion
+
+Stage Summary:
+- Picker/driver now always land on their own dashboard after login, regardless of additional roles or admin feature permissions.
+- The "Admin" link has been removed from picker/driver headers. Replaced with a "Tools" button that opens a bottom sheet listing each enabled admin feature as a direct link to its /admin/<feature> page.
+- /admin root is blocked for picker/driver at the middleware level — if they manually type /admin into the URL bar, they're redirected back to their own dashboard.
+- /admin/<feature> sub-routes remain accessible to picker/driver with the corresponding feature permission (the admin layout's existing access check handles this).
+- On /account, the "Admin Dashboard" link is now only visible to OWNER and MANAGER — picker/driver use their own dashboard's Tools sheet instead.
+- The admin shell sidebar (visible when a picker/driver navigates to /admin/<feature>) already filters nav items by enabledFeatures, so they only see what they're permitted to access.
+- Committed as 2cca3cb, pushed to origin/main.
